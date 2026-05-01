@@ -1,0 +1,14 @@
+kaggle
+python-dotenv
+# PyTorch ecosystem for experiments
+torch>=1.12.0
+torchvision
+timm
+einops
+pandas
+matplotlib
+scikit-learn
+pyyaml
+numpy<2.0
+
+

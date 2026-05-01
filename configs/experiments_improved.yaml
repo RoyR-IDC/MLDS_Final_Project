@@ -1,0 +1,13 @@
+data_dir: data/dogs-vs-cats/train
+output_dir: results/tiles_experiment_improved
+models:
+  - resnet18
+grids: [1, 4, 9, 16]
+n_permutations: 5
+seeds: [0, 1, 2]
+epochs: 5
+batch_size: 32
+lr: 0.001
+pretrained: true
+improved: true
+mixup_alpha: 0.2

@@ -1,0 +1,19 @@
+name: mlds_dogs_vs_cats
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - unzip
+  - pip:
+    - kaggle
+    - python-dotenv
+    - torch
+    - torchvision
+    - timm
+    - einops
+    - pandas
+    - matplotlib
+    - scikit-learn
+    - pyyaml
