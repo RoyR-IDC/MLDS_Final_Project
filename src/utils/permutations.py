@@ -1,31 +1,36 @@
-from typing import List, Sequence
+"""Small dependency-light permutation helpers."""
+
+from __future__ import annotations
+
 import random
-
-
-def generate_permutations(grid_size: int, n: int, seed: int = 0) -> List[List[int]]:
-    """
-    Generate `n` random permutations for a grid of size GxG.
-
-    Args:
-        grid_size: Grid dimension G (int).
-        n: Number of permutations to generate.
-        seed: RNG seed for reproducibility.
-
-    Returns:
-        List of permutations, each a list of length G*G containing indices 0..G*G-1.
-    """
-    rng = random.Random(seed)
-    size = grid_size * grid_size
-    perms = []
-    base = list(range(size))
-    for i in range(n):
-        p = base.copy()
-        rng.shuffle(p)
-        perms.append(p)
-    return perms
+from typing import List
 
 
 def identity_permutation(grid_size: int) -> List[int]:
-    """Return the identity permutation for a GxG grid."""
-    size = grid_size * grid_size
-    return list(range(size))
+    """Return the identity permutation for a square tile grid."""
+
+    if grid_size < 1:
+        raise ValueError("grid_size must be at least 1")
+    return list(range(grid_size * grid_size))
+
+
+def random_permutation(grid_size: int, seed: int) -> List[int]:
+    """Return one seeded random permutation."""
+
+    permutation = identity_permutation(grid_size)
+    random.Random(seed).shuffle(permutation)
+    return permutation
+
+
+def generate_permutations(grid_size: int, n: int, seed: int = 0) -> List[List[int]]:
+    """Generate ``n`` seeded random permutations."""
+
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    rng = random.Random(seed)
+    permutations = []
+    for _ in range(n):
+        permutation = identity_permutation(grid_size)
+        rng.shuffle(permutation)
+        permutations.append(permutation)
+    return permutations

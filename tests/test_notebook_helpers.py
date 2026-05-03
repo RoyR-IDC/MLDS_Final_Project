@@ -1,4 +1,9 @@
 import pytest
+import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("torchvision")
+
 from src.utils import notebook_helpers as nh
 from PIL import Image
 

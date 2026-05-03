@@ -23,12 +23,12 @@ except Exception:
     validate = None
 
 
-def list_sample_paths(data_dir: str, max_items: int = 20) -> List[Tuple[str, int]]:
+def list_sample_paths(data_dir: str, max_items: Optional[int] = 20) -> List[Tuple[str, int]]:
     """List up to ``max_items`` (path, label) samples from ``data_dir``.
 
     Args:
         data_dir: Directory containing image files named like `cat.123.jpg` or `dog.45.jpg`.
-        max_items: Maximum number of samples to return.
+        max_items: Maximum number of samples to return. Use ``None`` to return all samples.
 
     Returns:
         List of tuples ``(path, label)`` where ``label`` is 0 for cat and 1 for dog.
@@ -39,9 +39,87 @@ def list_sample_paths(data_dir: str, max_items: int = 20) -> List[Tuple[str, int
             continue
         label = 0 if 'cat' in fname.lower() else 1
         samples.append((os.path.join(data_dir, fname), label))
-        if len(samples) >= max_items:
+        if max_items is not None and len(samples) >= max_items:
             break
     return samples
+
+
+def count_sample_labels(data_dir: str, max_items: Optional[int] = None) -> dict:
+    """Return label counts for the sample files in ``data_dir``.
+
+    Args:
+        data_dir: Dataset directory containing labeled filenames.
+        max_items: Optional limit on how many files to inspect.
+
+    Returns:
+        Dictionary with counts for 'cats' and 'dogs'.
+    """
+    samples = list_sample_paths(data_dir, max_items=max_items)
+    counts = {'cats': 0, 'dogs': 0}
+    for _, label in samples:
+        if label == 0:
+            counts['cats'] += 1
+        else:
+            counts['dogs'] += 1
+    return counts
+
+
+def stratified_train_val_split(sample_paths: List[Tuple[str, int]], train_ratio: float = 0.8, seed: int = 0):
+    """Split paths into stratified train and validation sets by class.
+
+    Args:
+        sample_paths: List of (path, label) tuples.
+        train_ratio: Fraction of samples to keep in the training set.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        ``(train_paths, val_paths)`` where both lists preserve class balance.
+    """
+    cat_paths = [p for p in sample_paths if p[1] == 0]
+    dog_paths = [p for p in sample_paths if p[1] == 1]
+
+    rng = random.Random(seed)
+    rng.shuffle(cat_paths)
+    rng.shuffle(dog_paths)
+
+    n_cat_train = int(round(len(cat_paths) * train_ratio))
+    n_dog_train = int(round(len(dog_paths) * train_ratio))
+
+    train_paths = cat_paths[:n_cat_train] + dog_paths[:n_dog_train]
+    val_paths = cat_paths[n_cat_train:] + dog_paths[n_dog_train:]
+
+    rng.shuffle(train_paths)
+    rng.shuffle(val_paths)
+    return train_paths, val_paths
+
+
+def build_train_val_dataloaders(
+    sample_paths: List[Tuple[str, int]],
+    grid: int = 2,
+    batch_size: int = 8,
+    train_ratio: float = 0.8,
+    seed: int = 0,
+    base_transform: Optional[transforms.Compose] = None,
+):
+    """Build stratified train and validation loaders from labeled sample paths."""
+    train_paths, val_paths = stratified_train_val_split(sample_paths, train_ratio=train_ratio, seed=seed)
+    train_dl, train_ds = build_tiny_dataloader(
+        sample_paths=train_paths,
+        grid=grid,
+        batch_size=batch_size,
+        base_transform=base_transform,
+        use_synthetic=False,
+        seed=seed,
+    )
+    val_dl, val_ds = build_tiny_dataloader(
+        sample_paths=val_paths,
+        grid=grid,
+        batch_size=batch_size,
+        base_transform=base_transform,
+        use_synthetic=False,
+        seed=seed,
+    )
+    return train_dl, val_dl, train_ds, val_ds
 
 
 def load_pil_image(path: str) -> Image.Image:

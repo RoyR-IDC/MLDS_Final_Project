@@ -1,4 +1,9 @@
 import os
+import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("torchvision")
+
 from PIL import Image
 from src.loaders.dataset import TilePermutationDataset
 from torchvision import transforms

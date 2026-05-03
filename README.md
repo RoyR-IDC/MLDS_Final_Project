@@ -1,52 +1,93 @@
-# Kaggle Dogs vs Cats downloader
+# Tile-Permutation Dogs vs Cats
 
-This repo includes a small helper script to download and extract the Kaggle "Dogs vs Cats" competition data into a local `data/dogs-vs-cats` folder.
+This repository studies Dogs vs Cats classification when each image is split into
+square tile grids and the tiles are permuted before classification.
 
-Usage
+The official workflow is notebook-first. Core logic lives in importable `src`
+modules, while the notebooks orchestrate experiments and display saved tables
+and figures.
 
-1. Install requirements:
-
-```bash
-pip install -r requirements.txt
-```
-
-2. Provide Kaggle credentials either by setting the environment variables `KAGGLE_USERNAME` and `KAGGLE_KEY`, or by placing `kaggle.json` in `~/.kaggle/`.
-
-3. Run the downloader script from the repository root:
-
-```bash
-python3 scripts/download_kaggle_dogs_vs_cats.py
-```
-
-The script will download the competition files and extract them into `data/dogs-vs-cats`.
-
-Experiments
-
-1. Install dependencies (or create the conda env):
+## Setup
 
 ```bash
 pip install -r requirements.txt
-# or
-conda env create -f environment.yml
-conda activate mlds_dogs_vs_cats
 ```
 
-2. Run a baseline experiment (example):
+The labeled Kaggle training images are expected at:
+
+```text
+data/dogs-vs-cats/train
+```
+
+Filenames should follow the Kaggle format, for example `cat.123.jpg` and
+`dog.456.jpg`. The unlabeled `test1` folder is not used for validation accuracy.
+
+## Official Notebook Workflow
+
+Run the notebooks in this order:
+
+1. `src/notebooks/part1_solution.ipynb`
+2. `src/notebooks/part2_solution.ipynb`
+3. `src/notebooks/part3_solution.ipynb`
+
+Each notebook has the same structure:
+
+- introduction and notebook topic explanation
+- global/external imports
+- local imports
+- global definitions
+- data loading
+- experiment sections
+
+The notebooks call classes from `src.experiments` and do not duplicate training,
+permutation, plotting, or metric logic.
+
+## Configs
+
+The official configs are grouped YAML files:
+
+- `configs/part1_baselines.yaml`
+- `configs/part2_improvement.yaml`
+- `configs/part3_difficulty.yaml`
+
+Sections are grouped as `general`, `input_output`, `data`, `models`,
+`experiment`, and `ablations` where relevant. The helper
+`src.utils.config.load_experiment_config` normalizes grouped YAML into the
+internal runner format.
+
+## Outputs
+
+CSV results are saved under `outputs/results/`:
+
+- `part1_raw_results.csv`
+- `part1_aggregated_results.csv`
+- `part1_permutations.csv`
+- `part2_raw_results.csv`
+- `part2_aggregated_results.csv`
+- `permutation_metrics.csv`
+- `metric_accuracy_joined.csv`
+- `metric_accuracy_correlations.csv`
+
+Figures are saved under `outputs/figures/`:
+
+- `part1_accuracy_vs_tiles.png`
+- `part2_ablation_comparison.png`
+- `part3_*_vs_accuracy.png`
+
+## Optional Legacy Script
+
+The expected project workflow is the three notebooks above. The script below is
+kept only as a convenience wrapper around the same experiment classes:
 
 ```bash
-python scripts/train_experiment.py configs/experiments.yaml
+python scripts/train_experiment.py configs/part1_baselines.yaml
 ```
 
-3. Run the improved experiment (mixup + stronger augmentation):
+## Tests
 
 ```bash
-python scripts/train_experiment.py configs/experiments_improved.yaml
+pytest
 ```
 
-4. Generate plots from results:
+Some tests and all full training runs require `torch` and `torchvision`.
 
-```bash
-python -m src.utils.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --n_permutations 5
-```
-
-Results and artifacts (CSV, checkpoints, plots) are written to the `results/` folder configured in the YAML files.
