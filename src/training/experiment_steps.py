@@ -10,9 +10,10 @@ from torch.utils.data import DataLoader
 
 from src.models.factory import get_model
 from src.training.engine import build_optimizer, fit
+from src.utils.config import CVExperimentConfig
 
 
-def build_training_components(config: Dict, model_name: str, device: torch.device, overrides: Optional[Dict] = None) -> Dict[str, object]:
+def build_training_components(config: CVExperimentConfig, model_name: str, device: torch.device, overrides: Optional[Dict] = None) -> Dict[str, object]:
     """Build model, optimizer, and criterion objects for one training run.
 
     Args:
@@ -26,24 +27,24 @@ def build_training_components(config: Dict, model_name: str, device: torch.devic
     """
 
     run_options = dict(overrides or {})
-    pretrained = bool(run_options.get("pretrained", config.get("pretrained", False)))
+    pretrained = bool(run_options.get("pretrained", config.pretrained))
     if model_name == "convmixer":
         pretrained = False
 
     model = get_model(
         model_name,
-        num_classes=int(config.get("num_classes", 2)),
+        num_classes=config.num_classes,
         pretrained=pretrained,
         device=device,
-        freeze_backbone=bool(run_options.get("freeze_backbone", config.get("freeze_backbone", False))),
-        convmixer_dim=int(config.get("convmixer_dim", 256)),
-        convmixer_depth=int(config.get("convmixer_depth", 8)),
+        freeze_backbone=bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False))),
+        convmixer_dim=config.convmixer_dim,
+        convmixer_depth=config.convmixer_depth,
     )
     optimizer = build_optimizer(
         model,
-        name=config.get("optimizer", "adamw"),
-        learning_rate=float(config.get("learning_rate", 1e-4)),
-        weight_decay=float(config.get("weight_decay", 0.0)),
+        name=config.optimizer,
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay,
     )
     criterion = nn.CrossEntropyLoss()
     components = {"model": model, "optimizer": optimizer, "criterion": criterion}
@@ -51,7 +52,7 @@ def build_training_components(config: Dict, model_name: str, device: torch.devic
 
 
 def train_model_configuration(
-    config: Dict,
+    config: CVExperimentConfig,
     model_name: str,
     train_loader: DataLoader,
     val_loader: DataLoader,
@@ -77,10 +78,10 @@ def train_model_configuration(
         components["model"],
         train_loader,
         val_loader,
-        epochs=int(config.get("epochs", 1)),
+        epochs=config.epochs,
         optimizer=components["optimizer"],
         criterion=components["criterion"],
         device=device,
-        use_amp=bool(config.get("use_amp", False)),
+        use_amp=config.use_amp,
     )
     return metrics

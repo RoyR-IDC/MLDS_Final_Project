@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
@@ -10,10 +11,11 @@ import pandas as pd
 import torch
 
 from src.preprocessing.dogs_cats import discover_samples, stratified_split
+from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir
 
 
-def get_device(config: Dict) -> torch.device:
+def get_device(config: CVExperimentConfig) -> torch.device:
     """Return a configured device, falling back to CPU when needed.
 
     Args:
@@ -23,7 +25,7 @@ def get_device(config: Dict) -> torch.device:
         Torch device selected from the config.
     """
 
-    requested = str(config.get("device", "auto"))
+    requested = str(config.device)
     if requested == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         return device
@@ -31,7 +33,23 @@ def get_device(config: Dict) -> torch.device:
     return device
 
 
-def load_experiment_samples(config: Dict, seed: int):
+def _build_balanced_sample_subset(samples: list, limit: int, seed: int) -> list:
+    cats = [sample for sample in samples if sample[1] == 0]
+    dogs = [sample for sample in samples if sample[1] == 1]
+    max_per_class = limit // 2
+    selected_count = min(len(cats), len(dogs), max_per_class)
+    if selected_count == 0:
+        raise ValueError("Not enough cat/dog samples to build a balanced subset")
+
+    rng = random.Random(seed)
+    cats = cats[:selected_count]
+    dogs = dogs[:selected_count]
+    balanced = cats + dogs
+    rng.shuffle(balanced)
+    return balanced
+
+
+def load_experiment_samples(config: CVExperimentConfig, seed: int):
     """Discover and split configured Dogs vs Cats samples.
 
     Args:
@@ -42,11 +60,14 @@ def load_experiment_samples(config: Dict, seed: int):
         Tuple of train, validation, and test sample lists.
     """
 
-    samples = discover_samples(config["data_dir"], limit=config.get("sample_limit"))
+    samples = discover_samples(config.data_dir)
+    if config.sample_data and config.sample_limit is not None:
+        samples = _build_balanced_sample_subset(samples, config.sample_limit, seed)
+
     split_samples = stratified_split(
         samples,
-        val_fraction=float(config.get("val_fraction", 0.2)),
-        test_fraction=float(config.get("test_fraction", 0.0)),
+        val_fraction=config.val_fraction,
+        test_fraction=config.test_fraction,
         seed=seed,
     )
     return split_samples
