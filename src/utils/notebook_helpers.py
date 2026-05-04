@@ -10,10 +10,11 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
-# Import repo modules (runner and dataset use the `src` package path)
+# Import repo modules through the canonical preprocessing path.
 try:
-    from src.preprocessing.legacy_dataset import TilePermutationDataset
+    from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
 except Exception:
+    ImageFileDataset = None
     TilePermutationDataset = None
 
 try:
@@ -243,8 +244,9 @@ def build_tiny_dataloader(
     if base_transform is None:
         base_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
-    if sample_paths is not None and TilePermutationDataset is not None:
-        dataset = TilePermutationDataset(sample_paths, grid_size=grid, base_transform=base_transform, seed=seed)
+    if sample_paths is not None and ImageFileDataset is not None and TilePermutationDataset is not None:
+        base_dataset = ImageFileDataset(sample_paths, transform=base_transform)
+        dataset = TilePermutationDataset(base_dataset, grid_size=grid, seed=seed)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         return dataloader, dataset
 

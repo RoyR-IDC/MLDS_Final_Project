@@ -39,8 +39,8 @@ Each notebook has the same structure:
 - data loading
 - experiment sections
 
-The notebooks call classes from `src.training` and `src.evaluation` and do not
-duplicate training, permutation, plotting, or metric logic.
+Part 1 and Part 2 orchestration lives in their notebooks. Reusable training,
+preprocessing, plotting, and metric helpers stay in `src` modules.
 
 ## Configs
 
@@ -74,13 +74,13 @@ Figures are saved under `outputs/figures/`:
 - `part2_ablation_comparison.png`
 - `part3_*_vs_accuracy.png`
 
-## Optional Legacy Script
+## Optional Script
 
 The expected project workflow is the three notebooks above. The script below is
-kept only as a convenience wrapper around the same experiment classes:
+kept for scriptable Part 3 evaluation only; Part 1 and Part 2 are notebook-only.
 
 ```bash
-python scripts/train_experiment.py configs/part1_baselines.yaml
+python scripts/train_experiment.py configs/part3_difficulty.yaml
 ```
 
 ## Tests

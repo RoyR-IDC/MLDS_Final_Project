@@ -1,4 +1,8 @@
-"""Dispatch experiment configs to the Part 1, Part 2, or Part 3 runners."""
+"""Dispatch scriptable experiment configs.
+
+Part 1 and Part 2 are notebook-only workflows. This script supports Part 3
+analysis because it remains a reusable evaluation entrypoint.
+"""
 
 from __future__ import annotations
 
@@ -14,19 +18,20 @@ from src.utils.config import load_experiment_config
 
 
 def main(config_path: str) -> None:
-    """Run the experiment described by a YAML config."""
+    """Run the scriptable experiment described by a YAML config.
+
+    Args:
+        config_path: YAML config path.
+
+    Raises:
+        ValueError: If the config requests a notebook-only part.
+    """
 
     config = load_experiment_config(config_path)
     part = str(config.get("part", "part1")).lower()
-    if part == "part1":
-        from src.training.part1_baselines import run_part1
-
-        run_part1(config)
-    elif part == "part2":
-        from src.training.part2_improvement import run_part2
-
-        run_part2(config)
-    elif part == "part3":
+    if part in {"part1", "part2"}:
+        raise ValueError(f"{part} is notebook-only. Run the matching notebook under src/notebooks instead.")
+    if part == "part3":
         from src.evaluation.part3_difficulty import run_part3
 
         run_part3(config)

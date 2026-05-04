@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Sequence
+from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -77,6 +77,60 @@ def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) 
     return aggregated_results
 
 
+def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) -> Dict[str, str]:
+    """Return standard output paths for a notebook-owned experiment.
+
+    Args:
+        results_dir: Directory for CSV result files.
+        figures_dir: Directory for saved figures.
+        part_name: Experiment prefix such as ``part1`` or ``part2``.
+
+    Returns:
+        Mapping of stable artifact names to filesystem paths.
+    """
+
+    figure_name = "accuracy_vs_tiles" if part_name == "part1" else "ablation_comparison"
+    output_paths = {
+        "raw_results": os.path.join(results_dir, f"{part_name}_raw_results.csv"),
+        "aggregated_results": os.path.join(results_dir, f"{part_name}_aggregated_results.csv"),
+        "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
+    }
+    if part_name == "part1":
+        output_paths["permutations"] = os.path.join(results_dir, "part1_permutations.csv")
+    return output_paths
+
+
+def save_rows(rows: List[dict], output_path: str) -> None:
+    """Save experiment rows to CSV.
+
+    Args:
+        rows: Result rows to save.
+        output_path: Destination CSV path.
+    """
+
+    ensure_dir(os.path.dirname(output_path) or ".")
+    results = pd.DataFrame(rows)
+    results.to_csv(output_path, index=False)
+
+
+def save_aggregated_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str], output_path: str) -> pd.DataFrame:
+    """Aggregate raw results and save the aggregated table.
+
+    Args:
+        raw_results: Per-run result table.
+        group_columns: Columns used for aggregation.
+        output_path: Destination CSV path.
+
+    Returns:
+        Aggregated accuracy table.
+    """
+
+    aggregated_results = aggregate_accuracy(raw_results, group_columns)
+    ensure_dir(os.path.dirname(output_path) or ".")
+    aggregated_results.to_csv(output_path, index=False)
+    return aggregated_results
+
+
 def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_column: str = "model_name") -> None:
     """Save an accuracy-vs-number-of-tiles plot.
 
@@ -102,6 +156,35 @@ def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_col
     ax.set_title("Accuracy vs Number of Tiles")
     ax.grid(True, alpha=0.3)
     ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+
+
+def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
+    """Save a baseline-vs-improvement ablation plot.
+
+    Args:
+        aggregated: Aggregated Part 2 result table.
+        output_path: Destination path for the figure.
+    """
+
+    ensure_dir(os.path.dirname(output_path) or ".")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for grid_size, group in aggregated.groupby("grid_size"):
+        sorted_group = group.sort_values("ablation_name")
+        ax.plot(
+            sorted_group["ablation_name"],
+            sorted_group["mean_best_val_accuracy"],
+            marker="o",
+            label=f"{grid_size}x{grid_size}",
+        )
+    ax.set_xlabel("Ablation")
+    ax.set_ylabel("Best validation accuracy")
+    ax.set_title("Baseline vs Improved Ablations")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend()
+    fig.autofmt_xdate(rotation=20)
     fig.tight_layout()
     fig.savefig(output_path, dpi=160)
     plt.close(fig)

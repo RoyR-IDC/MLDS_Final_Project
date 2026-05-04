@@ -5,7 +5,7 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from PIL import Image
-from src.preprocessing.legacy_dataset import TilePermutationDataset
+from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
 from torchvision import transforms
 
 
@@ -25,7 +25,8 @@ def test_tile_dataset_basic(tmp_path):
         _make_image(p, (i * 30 % 255, i * 60 % 255, i * 90 % 255))
         samples.append((str(p), 0 if 'cat' in str(p) else 1))
 
-    ds = TilePermutationDataset(samples, grid_size=1, base_transform=transforms.Compose([transforms.ToTensor()]), permutation=None, seed=0)
+    base_dataset = ImageFileDataset(samples, transform=transforms.Compose([transforms.ToTensor()]))
+    ds = TilePermutationDataset(base_dataset, grid_size=1, permutation=None, seed=0)
     assert len(ds) == 4
     x, y = ds[0]
     # tensor shape C,H,W
@@ -45,7 +46,8 @@ def test_tile_dataset_permutation(tmp_path):
 
     # grid 2x2 with explicit identity permutation
     perm = [0, 1, 2, 3]
-    ds = TilePermutationDataset(samples, grid_size=2, base_transform=transforms.Compose([transforms.ToTensor()]), permutation=perm, seed=0)
+    base_dataset = ImageFileDataset(samples, transform=transforms.Compose([transforms.ToTensor()]))
+    ds = TilePermutationDataset(base_dataset, grid_size=2, permutation=perm, seed=0)
     x, y = ds[0]
     assert x.shape[0] == 3
     assert isinstance(y, int)
