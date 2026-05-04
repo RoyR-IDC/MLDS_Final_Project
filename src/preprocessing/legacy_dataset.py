@@ -7,14 +7,14 @@ from typing import Callable, Optional, Sequence, Tuple
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from src.data.tile_permutation import ImageFileDataset, TilePermutationDataset as _TilePermutationDataset
+from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset as _TilePermutationDataset
 
 
 class TilePermutationDataset(Dataset):
     """Dataset that loads image files and applies optional tile permutations.
 
     This compatibility class preserves the repository's original constructor while
-    delegating tensor permutation work to ``src.data.tile_permutation``.
+    delegating tensor permutation work to ``src.preprocessing.tile_permutation``.
 
     Args:
         samples: Sequence of ``(image_path, label)`` pairs.
@@ -47,10 +47,11 @@ class TilePermutationDataset(Dataset):
     def __len__(self) -> int:
         """Return the number of samples."""
 
-        return len(self.dataset)
+        sample_count = len(self.dataset)
+        return sample_count
 
     def __getitem__(self, idx: int):
         """Return one ``(image, label)`` sample."""
 
-        return self.dataset[idx]
-
+        sample = self.dataset[idx]
+        return sample

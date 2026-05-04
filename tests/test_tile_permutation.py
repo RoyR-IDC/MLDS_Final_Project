@@ -2,7 +2,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from src.data.tile_permutation import (
+from src.preprocessing.tile_permutation import (
     apply_tile_permutation,
     identity_permutation,
     random_permutation,

@@ -9,10 +9,10 @@ from typing import Dict, List, Optional
 import pandas as pd
 import torch
 
-from src.data.dogs_cats import build_dataloaders
-from src.data.tile_permutation import generate_permutations, identity_permutation
-from src.experiments.common import aggregate_accuracy, get_device, load_experiment_samples
+from src.evaluation.experiment_results import aggregate_accuracy, get_device, load_experiment_samples
 from src.models.factory import get_model
+from src.preprocessing.dogs_cats import build_dataloaders
+from src.preprocessing.permutations import generate_permutations, identity_permutation
 from src.training.engine import build_optimizer, fit
 from src.utils.config import load_experiment_config, normalize_config
 from src.utils.io import ensure_dir, save_csv
@@ -20,6 +20,13 @@ from src.utils.reproducibility import seed_everything
 
 
 def _plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
+    """Save a baseline-vs-improvement ablation plot.
+
+    Args:
+        aggregated: Aggregated Part 2 result table.
+        output_path: Destination path for the figure.
+    """
+
     import matplotlib.pyplot as plt
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -39,7 +46,16 @@ def _plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
 
 
 def _ablation_configs(config: Dict) -> List[Dict]:
-    default = [
+    """Return configured ablations or the default controlled comparison set.
+
+    Args:
+        config: Normalized experiment configuration.
+
+    Returns:
+        List of ablation dictionaries.
+    """
+
+    default_ablations = [
         {"name": "baseline", "use_pretrained": False, "use_standard_augmentation": False, "use_permutation_augmentation": False},
         {
             "name": "augmentation_only",
@@ -55,7 +71,8 @@ def _ablation_configs(config: Dict) -> List[Dict]:
         },
         {"name": "full_improved", "use_pretrained": True, "use_standard_augmentation": True, "use_permutation_augmentation": True},
     ]
-    return config.get("ablations", default)
+    ablation_configs = config.get("ablations", default_ablations)
+    return ablation_configs
 
 
 class Part2ImprovementExperiment:
@@ -76,24 +93,27 @@ class Part2ImprovementExperiment:
         """Load and split Dogs vs Cats samples for a seed."""
 
         selected_seed = int(self.config.get("seeds", [0])[0] if seed is None else seed)
-        return load_experiment_samples(self.config, seed=selected_seed)
+        samples = load_experiment_samples(self.config, seed=selected_seed)
+        return samples
 
     def load_results(self) -> Dict[str, pd.DataFrame]:
         """Load saved raw and aggregated Part 2 result tables."""
 
-        return {
+        result_tables = {
             "raw": pd.read_csv(os.path.join(self.results_dir, "part2_raw_results.csv")),
             "aggregated": pd.read_csv(os.path.join(self.results_dir, "part2_aggregated_results.csv")),
         }
+        return result_tables
 
     def display_outputs(self) -> Dict[str, str]:
         """Return saved output paths for notebook display cells."""
 
-        return {
+        output_paths = {
             "raw_results": os.path.join(self.results_dir, "part2_raw_results.csv"),
             "aggregated_results": os.path.join(self.results_dir, "part2_aggregated_results.csv"),
             "ablation_plot": os.path.join(self.figures_dir, "part2_ablation_comparison.png"),
         }
+        return output_paths
 
     def run(self) -> pd.DataFrame:
         """Run controlled baseline-vs-improved ablations for permuted images."""
@@ -108,14 +128,16 @@ class Part2ImprovementExperiment:
             seed_everything(int(seed), deterministic=bool(self.config.get("deterministic", False)))
             train_samples, val_samples, _ = self.load_data(seed=int(seed))
             for grid_size in grid_sizes:
-                fixed_eval = [identity_permutation(grid_size)] + generate_permutations(grid_size, eval_permutations, permutation_seed)
-                train_random = generate_permutations(
+                fixed_eval_permutations = [identity_permutation(grid_size)] + generate_permutations(
+                    grid_size, eval_permutations, permutation_seed
+                )
+                training_permutation_pool = generate_permutations(
                     grid_size,
                     int(self.config.get("train_permutation_pool_size", max(4, eval_permutations))),
                     seed=permutation_seed + int(seed),
                 )
                 for ablation in _ablation_configs(self.config):
-                    for permutation_id, permutation in enumerate(fixed_eval):
+                    for permutation_id, permutation in enumerate(fixed_eval_permutations):
                         # Permutation augmentation samples from a pool during training,
                         # then evaluates on the same fixed permutations as the baseline.
                         train_loader, val_loader = build_dataloaders(
@@ -124,7 +146,7 @@ class Part2ImprovementExperiment:
                             image_size=int(self.config.get("image_size", 224)),
                             grid_size=grid_size,
                             permutation=None if ablation.get("use_permutation_augmentation") else permutation,
-                            random_permutations=train_random if ablation.get("use_permutation_augmentation") else None,
+                            random_permutations=training_permutation_pool if ablation.get("use_permutation_augmentation") else None,
                             seed=int(seed),
                             batch_size=int(self.config.get("batch_size", 32)),
                             num_workers=int(self.config.get("num_workers", 2)),
@@ -185,23 +207,28 @@ class Part2ImprovementExperiment:
                         )
                         save_csv(rows, os.path.join(self.results_dir, "part2_raw_results.csv"))
 
-        raw = pd.DataFrame(rows)
-        aggregated = aggregate_accuracy(raw, ["ablation_name", "model_name", "grid_size", "num_tiles"])
+        raw_results = pd.DataFrame(rows)
+        aggregated = aggregate_accuracy(raw_results, ["ablation_name", "model_name", "grid_size", "num_tiles"])
         save_csv(aggregated, os.path.join(self.results_dir, "part2_aggregated_results.csv"))
         _plot_ablation_results(aggregated, os.path.join(self.figures_dir, "part2_ablation_comparison.png"))
-        return aggregated
+        aggregated_results = aggregated
+        return aggregated_results
 
 
 def run_part2(config: Dict) -> pd.DataFrame:
     """Run controlled baseline-vs-improved ablations for permuted images."""
 
-    return Part2ImprovementExperiment(config).run()
+    experiment = Part2ImprovementExperiment(config)
+    aggregated_results = experiment.run()
+    return aggregated_results
 
 
 def main(config_path: str) -> pd.DataFrame:
     """Run Part 2 from a YAML config path."""
 
-    return run_part2(load_experiment_config(config_path))
+    config = load_experiment_config(config_path)
+    aggregated_results = run_part2(config)
+    return aggregated_results
 
 
 if __name__ == "__main__":

@@ -10,10 +10,10 @@ from typing import Dict, List, Optional
 import pandas as pd
 import torch
 
-from src.data.dogs_cats import build_dataloaders
-from src.data.tile_permutation import build_permutation_records
-from src.experiments.common import aggregate_accuracy, get_device, load_experiment_samples, plot_accuracy_vs_tiles
+from src.evaluation.experiment_results import aggregate_accuracy, get_device, load_experiment_samples, plot_accuracy_vs_tiles
 from src.models.factory import get_model
+from src.preprocessing.dogs_cats import build_dataloaders
+from src.preprocessing.permutations import build_permutation_records
 from src.training.engine import build_optimizer, fit
 from src.utils.config import load_experiment_config, normalize_config
 from src.utils.io import ensure_dir, save_csv
@@ -38,34 +38,40 @@ class Part1BaselineExperiment:
         """Load and split Dogs vs Cats samples for a seed."""
 
         selected_seed = int(self.config.get("seeds", [0])[0] if seed is None else seed)
-        return load_experiment_samples(self.config, seed=selected_seed)
+        samples = load_experiment_samples(self.config, seed=selected_seed)
+        return samples
 
     def load_results(self) -> Dict[str, pd.DataFrame]:
         """Load saved raw and aggregated Part 1 result tables."""
 
-        return {
+        result_paths = {
             "raw": pd.read_csv(os.path.join(self.results_dir, "part1_raw_results.csv")),
             "aggregated": pd.read_csv(os.path.join(self.results_dir, "part1_aggregated_results.csv")),
         }
+        return result_paths
 
     def display_outputs(self) -> Dict[str, str]:
         """Return saved output paths for notebook display cells."""
 
-        return {
+        output_paths = {
             "raw_results": os.path.join(self.results_dir, "part1_raw_results.csv"),
             "aggregated_results": os.path.join(self.results_dir, "part1_aggregated_results.csv"),
             "permutations": os.path.join(self.results_dir, "part1_permutations.csv"),
             "accuracy_plot": os.path.join(self.figures_dir, "part1_accuracy_vs_tiles.png"),
         }
+        return output_paths
 
     def _permutation_records(self):
+        """Build reusable grid permutation records for this experiment."""
+
         grid_sizes = [int(value) for value in self.config.get("grid_sizes", [1, 2, 3, 4])]
-        return build_permutation_records(
+        permutation_records = build_permutation_records(
             grid_sizes=grid_sizes,
             num_permutations=int(self.config.get("num_permutations", 2)),
             permutation_seed=int(self.config.get("permutation_seed", 42)),
             include_identity=True,
         )
+        return permutation_records
 
     def run(self) -> pd.DataFrame:
         """Run Part 1 baselines and save CSV/figure artifacts."""
@@ -73,14 +79,15 @@ class Part1BaselineExperiment:
         rows: List[dict] = []
         permutation_records = self._permutation_records()
         metadata_path = os.path.join(self.results_dir, "part1_permutations.csv")
-        save_csv([record.__dict__ | {"permutation": json.dumps(record.permutation)} for record in permutation_records], metadata_path)
+        permutation_rows = [record.__dict__ | {"permutation": json.dumps(record.permutation)} for record in permutation_records]
+        save_csv(permutation_rows, metadata_path)
 
         for seed in self.config.get("seeds", [0]):
             seed_everything(int(seed), deterministic=bool(self.config.get("deterministic", False)))
             train_samples, val_samples, _ = self.load_data(seed=int(seed))
             for model_name in self.config.get("model_names", ["resnet18", "swin_t", "convmixer"]):
                 for record in permutation_records:
-                    # The identity grid has only one meaningful permutation.
+                    # The 1x1 identity grid has no non-trivial tile ordering.
                     if record.grid_size == 1 and record.permutation_id > 0:
                         continue
                     train_loader, val_loader = build_dataloaders(
@@ -138,19 +145,24 @@ class Part1BaselineExperiment:
         aggregated = aggregate_accuracy(raw_results, ["model_name", "grid_size", "num_tiles"])
         save_csv(aggregated, os.path.join(self.results_dir, "part1_aggregated_results.csv"))
         plot_accuracy_vs_tiles(aggregated, os.path.join(self.figures_dir, "part1_accuracy_vs_tiles.png"))
-        return aggregated
+        aggregated_results = aggregated
+        return aggregated_results
 
 
 def run_part1(config: Dict) -> pd.DataFrame:
     """Run Part 1 baseline experiments and save CSV/figure artifacts."""
 
-    return Part1BaselineExperiment(config).run()
+    experiment = Part1BaselineExperiment(config)
+    aggregated_results = experiment.run()
+    return aggregated_results
 
 
 def main(config_path: str) -> pd.DataFrame:
     """Run Part 1 from a YAML config path."""
 
-    return run_part1(load_experiment_config(config_path))
+    config = load_experiment_config(config_path)
+    aggregated_results = run_part1(config)
+    return aggregated_results
 
 
 if __name__ == "__main__":

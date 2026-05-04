@@ -34,17 +34,36 @@ def validate_permutation(permutation: Sequence[int], grid_size: int) -> List[int
 
 
 def tile_coordinates(grid_size: int) -> np.ndarray:
-    """Return row-column coordinates for row-major tile indices."""
+    """Return row-column coordinates for row-major tile indices.
 
-    return np.array([(idx // grid_size, idx % grid_size) for idx in range(grid_size * grid_size)], dtype=float)
+    Args:
+        grid_size: Number of tiles along each image side.
+
+    Returns:
+        Array of ``(row, column)`` coordinates.
+    """
+
+    coordinates = np.array([(idx // grid_size, idx % grid_size) for idx in range(grid_size * grid_size)], dtype=float)
+    return coordinates
 
 
 def _source_to_destination(permutation: Sequence[int], grid_size: int) -> np.ndarray:
+    """Invert an output-to-source permutation into source-to-output positions.
+
+    Args:
+        permutation: Mapping from output tile positions to source tile indices.
+        grid_size: Number of tiles along each image side.
+
+    Returns:
+        Array mapping each source tile to its destination index.
+    """
+
     permutation = validate_permutation(permutation, grid_size)
     destination_by_source = np.empty(grid_size * grid_size, dtype=int)
     for destination, source in enumerate(permutation):
         destination_by_source[source] = destination
-    return destination_by_source
+    source_to_destination = destination_by_source
+    return source_to_destination
 
 
 def average_displacement(permutation: Sequence[int], grid_size: int) -> float:
@@ -61,7 +80,8 @@ def average_displacement(permutation: Sequence[int], grid_size: int) -> float:
     destination_by_source = _source_to_destination(permutation, grid_size)
     coords = tile_coordinates(grid_size)
     distances = np.linalg.norm(coords - coords[destination_by_source], axis=1)
-    return float(distances.mean())
+    displacement = float(distances.mean())
+    return displacement
 
 
 def normalized_average_displacement(permutation: Sequence[int], grid_size: int) -> float:
@@ -70,7 +90,8 @@ def normalized_average_displacement(permutation: Sequence[int], grid_size: int) 
     if grid_size == 1:
         return 0.0
     diagonal = math.sqrt(2.0) * (grid_size - 1)
-    return float(average_displacement(permutation, grid_size) / diagonal)
+    normalized_displacement = float(average_displacement(permutation, grid_size) / diagonal)
+    return normalized_displacement
 
 
 def adjacency_preservation(permutation: Sequence[int], grid_size: int) -> float:
@@ -92,13 +113,15 @@ def adjacency_preservation(permutation: Sequence[int], grid_size: int) -> float:
         left_coord = coords[destination_by_source[left]]
         right_coord = coords[destination_by_source[right]]
         kept += int(np.abs(left_coord - right_coord).sum() == 1)
-    return float(kept / len(adjacent_pairs))
+    preservation = float(kept / len(adjacent_pairs))
+    return preservation
 
 
 def locality_disruption(permutation: Sequence[int], grid_size: int) -> float:
     """Compute one minus adjacency preservation."""
 
-    return float(1.0 - adjacency_preservation(permutation, grid_size))
+    disruption = float(1.0 - adjacency_preservation(permutation, grid_size))
+    return disruption
 
 
 def displacement_entropy(permutation: Sequence[int], grid_size: int) -> float:
@@ -111,19 +134,21 @@ def displacement_entropy(permutation: Sequence[int], grid_size: int) -> float:
     if len(unique) <= 1:
         return 0.0
     probabilities = counts.astype(float) / counts.sum()
-    return float(-(probabilities * np.log2(probabilities)).sum())
+    entropy = float(-(probabilities * np.log2(probabilities)).sum())
+    return entropy
 
 
 def combined_difficulty_score(permutation: Sequence[int], grid_size: int) -> float:
     """Compute a compact difficulty score from displacement and locality disruption."""
 
-    return float(0.5 * normalized_average_displacement(permutation, grid_size) + 0.5 * locality_disruption(permutation, grid_size))
+    difficulty_score = float(0.5 * normalized_average_displacement(permutation, grid_size) + 0.5 * locality_disruption(permutation, grid_size))
+    return difficulty_score
 
 
 def permutation_metric_row(permutation: Sequence[int], grid_size: int) -> dict:
     """Return all implemented permutation metrics as one dictionary."""
 
-    return {
+    metric_row = {
         "average_displacement": average_displacement(permutation, grid_size),
         "normalized_average_displacement": normalized_average_displacement(permutation, grid_size),
         "adjacency_preservation": adjacency_preservation(permutation, grid_size),
@@ -131,4 +156,4 @@ def permutation_metric_row(permutation: Sequence[int], grid_size: int) -> dict:
         "displacement_entropy": displacement_entropy(permutation, grid_size),
         "combined_difficulty": combined_difficulty_score(permutation, grid_size),
     }
-
+    return metric_row

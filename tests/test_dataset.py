@@ -5,7 +5,7 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from PIL import Image
-from src.loaders.dataset import TilePermutationDataset
+from src.preprocessing.legacy_dataset import TilePermutationDataset
 from torchvision import transforms
 
 

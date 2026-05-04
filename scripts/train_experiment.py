@@ -19,15 +19,15 @@ def main(config_path: str) -> None:
     config = load_experiment_config(config_path)
     part = str(config.get("part", "part1")).lower()
     if part == "part1":
-        from src.experiments.part1_baselines import run_part1
+        from src.training.part1_baselines import run_part1
 
         run_part1(config)
     elif part == "part2":
-        from src.experiments.part2_improvement import run_part2
+        from src.training.part2_improvement import run_part2
 
         run_part2(config)
     elif part == "part3":
-        from src.experiments.part3_difficulty import run_part3
+        from src.evaluation.part3_difficulty import run_part3
 
         run_part3(config)
     else:

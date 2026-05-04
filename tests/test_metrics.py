@@ -1,4 +1,4 @@
-from src.utils.metrics import average_displacement, adjacency_preservation, displacement_entropy
+from src.evaluation.permutation_difficulty import average_displacement, adjacency_preservation, displacement_entropy
 
 
 def test_metrics_identity():

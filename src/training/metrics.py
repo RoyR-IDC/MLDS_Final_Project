@@ -11,7 +11,8 @@ def classification_accuracy(logits: torch.Tensor, targets: torch.Tensor) -> floa
     """Compute top-1 classification accuracy for a batch."""
 
     predictions = logits.argmax(dim=1)
-    return float((predictions == targets).float().mean().item())
+    accuracy = float((predictions == targets).float().mean().item())
+    return accuracy
 
 
 class AverageMeter:
@@ -42,5 +43,5 @@ class AverageMeter:
 def make_result_row(**metadata) -> Dict[str, object]:
     """Return metadata as a plain result row dictionary."""
 
-    return dict(metadata)
-
+    result_row = dict(metadata)
+    return result_row

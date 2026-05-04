@@ -12,7 +12,7 @@ from torchvision import transforms
 
 # Import repo modules (runner and dataset use the `src` package path)
 try:
-    from src.loaders.dataset import TilePermutationDataset
+    from src.preprocessing.legacy_dataset import TilePermutationDataset
 except Exception:
     TilePermutationDataset = None
 
@@ -244,16 +244,16 @@ def build_tiny_dataloader(
         base_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
     if sample_paths is not None and TilePermutationDataset is not None:
-        ds = TilePermutationDataset(sample_paths, grid_size=grid, base_transform=base_transform, seed=seed)
-        dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
-        return dl, ds
+        dataset = TilePermutationDataset(sample_paths, grid_size=grid, base_transform=base_transform, seed=seed)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        return dataloader, dataset
 
     # Fallback: synthetic dataset
     imgs = create_synthetic_rgb_images(synthetic_count, size=(224, 224), seed=seed)
     labels = [i % 2 for i in range(len(imgs))]
-    ds = _SyntheticTileDataset(imgs, labels, transform=base_transform)
-    dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
-    return dl, ds
+    dataset = _SyntheticTileDataset(imgs, labels, transform=base_transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    return dataloader, dataset
 
 
 def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device: torch.device = None, optimizer: Optional[torch.optim.Optimizer] = None, epoch: int = 0, mixup_alpha: float = 0.0):
@@ -282,9 +282,10 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
     criterion = torch.nn.CrossEntropyLoss()
 
     if train_one_epoch is not None and validate is not None:
-        tr = train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, mixup_alpha=mixup_alpha)
-        va = validate(model, dataloader, device, criterion)
-        return {'train': tr, 'val': va}
+        train_metrics = train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, mixup_alpha=mixup_alpha)
+        val_metrics = validate(model, dataloader, device, criterion)
+        result = {'train': train_metrics, 'val': val_metrics}
+        return result
 
     # Minimal fallback train loop
     model.train()
@@ -303,7 +304,7 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         preds = out.argmax(dim=1)
         correct += (preds == yb).sum().item()
         total += xb.size(0)
-    tr = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
+    train_metrics = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
 
     # Quick validation: reuse same dataloader
     model.eval()
@@ -320,5 +321,6 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
             preds = out.argmax(dim=1)
             correct += (preds == yb).sum().item()
             total += xb.size(0)
-    va = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
-    return {'train': tr, 'val': va}
+    val_metrics = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
+    result = {'train': train_metrics, 'val': val_metrics}
+    return result

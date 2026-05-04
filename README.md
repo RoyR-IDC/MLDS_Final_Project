@@ -39,8 +39,8 @@ Each notebook has the same structure:
 - data loading
 - experiment sections
 
-The notebooks call classes from `src.experiments` and do not duplicate training,
-permutation, plotting, or metric logic.
+The notebooks call classes from `src.training` and `src.evaluation` and do not
+duplicate training, permutation, plotting, or metric logic.
 
 ## Configs
 
@@ -90,4 +90,3 @@ pytest
 ```
 
 Some tests and all full training runs require `torch` and `torchvision`.
-
