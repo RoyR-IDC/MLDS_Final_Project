@@ -66,10 +66,11 @@ class CVExperimentConfig:
     deterministic: bool = False
 
     # Directory configuration
-    data_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/data/dogs-vs-cats/train"
-    outputs_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/outputs"
-    results_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/outputs/results"
-    figures_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/outputs/figures"
+    root_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+    data_dir: str = ""
+    outputs_dir: str = ""
+    results_dir: str = ""
+    figures_dir: str = ""
 
     # Dataset splitting configuration
     sample_data: bool = True
@@ -123,19 +124,20 @@ class CVExperimentConfig:
             # Adjust paths 
             # mount google drive
             try:
-                from google.colab import drive
+                from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
                 drive.mount('/content/drive')
             except ImportError:
                 raise ImportError("Google Colab environment detected but google.colab module not found")
 
             # now that drive was mounted, update paths
-            self.data_dir = "/content/drive/MyDrive/MLDS_Final_Project/data"      
-            self.outputs_dir = "/content/drive/MyDrive/MLDS_Final_Project/outputs"
-            self.results_dir = os.path.join(self.outputs_dir, "results")
-            self.figures_dir = os.path.join(self.outputs_dir, "figures")
+            self.root_dir = "/content/drive/MyDrive/MLDS_Final_Project"
 
             # Set sample_data to False to speed up development on Colab
             self.sample_data = False
+
+
+        # set_paths
+        self._set_paths()
 
         # Validate dirs exist
         assert os.path.exists(self.data_dir), f"Data dir {self.data_dir} does not exist"
@@ -146,9 +148,15 @@ class CVExperimentConfig:
     ## Code to move to utils
     def _is_code_running_on_colab(self) -> bool:
         try:
-            from google.colab import drive
+            from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
             self.using_google_colab = True
             return True
         except ImportError:
             return False
+        
+    def _set_paths(self):
+        self.data_dir = os.path.join(self.root_dir, "data", "dogs-vs-cats", "train")
+        self.outputs_dir = os.path.join(self.root_dir, "outputs")
+        self.results_dir = os.path.join(self.outputs_dir, "results")
+        self.figures_dir = os.path.join(self.outputs_dir, "figures")
 
