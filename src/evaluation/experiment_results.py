@@ -73,6 +73,24 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int):
     return split_samples
 
 
+def build_result_row(config: CVExperimentConfig, run_id: str, model_name: str, record: object, seed: int, metrics: dict[str, Any]) -> dict[str, Any]:
+    """Build one experiment result row for repeated accuracy measurements."""
+
+    row = {
+        'part': config.part,
+        'run_id': run_id,
+        'config_name': config.config_name,
+        'model_name': model_name,
+        'grid_size': record.grid_size,
+        'num_tiles': record.grid_size * record.grid_size,
+        'permutation_id': record.permutation_id,
+        'permutation_seed': record.permutation_seed,
+        'seed': seed,
+        **metrics,
+    }
+    return row
+
+
 def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame:
     """Aggregate accuracy columns for repeated experiment runs.
 

@@ -9,6 +9,7 @@ pandas
 matplotlib
 scikit-learn
 pyyaml
+tqdm
 numpy<2.0
 
 

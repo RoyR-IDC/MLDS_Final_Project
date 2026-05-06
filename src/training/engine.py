@@ -7,6 +7,7 @@ from typing import Dict, Optional
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from src.training.metrics import AverageMeter
 
@@ -109,11 +110,20 @@ def fit(
     best_val_accuracy = 0.0
     last_train = {"train_loss": 0.0, "train_accuracy": 0.0}
     last_val = {"val_loss": 0.0, "val_accuracy": 0.0}
-    for _ in range(epochs):
-        last_train = train_one_epoch(model, train_loader, optimizer, criterion, device, use_amp=use_amp)
-        last_val = evaluate(model, val_loader, criterion, device)
-        if last_val["val_accuracy"] > best_val_accuracy:
-            best_val_accuracy = last_val["val_accuracy"]
-            if checkpoint_path:
-                torch.save({"model_state": model.state_dict(), "val_accuracy": best_val_accuracy}, checkpoint_path)
+    with tqdm(total=epochs, desc="Epoch", unit="epoch", leave=False) as progress:
+        for epoch in range(epochs):
+            last_train = train_one_epoch(model, train_loader, optimizer, criterion, device, use_amp=use_amp)
+            last_val = evaluate(model, val_loader, criterion, device)
+            if last_val["val_accuracy"] > best_val_accuracy:
+                best_val_accuracy = last_val["val_accuracy"]
+                if checkpoint_path:
+                    torch.save({"model_state": model.state_dict(), "val_accuracy": best_val_accuracy}, checkpoint_path)
+            progress.set_postfix(
+                train_loss=last_train["train_loss"],
+                train_accuracy=last_train["train_accuracy"],
+                val_loss=last_val["val_loss"],
+                val_accuracy=last_val["val_accuracy"],
+                best_val_accuracy=best_val_accuracy,
+            )
+            progress.update(1)
     return {**last_train, **last_val, "best_val_accuracy": best_val_accuracy}
