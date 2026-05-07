@@ -2,7 +2,7 @@ general:
   part: part1
   config_name: part1_baselines
   device: auto
-  seeds: [0]
+  seed: 42
   deterministic: false
 
 input_output:
@@ -31,10 +31,8 @@ models:
 experiment:
   grid_sizes: [1, 2, 3, 4]
   num_permutations: 2
-  permutation_seed: 42
   epochs: 1
   learning_rate: 0.0003
   optimizer: adamw
   weight_decay: 0.0001
   use_amp: false
-

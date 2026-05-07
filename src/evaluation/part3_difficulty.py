@@ -30,27 +30,27 @@ def _load_part1_permutations(config: Dict) -> pd.DataFrame:
         permutation_table = pd.read_csv(permutation_csv)
         return permutation_table
     rows = []
-    permutation_seed = int(config.get("permutation_seed", 42))
+    seed = int(config.get("seed", 42))
     for grid_size in [int(value) for value in config.get("grid_sizes", [1, 2, 3, 4])]:
         rows.append(
             {
                 "grid_size": grid_size,
                 "permutation_id": 0,
-                "permutation_seed": None,
+                "permutation_seed": seed,
                 "permutation": json.dumps(identity_permutation(grid_size)),
             }
         )
         if grid_size == 1:
             continue
         for offset, permutation in enumerate(
-            generate_permutations(grid_size, int(config.get("num_permutations", 2)), seed=permutation_seed),
+            generate_permutations(grid_size, int(config.get("num_permutations", 2)), seed=seed),
             start=1,
         ):
             rows.append(
                 {
                     "grid_size": grid_size,
                     "permutation_id": offset,
-                    "permutation_seed": permutation_seed,
+                    "permutation_seed": seed,
                     "permutation": json.dumps(permutation),
                 }
             )

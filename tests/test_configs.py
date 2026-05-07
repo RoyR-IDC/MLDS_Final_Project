@@ -1,6 +1,7 @@
+from dataclasses import fields
 from pathlib import Path
 
-from src.utils.config import load_experiment_config, normalize_config
+from src.utils.config import CVExperimentConfig, load_experiment_config, normalize_config
 
 
 def test_grouped_config_normalizes_to_runner_keys():
@@ -36,5 +37,14 @@ def test_part2_config_exposes_single_model_name():
 
     assert normalized_config["part"] == "part2"
     assert normalized_config["model_name"] == "resnet18"
+    assert normalized_config["seed"] == 42
+    assert "permutation_seed" not in normalized_config
+    assert "seeds" not in normalized_config
     assert "ablations" in normalized_config
 
+
+def test_cv_experiment_config_exposes_single_seed_field():
+    field_names = {field.name for field in fields(CVExperimentConfig)}
+
+    assert "seed" in field_names
+    assert "permutation_seed" not in field_names

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import random
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 
 @dataclass(frozen=True)
@@ -14,13 +14,13 @@ class PermutationRecord:
     Attributes:
         grid_size: Number of tiles along each image side.
         permutation_id: Stable ID within the grid.
-        permutation_seed: Seed used to generate the permutation, or ``None`` for identity.
+        permutation_seed: Unified experiment seed used for this permutation record.
         permutation: Mapping from output tile position to source tile index.
     """
 
     grid_size: int
     permutation_id: int
-    permutation_seed: Optional[int]
+    permutation_seed: int
     permutation: List[int]
 
 
@@ -84,7 +84,7 @@ def generate_permutations(grid_size: int, n: int, seed: int = 0) -> List[List[in
 def build_permutation_records(
     grid_sizes: Iterable[int],
     num_permutations: int,
-    permutation_seed: int = 42,
+    seed: int = 42,
     include_identity: bool = True,
 ) -> List[PermutationRecord]:
     """Build stable permutation records for experiment reuse.
@@ -92,7 +92,7 @@ def build_permutation_records(
     Args:
         grid_sizes: Grid side lengths to include.
         num_permutations: Number of random permutations per non-identity grid.
-        permutation_seed: Seed used to generate random permutations.
+        seed: Unified experiment seed used to generate random permutations.
         include_identity: Whether to include identity at ``permutation_id=0``.
 
     Returns:
@@ -107,17 +107,17 @@ def build_permutation_records(
                 PermutationRecord(
                     grid_size=grid_size,
                     permutation_id=next_id,
-                    permutation_seed=None,
+                    permutation_seed=seed,
                     permutation=identity_permutation(grid_size),
                 )
             )
             next_id += 1
-        for offset, permutation in enumerate(generate_permutations(grid_size, num_permutations, permutation_seed)):
+        for offset, permutation in enumerate(generate_permutations(grid_size, num_permutations, seed)):
             records.append(
                 PermutationRecord(
                     grid_size=grid_size,
                     permutation_id=next_id + offset,
-                    permutation_seed=permutation_seed,
+                    permutation_seed=seed,
                     permutation=permutation,
                 )
             )

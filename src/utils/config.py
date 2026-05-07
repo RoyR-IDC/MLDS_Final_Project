@@ -100,7 +100,6 @@ class CVExperimentConfig:
     # Grid and permutation experiment configuration
     grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     num_permutations: int = 2
-    permutation_seed: int = 42
 
     # Training configuration
     epochs: int = 1
