@@ -6,6 +6,8 @@ dependencies:
   - python=3.10
   - pip
   - unzip
+  - numpy=1.26.4
+  - pandas=2.2.3
   - pip:
     - kaggle
     - python-dotenv
@@ -13,7 +15,6 @@ dependencies:
     - torchvision
     - timm
     - einops
-    - pandas
     - matplotlib
     - scikit-learn
     - pyyaml

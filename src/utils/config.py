@@ -117,7 +117,7 @@ class CVExperimentConfig:
     using_google_colab: bool = False
     plot_samples: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Adjust paths if running on Google Colab
         if self._is_code_running_on_colab():
             print("Running on Google Colab, adjusting configs...")
@@ -157,9 +157,8 @@ class CVExperimentConfig:
         except ImportError:
             return False
         
-    def _set_paths(self):
+    def _set_paths(self) -> None:
         self.data_dir = os.path.join(self.root_dir, "data", "dogs-vs-cats", "train")
         self.outputs_dir = os.path.join(self.root_dir, "outputs")
         self.results_dir = os.path.join(self.outputs_dir, "results")
         self.figures_dir = os.path.join(self.outputs_dir, "figures")
-

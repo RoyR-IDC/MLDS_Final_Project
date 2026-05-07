@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 
 import torch
 
@@ -40,7 +40,7 @@ class AverageMeter:
         return self.total / max(1, self.count)
 
 
-def make_result_row(**metadata) -> Dict[str, object]:
+def make_result_row(**metadata: Any) -> Dict[str, object]:
     """Return metadata as a plain result row dictionary."""
 
     result_row = dict(metadata)

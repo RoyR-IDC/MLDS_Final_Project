@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import os
 import random
-from typing import Dict, List, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-from src.preprocessing.dogs_cats import discover_samples, stratified_split
+from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
+from src.preprocessing.permutations import PermutationRecord
 from src.utils.config import CVExperimentConfig
-from src.utils.io import ensure_dir
+from src.utils.io import ensure_dir, save_csv
 
 
 def get_device(config: CVExperimentConfig) -> torch.device:
@@ -33,7 +34,7 @@ def get_device(config: CVExperimentConfig) -> torch.device:
     return device
 
 
-def _build_balanced_sample_subset(samples: list, limit: int, seed: int) -> list:
+def _build_balanced_sample_subset(samples: list[Sample], limit: int, seed: int) -> list[Sample]:
     cats = [sample for sample in samples if sample[1] == 0]
     dogs = [sample for sample in samples if sample[1] == 1]
     max_per_class = limit // 2
@@ -49,7 +50,7 @@ def _build_balanced_sample_subset(samples: list, limit: int, seed: int) -> list:
     return balanced
 
 
-def load_experiment_samples(config: CVExperimentConfig, seed: int):
+def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list[Sample], list[Sample], list[Sample]]:
     """Discover and split configured Dogs vs Cats samples.
 
     Args:
@@ -73,7 +74,14 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int):
     return split_samples
 
 
-def build_result_row(config: CVExperimentConfig, run_id: str, model_name: str, record: object, seed: int, metrics: dict[str, Any]) -> dict[str, Any]:
+def build_result_row(
+    config: CVExperimentConfig,
+    run_id: str,
+    model_name: str,
+    record: PermutationRecord,
+    seed: int,
+    metrics: Mapping[str, Any],
+) -> dict[str, Any]:
     """Build one experiment result row for repeated accuracy measurements."""
 
     row = {
@@ -89,6 +97,47 @@ def build_result_row(config: CVExperimentConfig, run_id: str, model_name: str, r
         **metrics,
     }
     return row
+
+
+def _csv_safe_value(value: Any) -> Any:
+    """Convert array-like experiment values into CSV-friendly scalars/strings."""
+
+    if isinstance(value, torch.Tensor):
+        tensor = value.detach().cpu()
+        if tensor.numel() == 1:
+            return tensor.item()
+        return str(tensor.tolist())
+
+    if isinstance(value, Mapping):
+        return str({str(key): _csv_safe_value(nested_value) for key, nested_value in value.items()})
+
+    if isinstance(value, (list, tuple)):
+        return str([_csv_safe_value(item) for item in value])
+
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist) and not isinstance(value, (str, bytes)):
+        converted = tolist()
+        if converted is value:
+            return value
+        return _csv_safe_value(converted)
+
+    item = getattr(value, "item", None)
+    if callable(item) and not isinstance(value, (str, bytes)):
+        try:
+            return item()
+        except (TypeError, ValueError):
+            return value
+
+    return value
+
+
+def _csv_safe_rows(rows: Sequence[Mapping[Any, Any]]) -> list[dict[str, Any]]:
+    """Return rows with string column names and scalar/string values."""
+
+    safe_rows = []
+    for row in rows:
+        safe_rows.append({str(key): _csv_safe_value(value) for key, value in row.items()})
+    return safe_rows
 
 
 def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame:
@@ -139,7 +188,7 @@ def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) 
     return output_paths
 
 
-def save_rows(rows: List[dict], output_path: str) -> None:
+def save_rows(rows: Sequence[Mapping[Any, Any]], output_path: str) -> None:
     """Save experiment rows to CSV.
 
     Args:
@@ -147,9 +196,7 @@ def save_rows(rows: List[dict], output_path: str) -> None:
         output_path: Destination CSV path.
     """
 
-    ensure_dir(os.path.dirname(output_path) or ".")
-    results = pd.DataFrame(rows)
-    results.to_csv(output_path, index=False)
+    save_csv(_csv_safe_rows(rows), output_path)
 
 
 def save_aggregated_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str], output_path: str) -> pd.DataFrame:

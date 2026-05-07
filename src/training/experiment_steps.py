@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 from torch import nn
@@ -13,7 +13,12 @@ from src.training.engine import build_optimizer, fit
 from src.utils.config import CVExperimentConfig
 
 
-def build_training_components(config: CVExperimentConfig, model_name: str, device: torch.device, overrides: Optional[Dict] = None) -> Dict[str, object]:
+def build_training_components(
+    config: CVExperimentConfig,
+    model_name: str,
+    device: torch.device,
+    overrides: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, object]:
     """Build model, optimizer, and criterion objects for one training run.
 
     Args:
@@ -57,7 +62,7 @@ def train_model_configuration(
     train_loader: DataLoader,
     val_loader: DataLoader,
     device: torch.device,
-    overrides: Optional[Dict] = None,
+    overrides: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, float]:
     """Train one model configuration and return final/best metrics.
 
@@ -73,7 +78,10 @@ def train_model_configuration(
         Training and validation metrics from the shared engine.
     """
 
+    print(f"Building training components for model '{model_name}'...")
     components = build_training_components(config, model_name, device, overrides=overrides)
+    print(f"Finished building training components for model '{model_name}'.")
+    print(f"Training model '{model_name}' for {config.epochs} epoch(s)...")
     metrics = fit(
         components["model"],
         train_loader,
@@ -84,4 +92,5 @@ def train_model_configuration(
         device=device,
         use_amp=config.use_amp,
     )
+    print(f"Finished training model '{model_name}'. Metrics: {metrics}")
     return metrics

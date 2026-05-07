@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -62,7 +62,7 @@ class ConvMixer(nn.Module):
         return self.head(self.blocks(self.stem(x)))
 
 
-def _weights(enum_class, pretrained: bool):
+def _weights(enum_class: Any, pretrained: bool) -> Optional[Any]:
     return enum_class.DEFAULT if pretrained else None
 
 
@@ -134,4 +134,3 @@ def get_model(
     if device is not None:
         model = model.to(device)
     return model
-

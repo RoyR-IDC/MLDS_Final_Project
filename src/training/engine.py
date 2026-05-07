@@ -77,7 +77,7 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
     return {"val_loss": loss_meter.average, "val_accuracy": correct / max(1, total)}
 
 
-def build_optimizer(model: nn.Module, name: str, learning_rate: float, weight_decay: float = 0.0):
+def build_optimizer(model: nn.Module, name: str, learning_rate: float, weight_decay: float = 0.0) -> torch.optim.Optimizer:
     """Build an optimizer from a short config name."""
 
     trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]

@@ -7,13 +7,40 @@ import os
 import random
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from torch.utils.data import DataLoader
+from PIL import Image
+import torch
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
 
 
 Sample = Tuple[str, int]
+
+
+def make_tile_compatible_image_size(image_size: int, grid_size: int) -> int:
+    """Return the smallest square size that can be split by ``grid_size``."""
+
+    if image_size < 1:
+        raise ValueError("image_size must be at least 1")
+    if grid_size < 1:
+        raise ValueError("grid_size must be at least 1")
+    remainder = image_size % grid_size
+    if remainder == 0:
+        return image_size
+    return image_size + grid_size - remainder
+
+
+class PILToFloatTensor:
+    """Convert a PIL image to a float tensor without going through NumPy."""
+
+    def __call__(self, image: Image.Image) -> torch.Tensor:
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        width, height = image.size
+        data = torch.frombuffer(bytearray(image.tobytes()), dtype=torch.uint8)
+        tensor = data.reshape(height, width, 3).permute(2, 0, 1).float().div(255.0)
+        return tensor
 
 
 def parse_label_from_filename(path: str) -> int:
@@ -125,7 +152,7 @@ def stratified_split(
     return split_samples
 
 
-def build_transforms(image_size: int = 224, train: bool = False, standard_augmentation: bool = False):
+def build_transforms(image_size: int = 224, train: bool = False, standard_augmentation: bool = False) -> transforms.Compose:
     """Build torchvision transforms for Dogs vs Cats experiments.
 
     Args:
@@ -144,12 +171,12 @@ def build_transforms(image_size: int = 224, train: bool = False, standard_augmen
                 transforms.RandomResizedCrop(image_size, scale=(0.75, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-                transforms.ToTensor(),
+                PILToFloatTensor(),
                 normalize,
             ]
         )
         return transform_pipeline
-    transform_pipeline = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor(), normalize])
+    transform_pipeline = transforms.Compose([transforms.Resize((image_size, image_size)), PILToFloatTensor(), normalize])
     return transform_pipeline
 
 
@@ -162,7 +189,7 @@ def build_dataset(
     seed: int = 0,
     train: bool = False,
     standard_augmentation: bool = False,
-):
+) -> Dataset:
     """Build an image dataset with optional tile permutation wrapping.
 
     Args:
@@ -179,7 +206,8 @@ def build_dataset(
         Image dataset, optionally wrapped with tile permutation behavior.
     """
 
-    transform = build_transforms(image_size=image_size, train=train, standard_augmentation=standard_augmentation)
+    tile_image_size = make_tile_compatible_image_size(image_size, grid_size)
+    transform = build_transforms(image_size=tile_image_size, train=train, standard_augmentation=standard_augmentation)
     base_dataset = ImageFileDataset(samples, transform=transform)
     if grid_size == 1 and not random_permutations:
         dataset = base_dataset
