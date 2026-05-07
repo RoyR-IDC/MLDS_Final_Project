@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import socket
 from typing import Any, Dict, Literal, Mapping
 import os
 
@@ -147,6 +148,8 @@ class CVExperimentConfig:
 
     ## Code to move to utils
     def _is_code_running_on_colab(self) -> bool:
+        if socket.gethostname() == 'MACs-MacBook-Pro.local':
+            return False
         try:
             from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
             self.using_google_colab = True

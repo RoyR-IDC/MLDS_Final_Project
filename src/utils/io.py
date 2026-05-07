@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from typing import Any, Mapping
@@ -36,6 +37,30 @@ def save_csv(data, path: str) -> None:
     """Save rows or a DataFrame to CSV."""
 
     ensure_dir(os.path.dirname(path) or ".")
-    frame = data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
-    frame.to_csv(path, index=False)
+    if isinstance(data, pd.DataFrame):
+        data.to_csv(path, index=False)
+        return
 
+    rows = list(data)
+    if not rows:
+        with open(path, "w", encoding="utf-8", newline=""):
+            pass
+        return
+
+    if not all(isinstance(row, Mapping) for row in rows):
+        frame = pd.DataFrame(rows)
+        frame.to_csv(path, index=False)
+        return
+
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row:
+            key = str(key)
+            if key not in fieldnames:
+                fieldnames.append(key)
+
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({str(key): value for key, value in row.items()})
