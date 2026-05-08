@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 import random
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, Optional, Protocol, Sequence
 
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
 
 from src.preprocessing.permutations import (
-    PermutationRecord,
-    build_permutation_records,
-    generate_permutations,
     identity_permutation,
     random_permutation,
 )
+
+ImageLabel = tuple[torch.Tensor, int]
+
+
+class TensorClassificationDataset(Protocol):
+    """Dataset protocol for tensor image classification samples."""
+
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        ...
+
+    def __getitem__(self, idx: int) -> ImageLabel:
+        """Return one ``(image, label)`` sample."""
+        ...
 
 
 def validate_grid_size(image: torch.Tensor, grid_size: int) -> None:
@@ -115,7 +126,7 @@ def apply_tile_permutation(image: torch.Tensor, grid_size: int, permutation: Seq
     return permuted_image
 
 
-class TilePermutationDataset(Dataset):
+class TilePermutationDataset(Dataset[ImageLabel]):
     """Dataset wrapper that applies fixed or sampled tile permutations.
 
     Args:
@@ -128,7 +139,7 @@ class TilePermutationDataset(Dataset):
 
     def __init__(
         self,
-        base_dataset: Dataset,
+        base_dataset: TensorClassificationDataset,
         grid_size: int = 1,
         permutation: Optional[Sequence[int]] = None,
         random_permutations: Optional[Sequence[Sequence[int]]] = None,
@@ -149,7 +160,7 @@ class TilePermutationDataset(Dataset):
         dataset_length = len(self.base_dataset)
         return dataset_length
 
-    def _sample_permutation(self, idx: int) -> Optional[List[int]]:
+    def _sample_permutation(self, idx: int) -> Optional[list[int]]:
         if self.permutation is not None:
             return self.permutation
         if self.random_permutations:
@@ -158,7 +169,7 @@ class TilePermutationDataset(Dataset):
             return permutation
         return None
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> ImageLabel:
         """Return one possibly permuted ``(image, label)`` example."""
 
         image, label = self.base_dataset[idx]
@@ -172,7 +183,7 @@ class TilePermutationDataset(Dataset):
         return sample
 
 
-class ImageFileDataset(Dataset):
+class ImageFileDataset(Dataset[ImageLabel]):
     """Simple image-file dataset returning transformed tensors.
 
     Args:
@@ -180,7 +191,7 @@ class ImageFileDataset(Dataset):
         transform: Transform applied to each loaded RGB PIL image.
     """
 
-    def __init__(self, samples: Sequence[Tuple[str, int]], transform: Callable[[Image.Image], torch.Tensor]) -> None:
+    def __init__(self, samples: Sequence[tuple[str, int]], transform: Callable[[Image.Image], torch.Tensor]) -> None:
         self.samples = list(samples)
         self.transform = transform
 
@@ -190,7 +201,7 @@ class ImageFileDataset(Dataset):
         sample_count = len(self.samples)
         return sample_count
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> ImageLabel:
         """Load and transform one image sample."""
 
         path, label = self.samples[idx]

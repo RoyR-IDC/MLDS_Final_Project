@@ -18,10 +18,10 @@ except Exception:
     TilePermutationDataset = None
 
 try:
-    from src.training.train import train_one_epoch, validate
+    from src.training.engine import evaluate, train_one_epoch
 except Exception:
+    evaluate = None
     train_one_epoch = None
-    validate = None
 
 
 def list_sample_paths(data_dir: str, max_items: Optional[int] = 20) -> List[Tuple[str, int]]:
@@ -258,11 +258,11 @@ def build_tiny_dataloader(
     return dataloader, dataset
 
 
-def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device: torch.device = None, optimizer: Optional[torch.optim.Optimizer] = None, epoch: int = 0, mixup_alpha: float = 0.0):
+def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device: Optional[torch.device] = None, optimizer: Optional[torch.optim.Optimizer] = None, epoch: int = 0, mixup_alpha: float = 0.0):
     """Run a single train + validate step using repo training helpers when available.
 
-    This function will attempt to use ``train_one_epoch`` and ``validate`` from
-    ``src.training.train``. If they are not importable, a minimal local train
+    This function will attempt to use ``train_one_epoch`` and ``evaluate`` from
+    ``src.training.engine``. If they are not importable, a minimal local train
     loop will be used.
 
     Args:
@@ -270,8 +270,8 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         dataloader: training DataLoader (will be reused as validation here for quick checks).
         device: device to run on; defaults to CUDA if available else CPU.
         optimizer: optional optimizer. If None, SGD is created.
-        epoch: epoch number (passed to repo functions).
-        mixup_alpha: passed to repo `train_one_epoch` if used.
+        epoch: Unused compatibility argument.
+        mixup_alpha: Unused compatibility argument.
 
     Returns:
         Dict with keys 'train' and 'val' mapping to summary dicts.
@@ -283,9 +283,10 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     criterion = torch.nn.CrossEntropyLoss()
 
-    if train_one_epoch is not None and validate is not None:
-        train_metrics = train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, mixup_alpha=mixup_alpha)
-        val_metrics = validate(model, dataloader, device, criterion)
+    del epoch, mixup_alpha
+    if train_one_epoch is not None and evaluate is not None:
+        train_metrics = train_one_epoch(model, dataloader, optimizer, criterion, device)
+        val_metrics = evaluate(model, dataloader, criterion, device)
         result = {'train': train_metrics, 'val': val_metrics}
         return result
 
@@ -306,7 +307,7 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         preds = out.argmax(dim=1)
         correct += (preds == yb).sum().item()
         total += xb.size(0)
-    train_metrics = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
+    train_metrics = {'train_loss': running_loss / max(1, total), 'train_accuracy': correct / max(1, total)}
 
     # Quick validation: reuse same dataloader
     model.eval()
@@ -323,6 +324,6 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
             preds = out.argmax(dim=1)
             correct += (preds == yb).sum().item()
             total += xb.size(0)
-    val_metrics = {'loss': running_loss / max(1, total), 'acc': correct / max(1, total)}
+    val_metrics = {'val_loss': running_loss / max(1, total), 'val_accuracy': correct / max(1, total)}
     result = {'train': train_metrics, 'val': val_metrics}
     return result

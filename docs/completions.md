@@ -147,7 +147,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
 - src/training/engine.py
   - train_one_epoch
   - evaluate
-  - fit
+  - train_and_validate
   - checkpoint saving/loading if useful
   - device handling
   - mixed precision optional but not required
