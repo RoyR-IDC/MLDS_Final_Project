@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
@@ -10,6 +11,21 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.training.metrics import AverageMeter
+
+
+@dataclass
+class TrainingRunComponents:
+    """All state needed for a train-and-validation run."""
+
+    model: nn.Module
+    train_loader: DataLoader
+    val_loader: DataLoader
+    optimizer: torch.optim.Optimizer
+    criterion: nn.Module
+    device: torch.device
+    epochs: int
+    use_amp: bool = False
+    checkpoint_path: Optional[str] = None
 
 
 def train_one_epoch(
@@ -94,30 +110,35 @@ def build_optimizer(model: nn.Module, name: str, learning_rate: float, weight_de
     raise ValueError(f"Unsupported optimizer: {name}")
 
 
-def fit(
-    model: nn.Module,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    epochs: int,
-    optimizer: torch.optim.Optimizer,
-    criterion: nn.Module,
-    device: torch.device,
-    use_amp: bool = False,
-    checkpoint_path: Optional[str] = None,
-) -> Dict[str, float]:
+def train_and_validate(components: TrainingRunComponents) -> Dict[str, float]:
     """Train and validate a model, returning final and best metrics."""
 
     best_val_accuracy = 0.0
     last_train = {"train_loss": 0.0, "train_accuracy": 0.0}
     last_val = {"val_loss": 0.0, "val_accuracy": 0.0}
-    with tqdm(total=epochs, desc="Epoch", unit="epoch", leave=False) as progress:
-        for epoch in range(epochs):
-            last_train = train_one_epoch(model, train_loader, optimizer, criterion, device, use_amp=use_amp)
-            last_val = evaluate(model, val_loader, criterion, device)
+    with tqdm(total=components.epochs, desc="Epoch", unit="epoch", leave=False) as progress:
+        for _ in range(components.epochs):
+            last_train = train_one_epoch(
+                components.model,
+                components.train_loader,
+                components.optimizer,
+                components.criterion,
+                components.device,
+                use_amp=components.use_amp,
+            )
+            last_val = evaluate(
+                components.model,
+                components.val_loader,
+                components.criterion,
+                components.device,
+            )
             if last_val["val_accuracy"] > best_val_accuracy:
                 best_val_accuracy = last_val["val_accuracy"]
-                if checkpoint_path:
-                    torch.save({"model_state": model.state_dict(), "val_accuracy": best_val_accuracy}, checkpoint_path)
+                if components.checkpoint_path:
+                    torch.save(
+                        {"model_state": components.model.state_dict(), "val_accuracy": best_val_accuracy},
+                        components.checkpoint_path,
+                    )
             progress.set_postfix(
                 train_loss=last_train["train_loss"],
                 train_accuracy=last_train["train_accuracy"],
