@@ -1,13 +1,13 @@
 name: mlds_dogs_vs_cats
 channels:
-  - defaults
   - conda-forge
+  - defaults
 dependencies:
   - python=3.10
   - pip
   - unzip
   - numpy=1.26.4
-  - pandas=2.2.3
+  - pandas=2.1.4
   - pip:
     - kaggle
     - python-dotenv

@@ -1,14 +1,13 @@
 kaggle
 python-dotenv
+numpy==1.26.4
+pandas==2.1.4
 # PyTorch ecosystem for experiments
 torch>=1.12.0
 torchvision
 timm
 einops
-pandas==2.2.3
 matplotlib
 scikit-learn
 pyyaml
 tqdm
-numpy==1.26.4
-
