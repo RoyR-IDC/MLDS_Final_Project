@@ -6,8 +6,9 @@ import csv
 from collections.abc import Mapping
 
 import numpy as np
+import pandas as pd
 
-from src.evaluation.experiment_results import save_rows
+from src.evaluation.experiment_results import aggregate_accuracy, save_rows
 
 
 class ArrayKeyRow(Mapping):
@@ -52,3 +53,36 @@ def test_save_rows_handles_array_like_keys_and_values(tmp_path):
             "val_accuracy": "0.75",
         }
     ]
+
+
+def test_aggregate_accuracy_averages_permutations_by_tile_count():
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 0,
+                "val_accuracy": 0.50,
+                "best_val_accuracy": 0.60,
+            },
+            {
+                "model_name": "resnet50",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 1,
+                "val_accuracy": 0.70,
+                "best_val_accuracy": 0.80,
+            },
+        ]
+    )
+
+    aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "grid_size", "num_tiles"])
+
+    assert len(aggregated) == 1
+    row = aggregated.iloc[0]
+    assert row["model_name"] == "resnet50"
+    assert row["num_tiles"] == 4
+    assert row["mean_val_accuracy"] == 0.60
+    assert row["mean_best_val_accuracy"] == 0.70
+    assert row["n_runs"] == 2
