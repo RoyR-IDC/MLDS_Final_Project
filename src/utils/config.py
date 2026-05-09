@@ -74,7 +74,7 @@ class CVExperimentConfig:
     figures_dir: str = ""
 
     # Dataset splitting configuration
-    sample_data: bool = True
+    sample_data: bool = False
     sample_limit: int = 256
     val_fraction: float = 0.2
     test_fraction: float = 0.0
@@ -89,7 +89,7 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet18", "swin_t", "convmixer"]
+        default_factory=lambda: ["resnet50", "deit_small", "mlp_mixer"]
     )
     pretrained: bool = False
 
@@ -99,10 +99,10 @@ class CVExperimentConfig:
 
     # Grid and permutation experiment configuration
     grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
-    num_permutations: int = 2
+    num_permutations: int = 5
 
     # Training configuration
-    epochs: int = 1
+    epochs: int = 10
     learning_rate: float = 0.0003
     optimizer: Literal["adamw"] = "adamw"
     weight_decay: float = 0.0001
@@ -120,8 +120,8 @@ class CVExperimentConfig:
         # Adjust paths if running on Google Colab
         if self._is_code_running_on_colab():
             print("Running on Google Colab, adjusting configs...")
-            
-            # Adjust paths 
+
+            # Adjust paths
             # mount google drive
             try:
                 from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
@@ -132,9 +132,8 @@ class CVExperimentConfig:
             # now that drive was mounted, update paths
             self.root_dir = "/content/drive/MyDrive/MLDS_Final_Project"
 
-            # Set sample_data to False to speed up development on Colab
-            self.sample_data = False
-
+        else:
+            self.update_configs_for_local_testing()
 
         # set_paths
         self._set_paths()
@@ -155,9 +154,18 @@ class CVExperimentConfig:
             return True
         except ImportError:
             return False
-        
+
     def _set_paths(self) -> None:
         self.data_dir = os.path.join(self.root_dir, "data", "dogs-vs-cats", "train")
         self.outputs_dir = os.path.join(self.root_dir, "outputs")
         self.results_dir = os.path.join(self.outputs_dir, "results")
         self.figures_dir = os.path.join(self.outputs_dir, "figures")
+
+    def update_configs_for_local_testing(self) -> None:
+        """Update configs for local testing."""
+        self.sample_data = True
+        self.sample_limit = 32
+        self.grid_sizes = [1, 2]
+        self.num_permutations = 3
+        self.epochs = 5
+        self.plot_samples = True

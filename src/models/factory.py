@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 import torch
 from torch import nn
+import timm
 import torchvision.models as tv_models
 
 
@@ -100,7 +101,8 @@ def get_model(
     """Create a supported image classifier.
 
     Args:
-        name: Model name: ``resnet18``, ``resnet34``, ``swin_t``, or ``convmixer``.
+        name: Model name: ``resnet18``, ``resnet34``, ``resnet50``, ``swin_t``,
+            ``deit_small``, ``mlp_mixer``, or ``convmixer``.
         num_classes: Number of output classes.
         pretrained: Whether to use torchvision pretrained weights where available.
         device: Optional device to move the model to.
@@ -119,9 +121,16 @@ def get_model(
     elif key == "resnet34":
         model = tv_models.resnet34(weights=_weights(tv_models.ResNet34_Weights, pretrained))
         model = _replace_classifier(model, key, num_classes)
+    elif key == "resnet50":
+        model = tv_models.resnet50(weights=_weights(tv_models.ResNet50_Weights, pretrained))
+        model = _replace_classifier(model, key, num_classes)
     elif key == "swin_t":
         model = tv_models.swin_t(weights=_weights(tv_models.Swin_T_Weights, pretrained))
         model = _replace_classifier(model, key, num_classes)
+    elif key == "deit_small":
+        model = timm.create_model("deit_small_patch16_224", pretrained=pretrained, num_classes=num_classes)
+    elif key == "mlp_mixer":
+        model = timm.create_model("mixer_b16_224", pretrained=pretrained, num_classes=num_classes)
     elif key == "convmixer":
         if pretrained:
             raise ValueError("Local ConvMixer does not provide pretrained weights; set pretrained=false.")

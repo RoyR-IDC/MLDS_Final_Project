@@ -21,16 +21,16 @@ data:
 models:
   num_classes: 2
   model_names:
-    - resnet18
-    - swin_t
-    - convmixer
+    - resnet50
+    - deit_small
+    - mlp_mixer
   pretrained: false
   convmixer_dim: 128
   convmixer_depth: 4
 
 experiment:
   grid_sizes: [1, 2, 3, 4]
-  num_permutations: 2
+  num_permutations: 3
   epochs: 1
   learning_rate: 0.0003
   optimizer: adamw
