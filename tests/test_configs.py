@@ -1,7 +1,7 @@
 from dataclasses import fields
 from pathlib import Path
 
-from src.utils.config import CVExperimentConfig, load_experiment_config, normalize_config
+from src.utils.config import CVExperimentConfig, Part2ExperimentConfig, normalize_config
 
 
 def test_grouped_config_normalizes_to_runner_keys():
@@ -26,21 +26,34 @@ def test_official_configs_are_not_duplicated():
     config_names = {path.name for path in Path("configs").glob("*.yaml")}
 
     assert config_names == {
-        "part1_baselines.yaml",
-        "part2_improvement.yaml",
         "part3_difficulty.yaml",
     }
 
 
-def test_part2_config_exposes_single_model_name():
-    normalized_config = load_experiment_config("configs/part2_improvement.yaml")
+def test_part2_config_defaults_to_resnet50_improvement_ablation_setup():
+    dataclass_fields = Part2ExperimentConfig.__dataclass_fields__
+    model_names = dataclass_fields["model_names"].default_factory()
+    grid_sizes = dataclass_fields["grid_sizes"].default_factory()
+    ablations = dataclass_fields["ablations"].default_factory()
 
-    assert normalized_config["part"] == "part2"
-    assert normalized_config["model_name"] == "resnet18"
-    assert normalized_config["seed"] == 42
-    assert "permutation_seed" not in normalized_config
-    assert "seeds" not in normalized_config
-    assert "ablations" in normalized_config
+    assert dataclass_fields["part"].default == "part2"
+    assert dataclass_fields["config_name"].default == "part2_improvement"
+    assert model_names == ["resnet50"]
+    assert grid_sizes == [1, 2, 3, 4]
+    assert dataclass_fields["num_permutations"].default == 3
+    assert [ablation["name"] for ablation in ablations] == [
+        "pretrained_feature_extractor",
+        "pretrained_finetune",
+        "augmentation_only",
+        "pretrained_augmented_finetune",
+    ]
+
+
+def test_part2_config_exposes_single_model_name_property():
+    config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
+    config.model_names = ["resnet50"]
+
+    assert config.model_name == "resnet50"
 
 
 def test_cv_experiment_config_exposes_single_seed_field():
