@@ -162,7 +162,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - ablation configs
   - save CSV and comparison plots
 
-- src/experiments/part3_difficulty.py
+- src/evaluation/experiment_results.py
   - compute permutation metrics
   - join metrics with Part 1 results
   - compute Pearson/Spearman correlations
@@ -185,8 +185,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - save_json
   - save_csv helpers if useful
 
-- configs/part2_improvement.yaml
-- configs/part3_difficulty.yaml
+- notebook-owned settings; no official YAML configs
 
 - tests/test_tile_permutation.py
 - tests/test_permutation_metrics.py

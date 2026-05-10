@@ -11,7 +11,9 @@ import pandas as pd
 
 from src.evaluation.experiment_results import (
     aggregate_accuracy,
+    compute_part3_permutation_metrics,
     load_part1_model_baseline_raw_rows,
+    load_part1_resnet50_results,
     save_rows,
 )
 
@@ -157,3 +159,53 @@ def test_aggregate_accuracy_keeps_ablation_groups_separate():
 
     assert set(aggregated["ablation_name"]) == {"augmentation_only", "pretrained_finetune"}
     assert len(aggregated) == 2
+
+
+def test_part3_helpers_reuse_permutation_csv_filter_resnet50_and_emit_renamed_metrics(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "grid_size": 2,
+                "permutation_id": 7,
+                "permutation_seed": 99,
+                "permutation": "[3, 2, 1, 0]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_permutations.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 7,
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "deit_small",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 7,
+                "best_val_accuracy": 0.80,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    metrics = compute_part3_permutation_metrics(
+        permutation_csv=str(tmp_path / "part1_permutations.csv"),
+        grid_sizes=[1],
+        num_permutations=0,
+        seed=42,
+    )
+    resnet50_results = load_part1_resnet50_results(str(tmp_path / "part1_raw_results.csv"))
+
+    assert metrics["permutation_id"].tolist() == [7]
+    assert set(
+        [
+            "global_tile_displacement",
+            "center_weighted_displacement",
+            "adjacency_preservation_loss",
+            "combined_hardness_score",
+        ]
+    ).issubset(metrics.columns)
+    assert resnet50_results["model_name"].tolist() == ["resnet50"]

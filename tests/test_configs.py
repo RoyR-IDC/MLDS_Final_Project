@@ -25,9 +25,7 @@ def test_grouped_config_normalizes_to_runner_keys():
 def test_official_configs_are_not_duplicated():
     config_names = {path.name for path in Path("configs").glob("*.yaml")}
 
-    assert config_names == {
-        "part3_difficulty.yaml",
-    }
+    assert config_names == set()
 
 
 def test_part2_config_defaults_to_resnet50_improvement_ablation_setup():

@@ -39,20 +39,9 @@ Each notebook has the same structure:
 - data loading
 - experiment sections
 
-Part 1 and Part 2 orchestration lives in their notebooks. Reusable training,
-preprocessing, plotting, and metric helpers stay in `src` modules. Part 2 uses
-`Part2ExperimentConfig` directly instead of a YAML config.
-
-## Configs
-
-The remaining official YAML config is:
-
-- `configs/part3_difficulty.yaml`
-
-Sections are grouped as `general`, `input_output`, `data`, `models`, and
-`experiment` where relevant. The helper
-`src.utils.config.load_experiment_config` normalizes grouped YAML into the
-internal runner format.
+Experiment orchestration lives in the notebooks. Reusable training,
+preprocessing, plotting, result, and metric helpers stay in `src` modules.
+The project does not use YAML configs for the official workflow.
 
 ## Outputs
 
@@ -72,15 +61,6 @@ Figures are saved under `outputs/figures/`:
 - `part1_accuracy_vs_tiles.png`
 - `part2_ablation_comparison.png`
 - `part3_*_vs_accuracy.png`
-
-## Optional Script
-
-The expected project workflow is the three notebooks above. The script below is
-kept for scriptable Part 3 evaluation only; Part 1 and Part 2 are notebook-only.
-
-```bash
-python scripts/train_experiment.py configs/part3_difficulty.yaml
-```
 
 ## Tests
 

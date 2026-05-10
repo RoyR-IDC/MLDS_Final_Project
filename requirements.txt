@@ -2,6 +2,7 @@ kaggle
 python-dotenv
 numpy==1.26.4
 pandas==2.1.4
+scipy
 # PyTorch ecosystem for experiments
 torch>=1.12.0
 torchvision
