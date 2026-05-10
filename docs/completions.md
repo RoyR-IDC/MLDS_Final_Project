@@ -168,13 +168,11 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - compute Pearson/Spearman correlations
   - save CSV and plots
 
-- src/permutation_metrics.py or src/metrics/permutation_difficulty.py
-  - average_displacement
-  - normalized_average_displacement
-  - adjacency_preservation
-  - locality_disruption
-  - displacement_entropy
-  - combined difficulty score if justified
+- src/evaluation/permutation_difficulty.py
+  - compute_global_displacement
+  - compute_center_weighted_displacement
+  - compute_adjacency_preservation_loss
+  - compute_combined_hardness
 
 - src/utils/reproducibility.py
   - seed_everything

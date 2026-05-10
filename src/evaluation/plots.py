@@ -14,7 +14,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from src.evaluation.permutation_difficulty import average_displacement, adjacency_preservation, displacement_entropy
+from src.evaluation.permutation_difficulty import (
+    compute_adjacency_preservation_loss,
+    compute_center_weighted_displacement,
+    compute_combined_hardness,
+    compute_global_displacement,
+)
 from src.preprocessing.permutations import generate_permutations, identity_permutation
 
 
@@ -97,10 +102,22 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, n_permutations: 
         grid_size = int(row['grid'])
         perm_idx = int(row['perm_idx'])
         permutation = _get_permutation_for_row(grid_size, perm_idx, n_permutations=n_permutations)
-        average_tile_displacement = average_displacement(permutation, grid_size)
-        adjacency_score = adjacency_preservation(permutation, grid_size)
-        entropy = displacement_entropy(permutation, grid_size)
-        metric_rows.append({'avg_disp': average_tile_displacement, 'adj_pres': adjacency_score, 'disp_ent': entropy})
+        metric_rows.append(
+            {
+                'global_tile_displacement': compute_global_displacement(permutation, grid_size),
+                'center_weighted_displacement': compute_center_weighted_displacement(
+                    permutation,
+                    grid_size,
+                    alpha_center=1.0,
+                ),
+                'adjacency_preservation_loss': compute_adjacency_preservation_loss(permutation, grid_size),
+                'combined_hardness_score': compute_combined_hardness(
+                    permutation,
+                    grid_size,
+                    alpha_center=1.0,
+                ),
+            }
+        )
     metric_table = pd.DataFrame(metric_rows)
     output_table = pd.concat([summary.reset_index(drop=True), metric_table], axis=1)
     aug_path = os.path.join(out_dir, 'summary_with_metrics.csv')
@@ -121,7 +138,12 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     """
     os.makedirs(out_dir, exist_ok=True)
     summary = pd.read_csv(summary_with_metrics_csv)
-    metrics = ['avg_disp', 'adj_pres', 'disp_ent']
+    metrics = [
+        'global_tile_displacement',
+        'center_weighted_displacement',
+        'adjacency_preservation_loss',
+        'combined_hardness_score',
+    ]
     stats = {}
     for metric in metrics:
         fig, ax = plt.subplots(figsize=(6, 5))

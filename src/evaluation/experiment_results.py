@@ -11,7 +11,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-from src.evaluation.permutation_difficulty import permutation_metric_row
+from src.evaluation.permutation_difficulty import (
+    compute_adjacency_preservation_loss,
+    compute_center_weighted_displacement,
+    compute_combined_hardness,
+    compute_global_displacement,
+)
 from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
 from src.preprocessing.permutations import PermutationRecord, generate_permutations, identity_permutation
 from src.utils.config import CVExperimentConfig
@@ -424,20 +429,27 @@ def compute_part3_permutation_metrics(
     for _, row in permutations.iterrows():
         permutation = json.loads(row["permutation"]) if isinstance(row["permutation"], str) else row["permutation"]
         grid_size = int(row["grid_size"])
+        global_tile_displacement = compute_global_displacement(permutation, grid_size)
+        center_weighted_displacement = compute_center_weighted_displacement(permutation, grid_size, alpha_center)
+        adjacency_preservation_loss = compute_adjacency_preservation_loss(permutation, grid_size)
+        combined_hardness_score = compute_combined_hardness(
+            permutation=permutation,
+            N=grid_size,
+            alpha_center=alpha_center,
+            weight_adj=weight_adj,
+            weight_center=weight_center,
+            weight_dist=weight_dist,
+        )
         rows.append(
             {
                 "grid_size": grid_size,
                 "num_tiles": grid_size * grid_size,
                 "permutation_id": int(row["permutation_id"]),
                 "permutation_seed": row.get("permutation_seed"),
-                **permutation_metric_row(
-                    permutation=permutation,
-                    grid_size=grid_size,
-                    alpha_center=alpha_center,
-                    weight_adj=weight_adj,
-                    weight_center=weight_center,
-                    weight_dist=weight_dist,
-                ),
+                "global_tile_displacement": global_tile_displacement,
+                "center_weighted_displacement": center_weighted_displacement,
+                "adjacency_preservation_loss": adjacency_preservation_loss,
+                "combined_hardness_score": combined_hardness_score,
             }
         )
     return pd.DataFrame(rows)

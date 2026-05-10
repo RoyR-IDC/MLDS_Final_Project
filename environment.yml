@@ -8,7 +8,7 @@ dependencies:
   - unzip
   - numpy=1.26.4
   - pandas=2.1.4
-  - scipy
+  - scipy=1.11.4
   - pip:
     - kaggle
     - python-dotenv
