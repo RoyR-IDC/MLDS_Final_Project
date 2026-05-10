@@ -40,18 +40,17 @@ Each notebook has the same structure:
 - experiment sections
 
 Part 1 and Part 2 orchestration lives in their notebooks. Reusable training,
-preprocessing, plotting, and metric helpers stay in `src` modules.
+preprocessing, plotting, and metric helpers stay in `src` modules. Part 2 uses
+`Part2ExperimentConfig` directly instead of a YAML config.
 
 ## Configs
 
-The official configs are grouped YAML files:
+The remaining official YAML config is:
 
-- `configs/part1_baselines.yaml`
-- `configs/part2_improvement.yaml`
 - `configs/part3_difficulty.yaml`
 
-Sections are grouped as `general`, `input_output`, `data`, `models`,
-`experiment`, and `ablations` where relevant. The helper
+Sections are grouped as `general`, `input_output`, `data`, `models`, and
+`experiment` where relevant. The helper
 `src.utils.config.load_experiment_config` normalizes grouped YAML into the
 internal runner format.
 

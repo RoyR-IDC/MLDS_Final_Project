@@ -157,11 +157,6 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - loss aggregation
   - result row formatting
 
-- src/experiments/part1_baselines.py
-  - experiment runner for all models, grids, permutations, seeds
-  - save raw CSV and aggregated CSV
-  - save accuracy-vs-number-of-tiles plot
-
 - src/experiments/part2_improvement.py
   - controlled baseline vs improved experiment runner
   - ablation configs
@@ -190,7 +185,6 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - save_json
   - save_csv helpers if useful
 
-- configs/part1_baselines.yaml
 - configs/part2_improvement.yaml
 - configs/part3_difficulty.yaml
 
@@ -210,7 +204,7 @@ data_and_loaders.ipynb:
 - Do not contain core logic that belongs in src.
 
 part1_solution.ipynb:
-- Load configs/part1_baselines.yaml.
+- Use the Part 1 notebook-owned configuration.
 - Run or demonstrate the Part 1 experiment runner.
 - Display the aggregated result table.
 - Display the accuracy-vs-number-of-tiles plot.

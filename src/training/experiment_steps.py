@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, Mapping, Optional, Sequence
 
+import pandas as pd
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from src.evaluation.experiment_results import build_result_row
+from src.evaluation.experiment_results import (
+    build_result_row,
+    experiment_output_paths,
+    get_device,
+    load_experiment_samples,
+    load_part1_model_baseline_aggregated,
+    load_part1_model_baseline_raw_rows,
+    plot_ablation_results,
+    save_aggregated_accuracy,
+    save_rows,
+)
 from src.models.factory import get_model
 from src.preprocessing.dogs_cats import build_dataloaders
-from src.preprocessing.permutations import PermutationRecord
+from src.preprocessing.permutations import PermutationRecord, build_permutation_records
 from src.training.engine import TrainingRunComponents, build_optimizer, train_and_validate
 from src.utils.config import CVExperimentConfig
 
@@ -174,3 +186,128 @@ def collect_model_permutation_results(
             )
         )
     return rows
+
+
+def get_executable_permutation_records(records: Sequence[PermutationRecord]) -> list[PermutationRecord]:
+    """Filter out duplicate random permutations for the un-tiled 1x1 condition."""
+
+    return [
+        record
+        for record in records
+        if not (record.grid_size == 1 and record.permutation_id > 0)
+    ]
+
+
+def collect_part2_ablation_results(
+    *,
+    config: CVExperimentConfig,
+    ablations: Sequence[Mapping[str, Any]],
+    train_samples: Sequence[tuple[str, int]],
+    validation_samples: Sequence[tuple[str, int]],
+    permutation_records: Sequence[PermutationRecord],
+    device: torch.device,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    """Train all Part 2 improvement ablations across permutation records."""
+
+    rows: list[dict[str, Any]] = []
+    model_name = getattr(config, "model_name", config.model_names[0])
+    executable_records = get_executable_permutation_records(permutation_records)
+    for ablation in ablations:
+        print()
+        print("=" * 80)
+        print(f"Running ablation: {ablation['name']}")
+
+        for record_index, record in enumerate(executable_records, start=1):
+            print()
+            print(
+                f"[{record_index}/{len(executable_records)}] "
+                f"grid={record.grid_size}x{record.grid_size}, "
+                f"permutation_id={record.permutation_id}, "
+                f"seed={record.permutation_seed}"
+            )
+            train_loader, validation_loader = build_dataloaders(
+                train_samples=train_samples,
+                val_samples=validation_samples,
+                image_size=config.image_size,
+                grid_size=record.grid_size,
+                permutation=record.permutation,
+                seed=config.seed,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                standard_augmentation=bool(ablation["use_standard_augmentation"]),
+            )
+            metrics = train_and_evaluate_model_configuration(
+                config=config,
+                model_name=model_name,
+                train_loader=train_loader,
+                val_loader=validation_loader,
+                device=device,
+                overrides={
+                    "pretrained": bool(ablation["use_pretrained"]),
+                    "freeze_backbone": bool(ablation["freeze_backbone"]),
+                },
+            )
+            row = build_result_row(
+                config=config,
+                run_id=run_id,
+                model_name=model_name,
+                record=record,
+                seed=config.seed,
+                metrics=metrics,
+            )
+            row["ablation_name"] = ablation["name"]
+            rows.append(row)
+    return rows
+
+
+def run_part2_improvement_experiments(
+    config: CVExperimentConfig,
+    device: Optional[torch.device] = None,
+) -> pd.DataFrame:
+    """Run Part 2 ablations, save raw/aggregated results, and write the comparison plot."""
+
+    model_name = getattr(config, "model_name", config.model_names[0])
+    resolved_device = device or get_device(config)
+    train_samples, validation_samples, _ = load_experiment_samples(config, seed=config.seed)
+    permutation_records = build_permutation_records(
+        grid_sizes=config.grid_sizes,
+        num_permutations=config.num_permutations,
+        seed=config.seed,
+        include_identity=True,
+    )
+    run_id = datetime.now(timezone.utc).strftime("part2_%Y%m%d_%H%M%S")
+
+    rows = load_part1_model_baseline_raw_rows(config, model_name)
+    rows.extend(
+        collect_part2_ablation_results(
+            config=config,
+            ablations=getattr(config, "ablations"),
+            train_samples=train_samples,
+            validation_samples=validation_samples,
+            permutation_records=permutation_records,
+            device=resolved_device,
+            run_id=run_id,
+        )
+    )
+
+    output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
+    save_rows(rows, output_paths["raw_results"])
+    raw_results = pd.DataFrame(rows)
+    aggregated_results = save_aggregated_accuracy(
+        raw_results,
+        group_columns=["model_name", "ablation_name", "grid_size", "num_tiles"],
+        output_path=output_paths["aggregated_results"],
+    )
+
+    part1_baseline_aggregated = load_part1_model_baseline_aggregated(config, model_name)
+    has_regular_baseline = (
+        "ablation_name" in aggregated_results.columns
+        and (aggregated_results["ablation_name"] == "regular_part1").any()
+    )
+    if not has_regular_baseline and not part1_baseline_aggregated.empty:
+        aggregated_results = pd.concat([part1_baseline_aggregated, aggregated_results], ignore_index=True, sort=False)
+        aggregated_results.to_csv(output_paths["aggregated_results"], index=False)
+
+    plot_ablation_results(aggregated_results, output_paths["figure"])
+    return aggregated_results

@@ -165,6 +165,67 @@ def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) 
     return aggregated_results
 
 
+def load_part1_model_baseline_raw_rows(
+    config: CVExperimentConfig,
+    model_name: str,
+    ablation_name: str = "regular_part1",
+) -> list[dict[str, Any]]:
+    """Load raw Part 1 rows for one model and retag them for Part 2 comparison."""
+
+    raw_path = os.path.join(config.results_dir, "part1_raw_results.csv")
+    if not os.path.exists(raw_path):
+        return []
+
+    part1_raw = pd.read_csv(raw_path)
+    if "model_name" not in part1_raw.columns:
+        return []
+
+    baseline = part1_raw[part1_raw["model_name"] == model_name].copy()
+    if baseline.empty:
+        return []
+
+    baseline["part"] = config.part
+    baseline["config_name"] = config.config_name
+    baseline["ablation_name"] = ablation_name
+    if "run_id" not in baseline.columns:
+        baseline["run_id"] = "part1_regular_training"
+    return baseline.to_dict("records")
+
+
+def load_part1_model_baseline_aggregated(
+    config: CVExperimentConfig,
+    model_name: str,
+    ablation_name: str = "regular_part1",
+) -> pd.DataFrame:
+    """Load aggregated Part 1 rows for one model and retag them for Part 2 comparison."""
+
+    aggregated_path = os.path.join(config.results_dir, "part1_aggregated_results.csv")
+    raw_path = os.path.join(config.results_dir, "part1_raw_results.csv")
+    source_path = aggregated_path if os.path.exists(aggregated_path) else raw_path
+    if not os.path.exists(source_path):
+        print("Part 1 results were not found. Run Part 1 first to include the regular ResNet50 baseline.")
+        return pd.DataFrame()
+
+    part1_results = pd.read_csv(source_path)
+    if "model_name" not in part1_results.columns:
+        return pd.DataFrame()
+
+    baseline = part1_results[part1_results["model_name"] == model_name].copy()
+    if baseline.empty:
+        print(f"Part 1 results exist, but no rows were found for {model_name}.")
+        return pd.DataFrame()
+
+    if "mean_best_val_accuracy" not in baseline.columns:
+        baseline = aggregate_accuracy(
+            baseline,
+            group_columns=["model_name", "grid_size", "num_tiles"],
+        )
+
+    baseline["ablation_name"] = ablation_name
+    baseline["config_name"] = config.config_name
+    return baseline
+
+
 def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) -> Dict[str, str]:
     """Return standard output paths for a notebook-owned experiment.
 
