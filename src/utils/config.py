@@ -166,8 +166,8 @@ class CVExperimentConfig:
         self.sample_data = True
         self.sample_limit = 32
         self.grid_sizes = [1, 2]
-        self.num_permutations = 3
-        self.epochs = 5
+        self.num_permutations = 2
+        self.epochs = 3
         self.plot_samples = True
 
 
