@@ -1,7 +1,7 @@
 from dataclasses import fields
 from pathlib import Path
 
-from src.utils.config import CVExperimentConfig, Part2ExperimentConfig, normalize_config
+from src.utils.config import CVExperimentConfig, Part2ExperimentConfig, find_project_root, normalize_config
 
 
 def test_grouped_config_normalizes_to_runner_keys():
@@ -61,3 +61,20 @@ def test_cv_experiment_config_exposes_single_seed_field():
 
     assert "seed" in field_names
     assert "permutation_seed" not in field_names
+
+
+def test_find_project_root_walks_up_from_notebook_directory(tmp_path):
+    project_root = tmp_path / "MLDS_Final_Project"
+    notebook_dir = project_root / "src" / "notebooks"
+    notebook_dir.mkdir(parents=True)
+    (project_root / "requirements.txt").write_text("pytest\n")
+
+    assert find_project_root(notebook_dir) == str(project_root)
+
+
+def test_config_resolves_project_relative_paths():
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.root_dir = "/project"
+    resolved_path = CVExperimentConfig._resolve_project_path(config, "outputs/results", "unused")
+
+    assert resolved_path == "/project/outputs/results"
