@@ -211,7 +211,7 @@ part1_solution.ipynb:
 - Clearly show repeated permutations and averaged results.
 
 part2_solution.ipynb:
-- Load configs/part2_improvement.yaml.
+- Use notebook-owned Part 2 configuration.
 - Run or demonstrate baseline vs improved model.
 - Show ablation table.
 - Plot baseline vs improved performance.
