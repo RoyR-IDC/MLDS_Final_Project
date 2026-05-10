@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import socket
+from pathlib import Path
 from typing import Any, Dict, Literal, Mapping
 import os
 
@@ -11,6 +11,36 @@ from src.utils.io import load_yaml
 
 
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
+DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
+
+
+def _path_looks_like_project_root(path: Path) -> bool:
+    """Return whether ``path`` looks like this repository root."""
+
+    return (path / "src").is_dir() and ((path / "requirements.txt").exists() or (path / ".git").exists())
+
+
+def find_project_root(start: str | os.PathLike[str] | None = None) -> str:
+    """Find the repository root from the current notebook/script location."""
+
+    current = Path(start or os.getcwd()).resolve()
+    candidates = [current, *current.parents]
+    for candidate in candidates:
+        if _path_looks_like_project_root(candidate):
+            return str(candidate)
+    return str(current)
+
+
+def is_google_colab_runtime() -> bool:
+    """Return True when code is executing inside a Google Colab runtime."""
+
+    try:
+        import google.colab  # type: ignore  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
@@ -67,7 +97,7 @@ class CVExperimentConfig:
     deterministic: bool = False
 
     # Directory configuration
-    root_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+    root_dir: str = DEFAULT_LOCAL_ROOT
     data_dir: str = ""
     outputs_dir: str = ""
     results_dir: str = ""
@@ -117,49 +147,75 @@ class CVExperimentConfig:
     plot_samples: bool = False
 
     def __post_init__(self) -> None:
-        # Adjust paths if running on Google Colab
         if self._is_code_running_on_colab():
             print("Running on Google Colab, adjusting configs...")
-
-            # Adjust paths
-            # mount google drive
-            try:
-                from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
-                drive.mount('/content/drive')
-            except ImportError:
-                raise ImportError("Google Colab environment detected but google.colab module not found")
-
-            # now that drive was mounted, update paths
-            self.root_dir = "/content/drive/MyDrive/MLDS_Final_Project"
-
+            self._mount_colab_drive_if_available()
+            self._update_root_for_colab()
         else:
+            self._update_root_for_local_runtime()
             self.update_configs_for_local_testing()
 
         # set_paths
         self._set_paths()
 
         # Validate dirs exist
-        assert os.path.exists(self.data_dir), f"Data dir {self.data_dir} does not exist"
+        if not os.path.exists(self.data_dir):
+            raise FileNotFoundError(
+                "Dataset directory does not exist: "
+                f"{self.data_dir}. Expected Kaggle Dogs vs Cats images under "
+                "<project-root>/data/dogs-vs-cats/train. In Colab, upload or mount "
+                "the project/data folder before starting the training cells."
+            )
         os.makedirs(self.outputs_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.figures_dir, exist_ok=True)
 
     ## Code to move to utils
     def _is_code_running_on_colab(self) -> bool:
-        if socket.gethostname() == 'MACs-MacBook-Pro.local':
-            return False
+        self.using_google_colab = is_google_colab_runtime()
+        return self.using_google_colab
+
+    def _mount_colab_drive_if_available(self) -> None:
+        """Mount Google Drive in Colab when the Drive API is available."""
+
         try:
-            from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
-            self.using_google_colab = True
-            return True
-        except ImportError:
-            return False
+            from google.colab import drive  # type: ignore
+
+            drive.mount("/content/drive")
+        except Exception as exc:
+            print(f"Google Drive was not mounted automatically: {exc}")
+
+    def _update_root_for_colab(self) -> None:
+        """Resolve the project root for either Drive-backed or cloned Colab runs."""
+
+        if self.root_dir and self.root_dir != DEFAULT_LOCAL_ROOT:
+            return
+        drive_root = Path(DEFAULT_COLAB_DRIVE_ROOT)
+        if drive_root.exists():
+            self.root_dir = str(drive_root)
+            return
+        self.root_dir = find_project_root()
+
+    def _update_root_for_local_runtime(self) -> None:
+        """Avoid carrying the developer machine path into other local runtimes."""
+
+        if self.root_dir == DEFAULT_LOCAL_ROOT and not Path(self.root_dir).exists():
+            self.root_dir = find_project_root()
+
+    def _resolve_project_path(self, value: str, default_relative: str) -> str:
+        """Resolve absolute and project-relative config paths."""
+
+        path_value = value or default_relative
+        path = Path(path_value)
+        if path.is_absolute():
+            return str(path)
+        return str(Path(self.root_dir) / path)
 
     def _set_paths(self) -> None:
-        self.data_dir = os.path.join(self.root_dir, "data", "dogs-vs-cats", "train")
-        self.outputs_dir = os.path.join(self.root_dir, "outputs")
-        self.results_dir = os.path.join(self.outputs_dir, "results")
-        self.figures_dir = os.path.join(self.outputs_dir, "figures")
+        self.data_dir = self._resolve_project_path(self.data_dir, os.path.join("data", "dogs-vs-cats", "train"))
+        self.outputs_dir = self._resolve_project_path(self.outputs_dir, "outputs")
+        self.results_dir = self._resolve_project_path(self.results_dir, os.path.join("outputs", "results"))
+        self.figures_dir = self._resolve_project_path(self.figures_dir, os.path.join("outputs", "figures"))
 
     def update_configs_for_local_testing(self) -> None:
         """Update configs for local testing."""

@@ -26,11 +26,18 @@ def get_device(config: CVExperimentConfig) -> torch.device:
         Torch device selected from the config.
     """
 
-    requested = str(config.device)
+    requested = str(config.device).lower()
     if requested == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Selected device: {device}")
         return device
     device = torch.device(requested)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA was requested, but no CUDA GPU is available. In Colab, choose "
+            "Runtime > Change runtime type > GPU, then reconnect and rerun setup."
+        )
+    print(f"Selected device: {device}")
     return device
 
 
