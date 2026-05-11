@@ -119,16 +119,9 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet50", "deit_small", "mlp_mixer"]
+        default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_small"]
     )
-    run_resnet50: bool = True
-    run_deit_small: bool = True
-    run_mlp_mixer: bool = True
-    pretrained: bool = False
-
-    # ConvMixer-specific configuration
-    convmixer_dim: int = 128
-    convmixer_depth: int = 4
+    pretrained: bool = True
 
     # Grid and permutation experiment configuration
     grid_sizes: list[int] = field(default_factory=lambda: [1, 3, 4])
@@ -232,35 +225,29 @@ class CVExperimentConfig:
 
 @dataclass
 class Part2ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 2 ResNet50 improvement ablations."""
+    """Notebook-owned configuration for Part 2 ResNet-18 improvement ablations."""
 
     part: str = "part2"
     config_name: str = "part2_improvement"
-    model_names: list[str] = field(default_factory=lambda: ["resnet50"])
+    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
     grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     num_permutations: int = 3
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {
-                "name": "pretrained_feature_extractor",
-                "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": True,
-            },
-            {
-                "name": "pretrained_finetune",
-                "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": False,
-            },
-            {
                 "name": "augmentation_only",
-                "use_pretrained": False,
+                "use_pretrained": True,
                 "use_standard_augmentation": True,
                 "freeze_backbone": False,
             },
             {
-                "name": "pretrained_augmented_finetune",
+                "name": "finetune_only",
+                "use_pretrained": True,
+                "use_standard_augmentation": False,
+                "freeze_backbone": False,
+            },
+            {
+                "name": "augmentation_finetune",
                 "use_pretrained": True,
                 "use_standard_augmentation": True,
                 "freeze_backbone": False,
@@ -277,15 +264,14 @@ class Part2ExperimentConfig(CVExperimentConfig):
 
 @dataclass
 class Part3ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 3 ResNet50 hardness analysis."""
+    """Notebook-owned configuration for Part 3 ResNet-18 hardness analysis."""
 
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
-    model_names: list[str] = field(default_factory=lambda: ["resnet50"])
+    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
     alpha_center: float = 1.0
-    weight_adj: float = 0.5
-    weight_center: float = 0.3
-    weight_dist: float = 0.2
+    weight_center: float = 0.5
+    weight_dist: float = 0.5
 
     @property
     def model_name(self) -> str:

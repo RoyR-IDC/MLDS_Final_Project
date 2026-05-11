@@ -15,7 +15,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from src.evaluation.permutation_difficulty import (
-    compute_adjacency_preservation_loss,
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -110,7 +109,6 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, n_permutations: 
                     grid_size,
                     alpha_center=1.0,
                 ),
-                'adjacency_preservation_loss': compute_adjacency_preservation_loss(permutation, grid_size),
                 'combined_hardness_score': compute_combined_hardness(
                     permutation,
                     grid_size,
@@ -141,7 +139,6 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     metrics = [
         'global_tile_displacement',
         'center_weighted_displacement',
-        'adjacency_preservation_loss',
         'combined_hardness_score',
     ]
     stats = {}

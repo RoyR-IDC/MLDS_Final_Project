@@ -13,7 +13,6 @@ import torch
 from tqdm.auto import tqdm
 
 from src.evaluation.permutation_difficulty import (
-    compute_adjacency_preservation_loss,
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -218,7 +217,7 @@ def load_part1_model_baseline_aggregated(
     raw_path = os.path.join(config.results_dir, "part1_raw_results.csv")
     source_path = aggregated_path if os.path.exists(aggregated_path) else raw_path
     if not os.path.exists(source_path):
-        print("Part 1 results were not found. Run Part 1 first to include the regular ResNet50 baseline.")
+        print(f"Part 1 results were not found. Run Part 1 first to include the regular {model_name} baseline.")
         return pd.DataFrame()
 
     part1_results = pd.read_csv(source_path)
@@ -420,7 +419,6 @@ def _executable_part1_permutations(permutations: pd.DataFrame) -> pd.DataFrame:
 PART3_METRIC_COLUMNS = [
     "global_tile_displacement",
     "center_weighted_displacement",
-    "adjacency_preservation_loss",
     "combined_hardness_score",
 ]
 
@@ -432,9 +430,8 @@ def compute_part3_permutation_metrics(
     num_permutations: int,
     seed: int,
     alpha_center: float = 1.0,
-    weight_adj: float = 0.5,
-    weight_center: float = 0.3,
-    weight_dist: float = 0.2,
+    weight_center: float = 0.5,
+    weight_dist: float = 0.5,
     show_progress: bool = False,
 ) -> pd.DataFrame:
     """Compute renamed Part 3 hardness metrics for reusable Part 1 permutations."""
@@ -460,12 +457,10 @@ def compute_part3_permutation_metrics(
         grid_size = int(row["grid_size"])
         global_tile_displacement = compute_global_displacement(permutation, grid_size)
         center_weighted_displacement = compute_center_weighted_displacement(permutation, grid_size, alpha_center)
-        adjacency_preservation_loss = compute_adjacency_preservation_loss(permutation, grid_size)
         combined_hardness_score = compute_combined_hardness(
             permutation=permutation,
             N=grid_size,
             alpha_center=alpha_center,
-            weight_adj=weight_adj,
             weight_center=weight_center,
             weight_dist=weight_dist,
         )
@@ -477,7 +472,6 @@ def compute_part3_permutation_metrics(
                 "permutation_seed": row.get("permutation_seed"),
                 "global_tile_displacement": global_tile_displacement,
                 "center_weighted_displacement": center_weighted_displacement,
-                "adjacency_preservation_loss": adjacency_preservation_loss,
                 "combined_hardness_score": combined_hardness_score,
             }
         )
@@ -505,21 +499,21 @@ def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
     )
 
 
-def load_part1_resnet50_results(part1_results_csv: str) -> pd.DataFrame:
-    """Load Part 1 raw results filtered to the trained ResNet50 model."""
+def load_part1_model_results(part1_results_csv: str, model_name: str) -> pd.DataFrame:
+    """Load Part 1 raw results filtered to one trained model."""
 
     raw_results = pd.read_csv(part1_results_csv)
     if "model_name" not in raw_results.columns:
         raise ValueError("Part 1 results must contain a model_name column")
 
-    resnet50_results = raw_results[raw_results["model_name"] == "resnet50"].copy()
-    if resnet50_results.empty:
-        raise ValueError("No Part 1 rows found for model_name='resnet50'")
-    return resnet50_results
+    model_results = raw_results[raw_results["model_name"] == model_name].copy()
+    if model_results.empty:
+        raise ValueError(f"No Part 1 rows found for model_name='{model_name}'")
+    return model_results
 
 
-def compute_part3_metric_correlations(joined: pd.DataFrame) -> pd.DataFrame:
-    """Compute ResNet50 accuracy correlations for each Part 3 hardness metric."""
+def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "resnet18") -> pd.DataFrame:
+    """Compute accuracy correlations for each Part 3 hardness metric."""
 
     rows: list[dict[str, Any]] = []
     for metric in PART3_METRIC_COLUMNS:
@@ -532,7 +526,7 @@ def compute_part3_metric_correlations(joined: pd.DataFrame) -> pd.DataFrame:
             spearman = float(frame[metric].corr(frame["best_val_accuracy"], method="spearman"))
         rows.append(
             {
-                "group": "resnet50",
+                "group": group_name,
                 "metric": metric,
                 "pearson": pearson,
                 "spearman": spearman,
@@ -583,10 +577,10 @@ def run_part3_hardness_analysis(
     grid_sizes: Sequence[int],
     num_permutations: int,
     seed: int,
+    model_name: str = "resnet18",
     alpha_center: float = 1.0,
-    weight_adj: float = 0.5,
-    weight_center: float = 0.3,
-    weight_dist: float = 0.2,
+    weight_center: float = 0.5,
+    weight_dist: float = 0.5,
     verbose: bool = True,
     show_progress: bool = True,
 ) -> Dict[str, pd.DataFrame]:
@@ -607,7 +601,6 @@ def run_part3_hardness_analysis(
         num_permutations=num_permutations,
         seed=seed,
         alpha_center=alpha_center,
-        weight_adj=weight_adj,
         weight_center=weight_center,
         weight_dist=weight_dist,
         show_progress=show_progress,
@@ -616,16 +609,16 @@ def run_part3_hardness_analysis(
     log("Saving hardness metric table...")
     save_csv(metrics, os.path.join(results_dir, "permutation_metrics.csv"))
 
-    log("Loading Part 1 ResNet50 results...")
-    raw_results = load_part1_resnet50_results(part1_results_csv)
-    log("Joining hardness metrics with ResNet50 accuracy...")
+    log(f"Loading Part 1 {model_name} results...")
+    raw_results = load_part1_model_results(part1_results_csv, model_name)
+    log(f"Joining hardness metrics with {model_name} accuracy...")
     joined = raw_results.merge(metrics, on=["grid_size", "num_tiles", "permutation_id"], how="left")
     joined = joined.sort_values(["grid_size", "permutation_id"]).reset_index(drop=True)
     log("Saving joined metric-accuracy table...")
     save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
 
     log("Computing metric-accuracy correlations...")
-    correlations = compute_part3_metric_correlations(joined)
+    correlations = compute_part3_metric_correlations(joined, group_name=model_name)
     log("Saving correlations and plots...")
     save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
     plot_part3_metrics_vs_accuracy(joined, figures_dir)

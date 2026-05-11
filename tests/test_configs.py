@@ -34,7 +34,7 @@ def test_official_configs_are_not_duplicated():
     assert config_names == set()
 
 
-def test_part2_config_defaults_to_resnet50_improvement_ablation_setup():
+def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     dataclass_fields = Part2ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
     grid_sizes = dataclass_fields["grid_sizes"].default_factory()
@@ -42,42 +42,40 @@ def test_part2_config_defaults_to_resnet50_improvement_ablation_setup():
 
     assert dataclass_fields["part"].default == "part2"
     assert dataclass_fields["config_name"].default == "part2_improvement"
-    assert model_names == ["resnet50"]
+    assert model_names == ["resnet18"]
     assert grid_sizes == [1, 2, 3, 4]
     assert dataclass_fields["num_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
-        "pretrained_feature_extractor",
-        "pretrained_finetune",
         "augmentation_only",
-        "pretrained_augmented_finetune",
+        "finetune_only",
+        "augmentation_finetune",
     ]
 
 
 def test_part2_config_exposes_single_model_name_property():
     config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
-    config.model_names = ["resnet50"]
+    config.model_names = ["resnet18"]
 
-    assert config.model_name == "resnet50"
+    assert config.model_name == "resnet18"
 
 
-def test_part3_config_defaults_to_resnet50_hardness_analysis_setup():
+def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
     dataclass_fields = Part3ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
 
     assert dataclass_fields["part"].default == "part3"
     assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
-    assert model_names == ["resnet50"]
+    assert model_names == ["resnet18"]
     assert dataclass_fields["alpha_center"].default == 1.0
-    assert dataclass_fields["weight_adj"].default == 0.5
-    assert dataclass_fields["weight_center"].default == 0.3
-    assert dataclass_fields["weight_dist"].default == 0.2
+    assert dataclass_fields["weight_center"].default == 0.5
+    assert dataclass_fields["weight_dist"].default == 0.5
 
 
 def test_part3_config_exposes_single_model_name_property():
     config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
-    config.model_names = ["resnet50"]
+    config.model_names = ["resnet18"]
 
-    assert config.model_name == "resnet50"
+    assert config.model_name == "resnet18"
 
 
 def test_cv_experiment_config_exposes_single_seed_field():
@@ -87,12 +85,12 @@ def test_cv_experiment_config_exposes_single_seed_field():
     assert "permutation_seed" not in field_names
 
 
-def test_part1_model_toggles_default_to_enabled():
+def test_part1_model_defaults_to_lightweight_pretrained_trio():
     dataclass_fields = CVExperimentConfig.__dataclass_fields__
+    model_names = dataclass_fields["model_names"].default_factory()
 
-    assert dataclass_fields["run_resnet50"].default is True
-    assert dataclass_fields["run_deit_small"].default is True
-    assert dataclass_fields["run_mlp_mixer"].default is True
+    assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_small"]
+    assert dataclass_fields["pretrained"].default is True
 
 
 def test_local_testing_defaults_use_larger_part1_signal():

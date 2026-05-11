@@ -57,18 +57,12 @@ def build_training_components(
     """
 
     run_options = dict(overrides or {})
-    pretrained = bool(run_options.get("pretrained", config.pretrained))
-    if model_name == "convmixer":
-        pretrained = False
-
     model = get_model(
         model_name,
         num_classes=config.num_classes,
-        pretrained=pretrained,
+        pretrained=bool(run_options.get("pretrained", config.pretrained)),
         device=device,
         freeze_backbone=bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False))),
-        convmixer_dim=config.convmixer_dim,
-        convmixer_depth=config.convmixer_depth,
     )
     optimizer = build_optimizer(
         model,
@@ -172,7 +166,7 @@ def collect_model_permutation_results(
             train_loader=train_loader,
             val_loader=validation_loader,
             device=device,
-            overrides={"pretrained": config.pretrained and model_name != "convmixer"},
+            overrides={"pretrained": config.pretrained},
         )
         print(f"Done training model '{model_name}' on permutation_id={record.permutation_id}.")
         rows.append(

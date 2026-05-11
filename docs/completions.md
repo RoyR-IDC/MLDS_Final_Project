@@ -32,15 +32,13 @@ Implement a complete baseline experiment pipeline that measures how classificati
 Must support at least 3 architecture families:
 
 1. CNN:
-   - Example: resnet18, resnet34, or efficientnet_b0 from torchvision.
+   - ResNet-18 pretrained from torchvision.
 
 2. Transformer-based vision model:
-   - Example: vit_b_16, swin_t, or another standard torchvision vision transformer model.
+   - DeiT-Tiny pretrained from timm.
 
-3. A meaningfully different third architecture:
-   - Example: ConvMixer, MLP-Mixer if already available, or a simple standard/open implementation.
-   - Do not invent an unmotivated custom architecture unless necessary.
-   - If implementing ConvMixer locally, keep it standard, compact, and well documented.
+3. Pure MLP vision architecture:
+   - MLP-Mixer Small pretrained from timm.
 
 For each model:
 - Train on unpermuted images as the baseline.
@@ -102,9 +100,8 @@ Implement at least one primary metric and optionally supporting metrics.
 Recommended metric components:
 - average spatial displacement,
 - normalized displacement,
-- adjacency preservation / locality disruption,
-- displacement entropy,
-- graph-based adjacency disruption.
+- center-weighted displacement,
+- combined displacement hardness.
 
 The metric implementation must:
 - work for arbitrary square grids, e.g. 2x2, 3x3, 4x4;
@@ -171,7 +168,6 @@ Inspect the current src structure first. Then add or modify modules as needed, p
 - src/evaluation/permutation_difficulty.py
   - compute_global_displacement
   - compute_center_weighted_displacement
-  - compute_adjacency_preservation_loss
   - compute_combined_hardness
 
 - src/utils/reproducibility.py
