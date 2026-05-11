@@ -3,7 +3,6 @@ import math
 import pytest
 
 from src.evaluation.permutation_difficulty import (
-    compute_adjacency_preservation_loss,
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -35,15 +34,12 @@ def test_center_weighted_displacement():
     assert 0.0 <= outer_score <= 1.0
 
 
-def test_adjacency_preservation_loss():
-    assert compute_adjacency_preservation_loss([0, 1, 2, 3], 2) == 0.0
-
-    swap_top_row = [1, 0, 2, 3]
-
-    assert compute_adjacency_preservation_loss(swap_top_row, 2) == 0.5
-
-
 def test_combined_hardness_score():
-    assert compute_combined_hardness([3, 2, 1, 0], 2, alpha_center=1.0) == pytest.approx(0.5)
+    expected = 0.5 * compute_global_displacement([3, 2, 1, 0], 2) + 0.5 * compute_center_weighted_displacement(
+        [3, 2, 1, 0],
+        2,
+        alpha_center=1.0,
+    )
+    assert compute_combined_hardness([3, 2, 1, 0], 2, alpha_center=1.0) == pytest.approx(expected)
     with pytest.raises(ValueError):
-        compute_combined_hardness([0, 1, 2, 3], 2, alpha_center=1.0, weight_adj=0.4)
+        compute_combined_hardness([0, 1, 2, 3], 2, alpha_center=1.0, weight_center=0.4)

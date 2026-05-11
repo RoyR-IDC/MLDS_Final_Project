@@ -16,7 +16,7 @@ from src.evaluation.experiment_results import (
     compute_part3_permutation_metrics,
     load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
-    load_part1_resnet50_results,
+    load_part1_model_results,
     part3_output_paths,
     plot_accuracy_vs_tiles,
     plot_part3_metrics_vs_accuracy,
@@ -73,7 +73,7 @@ def test_aggregate_accuracy_averages_permutations_by_tile_count():
     raw_results = pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 2,
                 "num_tiles": 4,
                 "permutation_id": 0,
@@ -81,7 +81,7 @@ def test_aggregate_accuracy_averages_permutations_by_tile_count():
                 "best_val_accuracy": 0.60,
             },
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 2,
                 "num_tiles": 4,
                 "permutation_id": 1,
@@ -95,7 +95,7 @@ def test_aggregate_accuracy_averages_permutations_by_tile_count():
 
     assert len(aggregated) == 1
     row = aggregated.iloc[0]
-    assert row["model_name"] == "resnet50"
+    assert row["model_name"] == "resnet18"
     assert row["num_tiles"] == 4
     assert row["mean_final_epoch_val_accuracy"] == 0.60
     assert row["mean_best_epoch_val_accuracy"] == 0.70
@@ -106,7 +106,7 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     aggregated = pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "num_tiles": 1,
                 "mean_final_epoch_val_accuracy": 0.40,
                 "std_final_epoch_val_accuracy": 0.01,
@@ -114,7 +114,7 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
                 "std_best_epoch_val_accuracy": 0.02,
             },
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "num_tiles": 9,
                 "mean_final_epoch_val_accuracy": 0.45,
                 "std_final_epoch_val_accuracy": 0.01,
@@ -137,7 +137,7 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
                 "part": "part1",
                 "run_id": "part1_run",
                 "config_name": "part1",
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 1,
                 "num_tiles": 1,
                 "permutation_id": 0,
@@ -148,7 +148,7 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
                 "part": "part1",
                 "run_id": "part1_run",
                 "config_name": "part1",
-                "model_name": "deit_small",
+                "model_name": "deit_tiny",
                 "grid_size": 1,
                 "num_tiles": 1,
                 "permutation_id": 0,
@@ -159,20 +159,20 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
     ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
     config = SimpleNamespace(results_dir=str(tmp_path), part="part2", config_name="part2_improvement")
 
-    rows = load_part1_model_baseline_raw_rows(config, "resnet50")
+    rows = load_part1_model_baseline_raw_rows(config, "resnet18")
 
     assert len(rows) == 1
     assert rows[0]["part"] == "part2"
     assert rows[0]["config_name"] == "part2_improvement"
     assert rows[0]["ablation_name"] == "regular_part1"
-    assert rows[0]["model_name"] == "resnet50"
+    assert rows[0]["model_name"] == "resnet18"
 
 
 def test_part1_baseline_aggregated_rejects_legacy_accuracy_column_names(tmp_path):
     pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 1,
                 "num_tiles": 1,
                 "mean_val_accuracy": 0.75,
@@ -186,14 +186,14 @@ def test_part1_baseline_aggregated_rejects_legacy_accuracy_column_names(tmp_path
     config = SimpleNamespace(results_dir=str(tmp_path), part="part2", config_name="part2_improvement")
 
     with pytest.raises(ValueError, match="unsupported schema"):
-        load_part1_model_baseline_aggregated(config, "resnet50")
+        load_part1_model_baseline_aggregated(config, "resnet18")
 
 
 def test_aggregate_accuracy_keeps_ablation_groups_separate():
     raw_results = pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "ablation_name": "augmentation_only",
                 "grid_size": 1,
                 "num_tiles": 1,
@@ -201,8 +201,8 @@ def test_aggregate_accuracy_keeps_ablation_groups_separate():
                 "best_val_accuracy": 0.65,
             },
             {
-                "model_name": "resnet50",
-                "ablation_name": "pretrained_finetune",
+                "model_name": "resnet18",
+                "ablation_name": "finetune_only",
                 "grid_size": 1,
                 "num_tiles": 1,
                 "val_accuracy": 0.80,
@@ -213,11 +213,11 @@ def test_aggregate_accuracy_keeps_ablation_groups_separate():
 
     aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "ablation_name", "grid_size", "num_tiles"])
 
-    assert set(aggregated["ablation_name"]) == {"augmentation_only", "pretrained_finetune"}
+    assert set(aggregated["ablation_name"]) == {"augmentation_only", "finetune_only"}
     assert len(aggregated) == 2
 
 
-def test_part3_helpers_reuse_permutation_csv_filter_resnet50_and_emit_renamed_metrics(tmp_path):
+def test_part3_helpers_reuse_permutation_csv_filter_model_and_emit_renamed_metrics(tmp_path):
     pd.DataFrame(
         [
             {
@@ -231,14 +231,14 @@ def test_part3_helpers_reuse_permutation_csv_filter_resnet50_and_emit_renamed_me
     pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 2,
                 "num_tiles": 4,
                 "permutation_id": 7,
                 "best_val_accuracy": 0.75,
             },
             {
-                "model_name": "deit_small",
+                "model_name": "deit_tiny",
                 "grid_size": 2,
                 "num_tiles": 4,
                 "permutation_id": 7,
@@ -253,18 +253,17 @@ def test_part3_helpers_reuse_permutation_csv_filter_resnet50_and_emit_renamed_me
         num_permutations=0,
         seed=42,
     )
-    resnet50_results = load_part1_resnet50_results(str(tmp_path / "part1_raw_results.csv"))
+    model_results = load_part1_model_results(str(tmp_path / "part1_raw_results.csv"), "resnet18")
 
     assert metrics["permutation_id"].tolist() == [7]
     assert set(
         [
             "global_tile_displacement",
             "center_weighted_displacement",
-            "adjacency_preservation_loss",
             "combined_hardness_score",
         ]
     ).issubset(metrics.columns)
-    assert resnet50_results["model_name"].tolist() == ["resnet50"]
+    assert model_results["model_name"].tolist() == ["resnet18"]
 
 
 def test_part3_metrics_exclude_duplicate_1x1_permutation_rows(tmp_path):
@@ -313,7 +312,6 @@ def test_part3_non_identity_2x2_permutation_has_nonzero_metric(tmp_path):
     metric_columns = [
         "global_tile_displacement",
         "center_weighted_displacement",
-        "adjacency_preservation_loss",
         "combined_hardness_score",
     ]
     assert metrics.loc[0, metric_columns].gt(0.0).any()
@@ -333,7 +331,7 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
     pd.DataFrame(
         [
             {
-                "model_name": "resnet50",
+                "model_name": "resnet18",
                 "grid_size": 2,
                 "num_tiles": 4,
                 "permutation_id": 1,
@@ -351,6 +349,7 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
             grid_sizes=[2],
             num_permutations=1,
             seed=42,
+            model_name="resnet18",
             verbose=False,
             show_progress=False,
         )
@@ -363,14 +362,12 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.10,
                 "center_weighted_displacement": 0.20,
-                "adjacency_preservation_loss": 0.30,
                 "combined_hardness_score": 0.25,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
                 "center_weighted_displacement": 0.70,
-                "adjacency_preservation_loss": 0.60,
                 "combined_hardness_score": 0.70,
             },
         ]
@@ -390,14 +387,12 @@ def test_part3_correlations_are_nan_for_constant_accuracy():
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.00,
                 "center_weighted_displacement": 0.00,
-                "adjacency_preservation_loss": 0.00,
                 "combined_hardness_score": 0.00,
             },
             {
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.50,
                 "center_weighted_displacement": 0.40,
-                "adjacency_preservation_loss": 0.30,
                 "combined_hardness_score": 0.45,
             },
         ]
@@ -416,21 +411,18 @@ def test_part3_correlations_are_finite_for_non_constant_accuracy():
                 "best_val_accuracy": 0.80,
                 "global_tile_displacement": 0.00,
                 "center_weighted_displacement": 0.10,
-                "adjacency_preservation_loss": 0.20,
                 "combined_hardness_score": 0.15,
             },
             {
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.50,
                 "center_weighted_displacement": 0.40,
-                "adjacency_preservation_loss": 0.30,
                 "combined_hardness_score": 0.45,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.90,
                 "center_weighted_displacement": 0.80,
-                "adjacency_preservation_loss": 0.70,
                 "combined_hardness_score": 0.80,
             },
         ]

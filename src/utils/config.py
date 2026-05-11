@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Mapping
 import os
 
+from src.models.registry import validate_model_name, validate_model_names
 from src.utils.io import load_yaml
 
 
@@ -54,7 +55,8 @@ def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     """
 
     if not GROUPED_CONFIG_KEYS.intersection(config.keys()):
-        return dict(config)
+        normalized = dict(config)
+        return _normalize_model_config(normalized)
 
     general = dict(config.get("general", {}))
     input_output = dict(config.get("input_output", {}))
@@ -72,12 +74,46 @@ def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     if "ablations" in config:
         normalized["ablations"] = config["ablations"]
 
-    # Keep Part 2's single model name ergonomic in YAML while preserving the
+    return _normalize_model_config(normalized)
+
+
+def _normalize_model_config(normalized: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and canonicalize model fields in flat configs."""
+
+    if "model_names" in normalized:
+        normalized["model_names"] = validate_model_names(normalized["model_names"])
+    if "model_name" in normalized:
+        normalized["model_name"] = validate_model_name(normalized["model_name"])
+
+    # Keep single-model notebooks ergonomic in YAML while preserving the
     # internal key used by the runner.
     if "model_name" not in normalized and "model_names" in normalized:
         model_names = normalized["model_names"]
         if isinstance(model_names, list) and len(model_names) == 1:
             normalized["model_name"] = model_names[0]
+
+    if "model_name" in normalized and "model_names" in normalized:
+        model_name = normalized["model_name"]
+        model_names = normalized["model_names"]
+        if model_name not in model_names:
+            raise ValueError(
+                f"model_name='{model_name}' must be one of model_names={model_names}"
+            )
+
+    if normalized.get("part") in {"part2", "part3"} and "model_names" in normalized:
+        model_names = normalized["model_names"]
+        if model_names != ["resnet18"]:
+            raise ValueError(
+                f"{normalized['part']} configs support only model_names=['resnet18']; "
+                f"got model_names={model_names}"
+            )
+    if normalized.get("part") in {"part2", "part3"} and "model_name" in normalized:
+        model_name = normalized["model_name"]
+        if model_name != "resnet18":
+            raise ValueError(
+                f"{normalized['part']} configs support only model_name='resnet18'; "
+                f"got model_name='{model_name}'"
+            )
 
     return normalized
 
@@ -119,16 +155,9 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet50", "deit_small", "mlp_mixer"]
+        default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_small"]
     )
-    run_resnet50: bool = True
-    run_deit_small: bool = True
-    run_mlp_mixer: bool = True
-    pretrained: bool = False
-
-    # ConvMixer-specific configuration
-    convmixer_dim: int = 128
-    convmixer_depth: int = 4
+    pretrained: bool = True
 
     # Grid and permutation experiment configuration
     grid_sizes: list[int] = field(default_factory=lambda: [1, 3, 4])
@@ -150,6 +179,8 @@ class CVExperimentConfig:
     plot_samples: bool = False
 
     def __post_init__(self) -> None:
+        self._validate_config_model_names()
+
         if self._is_code_running_on_colab():
             print("Running on Google Colab, adjusting configs...")
             self._mount_colab_drive_if_available()
@@ -157,6 +188,8 @@ class CVExperimentConfig:
         else:
             self._update_root_for_local_runtime()
             self.update_configs_for_local_testing()
+
+        self._validate_config_model_names()
 
         # set_paths
         self._set_paths()
@@ -224,43 +257,43 @@ class CVExperimentConfig:
         """Update configs for local testing."""
         self.sample_data = True
         self.sample_limit = 256
+        self.model_names = ["resnet18"]
         self.grid_sizes = [1, 3]
         self.num_permutations = 2
-        self.epochs = 5
+        self.epochs = 3
         self.plot_samples = True
+
+    def _validate_config_model_names(self) -> None:
+        """Validate and canonicalize the models requested by this config."""
+
+        self.model_names = validate_model_names(self.model_names)
 
 
 @dataclass
 class Part2ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 2 ResNet50 improvement ablations."""
+    """Notebook-owned configuration for Part 2 ResNet-18 improvement ablations."""
 
     part: str = "part2"
     config_name: str = "part2_improvement"
-    model_names: list[str] = field(default_factory=lambda: ["resnet50"])
+    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
     grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     num_permutations: int = 3
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {
-                "name": "pretrained_feature_extractor",
-                "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": True,
-            },
-            {
-                "name": "pretrained_finetune",
-                "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": False,
-            },
-            {
                 "name": "augmentation_only",
-                "use_pretrained": False,
+                "use_pretrained": True,
                 "use_standard_augmentation": True,
                 "freeze_backbone": False,
             },
             {
-                "name": "pretrained_augmented_finetune",
+                "name": "finetune_only",
+                "use_pretrained": True,
+                "use_standard_augmentation": False,
+                "freeze_backbone": False,
+            },
+            {
+                "name": "augmentation_finetune",
                 "use_pretrained": True,
                 "use_standard_augmentation": True,
                 "freeze_backbone": False,
@@ -272,23 +305,52 @@ class Part2ExperimentConfig(CVExperimentConfig):
     def model_name(self) -> str:
         """Return the single model used by the Part 2 ablation notebook."""
 
-        return self.model_names[0]
+        return self._validate_resnet18_only_model_names()[0]
+
+    def _validate_config_model_names(self) -> None:
+        """Part 2 is a ResNet-18-only ablation setup."""
+
+        self.model_names = self._validate_resnet18_only_model_names()
+
+    def _validate_resnet18_only_model_names(self) -> list[str]:
+        model_names = validate_model_names(self.model_names)
+        if model_names != ["resnet18"]:
+            config_name = getattr(self, "config_name", type(self).__name__)
+            raise ValueError(
+                f"{config_name} supports only model_names=['resnet18']; "
+                f"got model_names={model_names}"
+            )
+        return model_names
 
 
 @dataclass
 class Part3ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 3 ResNet50 hardness analysis."""
+    """Notebook-owned configuration for Part 3 ResNet-18 hardness analysis."""
 
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
-    model_names: list[str] = field(default_factory=lambda: ["resnet50"])
+    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
     alpha_center: float = 1.0
-    weight_adj: float = 0.5
-    weight_center: float = 0.3
-    weight_dist: float = 0.2
+    weight_center: float = 0.5
+    weight_dist: float = 0.5
 
     @property
     def model_name(self) -> str:
         """Return the single model used by the Part 3 hardness notebook."""
 
-        return self.model_names[0]
+        return self._validate_resnet18_only_model_names()[0]
+
+    def _validate_config_model_names(self) -> None:
+        """Part 3 is a ResNet-18-only hardness analysis setup."""
+
+        self.model_names = self._validate_resnet18_only_model_names()
+
+    def _validate_resnet18_only_model_names(self) -> list[str]:
+        model_names = validate_model_names(self.model_names)
+        if model_names != ["resnet18"]:
+            config_name = getattr(self, "config_name", type(self).__name__)
+            raise ValueError(
+                f"{config_name} supports only model_names=['resnet18']; "
+                f"got model_names={model_names}"
+            )
+        return model_names
