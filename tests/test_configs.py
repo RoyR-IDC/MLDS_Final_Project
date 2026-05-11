@@ -25,7 +25,66 @@ def test_grouped_config_normalizes_to_runner_keys():
     assert normalized_config["data_dir"] == "data/dogs-vs-cats/train"
     assert normalized_config["batch_size"] == 8
     assert normalized_config["model_names"] == ["resnet18"]
+    assert normalized_config["model_name"] == "resnet18"
     assert normalized_config["grid_sizes"] == [1, 2]
+
+
+def test_config_normalization_rejects_models_outside_supported_trio():
+    raw_config = {
+        "part": "part1",
+        "model_names": ["resnet18", "resnet50"],
+    }
+
+    try:
+        normalize_config(raw_config)
+    except ValueError as exc:
+        assert "Unsupported model_name='resnet50'" in str(exc)
+        assert "resnet18, deit_tiny, mlp_mixer_small" in str(exc)
+    else:
+        raise AssertionError("Expected unsupported model_name to raise")
+
+
+def test_config_normalization_rejects_inconsistent_single_model_fields():
+    raw_config = {
+        "part": "part1",
+        "model_name": "deit_tiny",
+        "model_names": ["resnet18"],
+    }
+
+    try:
+        normalize_config(raw_config)
+    except ValueError as exc:
+        assert "must be one of model_names" in str(exc)
+    else:
+        raise AssertionError("Expected inconsistent model fields to raise")
+
+
+def test_part3_normalized_config_is_resnet18_only():
+    raw_config = {
+        "part": "part3",
+        "model_names": ["deit_tiny"],
+    }
+
+    try:
+        normalize_config(raw_config)
+    except ValueError as exc:
+        assert "part3 configs support only model_names=['resnet18']" in str(exc)
+    else:
+        raise AssertionError("Expected Part 3 config to reject non-resnet18 model")
+
+
+def test_part3_normalized_config_rejects_single_resnet50_model_name():
+    raw_config = {
+        "part": "part3",
+        "model_name": "resnet50",
+    }
+
+    try:
+        normalize_config(raw_config)
+    except ValueError as exc:
+        assert "Unsupported model_name='resnet50'" in str(exc)
+    else:
+        raise AssertionError("Expected Part 3 config to reject resnet50")
 
 
 def test_official_configs_are_not_duplicated():
@@ -59,6 +118,19 @@ def test_part2_config_exposes_single_model_name_property():
     assert config.model_name == "resnet18"
 
 
+def test_part2_config_rejects_non_resnet18_supported_model():
+    config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
+    config.config_name = "part2_improvement"
+    config.model_names = ["deit_tiny"]
+
+    try:
+        _ = config.model_name
+    except ValueError as exc:
+        assert "supports only model_names=['resnet18']" in str(exc)
+    else:
+        raise AssertionError("Expected Part 2 config to reject non-resnet18 model")
+
+
 def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
     dataclass_fields = Part3ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
@@ -76,6 +148,19 @@ def test_part3_config_exposes_single_model_name_property():
     config.model_names = ["resnet18"]
 
     assert config.model_name == "resnet18"
+
+
+def test_part3_config_rejects_resnet50():
+    config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
+    config.config_name = "part3_hardness_analysis"
+    config.model_names = ["resnet50"]
+
+    try:
+        _ = config.model_name
+    except ValueError as exc:
+        assert "Unsupported model_name='resnet50'" in str(exc)
+    else:
+        raise AssertionError("Expected Part 3 config to reject resnet50")
 
 
 def test_cv_experiment_config_exposes_single_seed_field():

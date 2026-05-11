@@ -17,6 +17,7 @@ from src.evaluation.permutation_difficulty import (
     compute_combined_hardness,
     compute_global_displacement,
 )
+from src.models.registry import validate_model_name
 from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
 from src.preprocessing.permutations import PermutationRecord, generate_permutations, identity_permutation
 from src.utils.config import CVExperimentConfig
@@ -502,6 +503,7 @@ def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
 def load_part1_model_results(part1_results_csv: str, model_name: str) -> pd.DataFrame:
     """Load Part 1 raw results filtered to one trained model."""
 
+    model_name = validate_model_name(model_name)
     raw_results = pd.read_csv(part1_results_csv)
     if "model_name" not in raw_results.columns:
         raise ValueError("Part 1 results must contain a model_name column")

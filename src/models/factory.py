@@ -9,11 +9,7 @@ import torch
 from torch import nn
 import torchvision.models as tv_models
 
-
-TIMM_MODEL_IDS = {
-    "deit_tiny": "deit_tiny_patch16_224.fb_in1k",
-    "mlp_mixer_small": "mixer_s16_224",
-}
+from src.models.registry import TIMM_MODEL_IDS, format_supported_model_names, validate_model_name
 
 
 def _weights(enum_class: Any, pretrained: bool) -> Optional[Any]:
@@ -52,7 +48,7 @@ def get_model(
         A PyTorch model.
     """
 
-    key = name.lower()
+    key = validate_model_name(name)
     if key == "resnet18":
         model = tv_models.resnet18(weights=_weights(tv_models.ResNet18_Weights, pretrained))
         model.fc = nn.Linear(model.fc.in_features, num_classes)
@@ -66,8 +62,7 @@ def get_model(
             )
         model = timm.create_model(model_id, pretrained=pretrained, num_classes=num_classes)
     else:
-        supported = ", ".join(["resnet18", *TIMM_MODEL_IDS])
-        raise ValueError(f"Unsupported model: {name}. Supported models: {supported}")
+        raise ValueError(f"Unsupported model: {name}. Supported models: {format_supported_model_names()}")
 
     if freeze_backbone:
         freeze_feature_extractor(model)
