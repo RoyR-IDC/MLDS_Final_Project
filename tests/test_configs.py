@@ -1,7 +1,13 @@
 from dataclasses import fields
 from pathlib import Path
 
-from src.utils.config import CVExperimentConfig, Part2ExperimentConfig, find_project_root, normalize_config
+from src.utils.config import (
+    CVExperimentConfig,
+    Part2ExperimentConfig,
+    Part3ExperimentConfig,
+    find_project_root,
+    normalize_config,
+)
 
 
 def test_grouped_config_normalizes_to_runner_keys():
@@ -54,11 +60,52 @@ def test_part2_config_exposes_single_model_name_property():
     assert config.model_name == "resnet50"
 
 
+def test_part3_config_defaults_to_resnet50_hardness_analysis_setup():
+    dataclass_fields = Part3ExperimentConfig.__dataclass_fields__
+    model_names = dataclass_fields["model_names"].default_factory()
+
+    assert dataclass_fields["part"].default == "part3"
+    assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
+    assert model_names == ["resnet50"]
+    assert dataclass_fields["alpha_center"].default == 1.0
+    assert dataclass_fields["weight_adj"].default == 0.5
+    assert dataclass_fields["weight_center"].default == 0.3
+    assert dataclass_fields["weight_dist"].default == 0.2
+
+
+def test_part3_config_exposes_single_model_name_property():
+    config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
+    config.model_names = ["resnet50"]
+
+    assert config.model_name == "resnet50"
+
+
 def test_cv_experiment_config_exposes_single_seed_field():
     field_names = {field.name for field in fields(CVExperimentConfig)}
 
     assert "seed" in field_names
     assert "permutation_seed" not in field_names
+
+
+def test_part1_model_toggles_default_to_enabled():
+    dataclass_fields = CVExperimentConfig.__dataclass_fields__
+
+    assert dataclass_fields["run_resnet50"].default is True
+    assert dataclass_fields["run_deit_small"].default is True
+    assert dataclass_fields["run_mlp_mixer"].default is True
+
+
+def test_local_testing_defaults_use_larger_part1_signal():
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+
+    CVExperimentConfig.update_configs_for_local_testing(config)
+
+    assert config.sample_data is True
+    assert config.sample_limit == 256
+    assert config.grid_sizes == [1, 3]
+    assert config.num_permutations == 2
+    assert config.epochs == 5
+    assert config.plot_samples is True
 
 
 def test_find_project_root_walks_up_from_notebook_directory(tmp_path):

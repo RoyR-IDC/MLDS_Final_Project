@@ -121,6 +121,9 @@ class CVExperimentConfig:
     model_names: list[str] = field(
         default_factory=lambda: ["resnet50", "deit_small", "mlp_mixer"]
     )
+    run_resnet50: bool = True
+    run_deit_small: bool = True
+    run_mlp_mixer: bool = True
     pretrained: bool = False
 
     # ConvMixer-specific configuration
@@ -128,7 +131,7 @@ class CVExperimentConfig:
     convmixer_depth: int = 4
 
     # Grid and permutation experiment configuration
-    grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
+    grid_sizes: list[int] = field(default_factory=lambda: [1, 3, 4])
     num_permutations: int = 5
 
     # Training configuration
@@ -220,10 +223,10 @@ class CVExperimentConfig:
     def update_configs_for_local_testing(self) -> None:
         """Update configs for local testing."""
         self.sample_data = True
-        self.sample_limit = 32
-        self.grid_sizes = [1, 2]
+        self.sample_limit = 256
+        self.grid_sizes = [1, 3]
         self.num_permutations = 2
-        self.epochs = 3
+        self.epochs = 5
         self.plot_samples = True
 
 
@@ -268,5 +271,24 @@ class Part2ExperimentConfig(CVExperimentConfig):
     @property
     def model_name(self) -> str:
         """Return the single model used by the Part 2 ablation notebook."""
+
+        return self.model_names[0]
+
+
+@dataclass
+class Part3ExperimentConfig(CVExperimentConfig):
+    """Notebook-owned configuration for Part 3 ResNet50 hardness analysis."""
+
+    part: str = "part3"
+    config_name: str = "part3_hardness_analysis"
+    model_names: list[str] = field(default_factory=lambda: ["resnet50"])
+    alpha_center: float = 1.0
+    weight_adj: float = 0.5
+    weight_center: float = 0.3
+    weight_dist: float = 0.2
+
+    @property
+    def model_name(self) -> str:
+        """Return the single model used by the Part 3 hardness notebook."""
 
         return self.model_names[0]
