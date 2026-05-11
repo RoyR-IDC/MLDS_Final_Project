@@ -162,19 +162,17 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - ablation configs
   - save CSV and comparison plots
 
-- src/experiments/part3_difficulty.py
+- src/evaluation/experiment_results.py
   - compute permutation metrics
   - join metrics with Part 1 results
   - compute Pearson/Spearman correlations
   - save CSV and plots
 
-- src/permutation_metrics.py or src/metrics/permutation_difficulty.py
-  - average_displacement
-  - normalized_average_displacement
-  - adjacency_preservation
-  - locality_disruption
-  - displacement_entropy
-  - combined difficulty score if justified
+- src/evaluation/permutation_difficulty.py
+  - compute_global_displacement
+  - compute_center_weighted_displacement
+  - compute_adjacency_preservation_loss
+  - compute_combined_hardness
 
 - src/utils/reproducibility.py
   - seed_everything
@@ -185,8 +183,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - save_json
   - save_csv helpers if useful
 
-- configs/part2_improvement.yaml
-- configs/part3_difficulty.yaml
+- notebook-owned settings; no official YAML configs
 
 - tests/test_tile_permutation.py
 - tests/test_permutation_metrics.py
@@ -212,7 +209,7 @@ part1_solution.ipynb:
 - Clearly show repeated permutations and averaged results.
 
 part2_solution.ipynb:
-- Load configs/part2_improvement.yaml.
+- Use notebook-owned Part 2 configuration.
 - Run or demonstrate baseline vs improved model.
 - Show ablation table.
 - Plot baseline vs improved performance.

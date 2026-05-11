@@ -1,159 +1,277 @@
-"""Model-agnostic tile permutation difficulty metrics."""
+"""Model-agnostic Part 3 hardness metrics for image tile permutations."""
 
 from __future__ import annotations
 
 import math
-from typing import List, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 
-def validate_permutation(permutation: Sequence[int], grid_size: int) -> List[int]:
-    """Validate and return a tile permutation as a list.
+def compute_global_displacement(permutation: Sequence[int], N: int) -> float:
+    """Return normalized global Manhattan tile displacement."""
 
-    Args:
-        permutation: Mapping from output tile positions to source tile indices.
-        grid_size: Number of tiles along each image side.
+    permutation_values = _validate_permutation(permutation, N)
+    maximum = _max_global_displacement(N)
+    if maximum == 0:
+        return 0.0
 
-    Returns:
-        Validated permutation list.
+    source_coordinates, destination_coordinates = _source_destination_coordinates(permutation_values, N)
+    total_displacement = _manhattan_distances(source_coordinates, destination_coordinates).sum()
+    return _clip_unit(float(total_displacement / maximum))
 
-    Raises:
-        ValueError: If the permutation is malformed.
-    """
 
-    expected = grid_size * grid_size
-    values = list(permutation)
+def compute_center_weighted_displacement(
+    permutation: Sequence[int],
+    N: int,
+    alpha_center: float,
+) -> float:
+    """Return normalized center-weighted Manhattan tile displacement."""
+
+    permutation_values = _validate_permutation(permutation, N)
+    maximum = _max_center_weighted_displacement(N, alpha_center)
+    if maximum == 0:
+        return 0.0
+
+    source_coordinates, destination_coordinates = _source_destination_coordinates(permutation_values, N)
+    weighted_distances = _center_weights(N, alpha_center) * _manhattan_distances(
+        source_coordinates,
+        destination_coordinates,
+    )
+    return _clip_unit(float(weighted_distances.sum() / maximum))
+
+
+def compute_adjacency_preservation_loss(permutation: Sequence[int], N: int) -> float:
+    """Return one minus the fraction of original 4-neighbor adjacencies preserved."""
+
+    permutation_values = _validate_permutation(permutation, N)
+    adjacency_pairs = _original_adjacency_pairs(N)
+    if len(adjacency_pairs) == 0:
+        return 0.0
+
+    coordinates = _tile_coordinates(N)
+    destination_by_source = _source_to_destination(permutation_values)
+    destination_pairs = coordinates[destination_by_source[adjacency_pairs]]
+    pair_distances = _manhattan_distances(destination_pairs[:, 0, :], destination_pairs[:, 1, :])
+    preserved_count = np.count_nonzero(pair_distances == 1)
+    return _clip_unit(1.0 - float(preserved_count / len(adjacency_pairs)))
+
+
+def compute_combined_hardness(
+    permutation: Sequence[int],
+    N: int,
+    alpha_center: float,
+    weight_adj: float = 0.5,
+    weight_center: float = 0.3,
+    weight_dist: float = 0.2,
+) -> float:
+    """Return the weighted Part 3 hardness score for one permutation."""
+
+    _validate_hardness_weights(weight_adj, weight_center, weight_dist)
+    permutation_values = _validate_permutation(permutation, N)
+    adjacency_preservation_loss = _adjacency_preservation_loss(permutation_values, N)
+    center_weighted_displacement = _center_weighted_displacement(permutation_values, N, alpha_center)
+    global_tile_displacement = _global_displacement(permutation_values, N)
+    return _weighted_hardness_score(
+        adjacency_preservation_loss=adjacency_preservation_loss,
+        center_weighted_displacement=center_weighted_displacement,
+        global_tile_displacement=global_tile_displacement,
+        weight_adj=weight_adj,
+        weight_center=weight_center,
+        weight_dist=weight_dist,
+    )
+
+
+# =============================================================================
+# Helper methods for validation, vectorized geometry, normalization, and scoring
+# =============================================================================
+
+
+def _validate_permutation(permutation: Sequence[int], grid_size: int) -> np.ndarray:
+    """Validate and return an output-position to source-tile permutation."""
+
     if grid_size < 1:
         raise ValueError("grid_size must be at least 1")
-    if len(values) != expected:
-        raise ValueError(f"Expected permutation length {expected}, got {len(values)}")
-    if sorted(values) != list(range(expected)):
+
+    values = np.asarray(permutation)
+    expected = grid_size * grid_size
+    if values.ndim != 1 or values.size != expected:
+        raise ValueError(f"Expected permutation length {expected}, got {values.size}")
+    if not np.issubdtype(values.dtype, np.integer):
+        raise ValueError("permutation must contain integer tile indices")
+
+    values = values.astype(np.intp, copy=False)
+    if not np.array_equal(np.sort(values), np.arange(expected, dtype=np.intp)):
         raise ValueError("permutation must contain each tile index exactly once")
     return values
 
 
-def tile_coordinates(grid_size: int) -> np.ndarray:
-    """Return row-column coordinates for row-major tile indices.
+def _tile_coordinates(N: int) -> np.ndarray:
+    """Return row-column coordinates for row-major tile indices."""
 
-    Args:
-        grid_size: Number of tiles along each image side.
-
-    Returns:
-        Array of ``(row, column)`` coordinates.
-    """
-
-    coordinates = np.array([(idx // grid_size, idx % grid_size) for idx in range(grid_size * grid_size)], dtype=float)
-    return coordinates
+    if N < 1:
+        raise ValueError("N must be at least 1")
+    return np.column_stack(np.divmod(np.arange(N * N, dtype=np.intp), N)).astype(float)
 
 
-def _source_to_destination(permutation: Sequence[int], grid_size: int) -> np.ndarray:
-    """Invert an output-to-source permutation into source-to-output positions.
+def _source_to_destination(permutation_values: np.ndarray) -> np.ndarray:
+    """Invert an output-to-source permutation into source-to-output indices."""
 
-    Args:
-        permutation: Mapping from output tile positions to source tile indices.
-        grid_size: Number of tiles along each image side.
-
-    Returns:
-        Array mapping each source tile to its destination index.
-    """
-
-    permutation = validate_permutation(permutation, grid_size)
-    destination_by_source = np.empty(grid_size * grid_size, dtype=int)
-    for destination, source in enumerate(permutation):
-        destination_by_source[source] = destination
-    source_to_destination = destination_by_source
-    return source_to_destination
+    destination_by_source = np.empty_like(permutation_values)
+    destination_by_source[permutation_values] = np.arange(permutation_values.size, dtype=np.intp)
+    return destination_by_source
 
 
-def average_displacement(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute average Euclidean tile displacement in grid units.
+def _source_destination_coordinates(permutation_values: np.ndarray, N: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return original and destination coordinates for every source tile."""
 
-    Args:
-        permutation: Mapping from output tile positions to source tile indices.
-        grid_size: Number of tiles along each image side.
-
-    Returns:
-        Mean displacement before normalization.
-    """
-
-    destination_by_source = _source_to_destination(permutation, grid_size)
-    coords = tile_coordinates(grid_size)
-    distances = np.linalg.norm(coords - coords[destination_by_source], axis=1)
-    displacement = float(distances.mean())
-    return displacement
+    coordinates = _tile_coordinates(N)
+    destination_by_source = _source_to_destination(permutation_values)
+    return coordinates, coordinates[destination_by_source]
 
 
-def normalized_average_displacement(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute average displacement normalized by the grid diagonal."""
+def _manhattan_distances(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+    """Return vectorized Manhattan distances between aligned coordinate arrays."""
 
-    if grid_size == 1:
+    return np.abs(left - right).sum(axis=-1)
+
+
+def _center_weights(N: int, alpha_center: float) -> np.ndarray:
+    """Return center-importance weights for every source tile."""
+
+    if alpha_center < 0:
+        raise ValueError("alpha_center must be non-negative")
+
+    coordinates = _tile_coordinates(N)
+    center = (N - 1) / 2.0
+    radii = np.linalg.norm(coordinates - center, axis=1)
+    return np.exp(-alpha_center * radii)
+
+
+def _original_adjacency_pairs(N: int) -> np.ndarray:
+    """Return each original horizontal and vertical tile adjacency once."""
+
+    if N < 1:
+        raise ValueError("N must be at least 1")
+
+    tile_indices = np.arange(N * N, dtype=np.intp).reshape(N, N)
+    horizontal_pairs = np.column_stack((tile_indices[:, :-1].ravel(), tile_indices[:, 1:].ravel()))
+    vertical_pairs = np.column_stack((tile_indices[:-1, :].ravel(), tile_indices[1:, :].ravel()))
+    if horizontal_pairs.size == 0:
+        return vertical_pairs
+    if vertical_pairs.size == 0:
+        return horizontal_pairs
+    return np.vstack((horizontal_pairs, vertical_pairs))
+
+
+def _max_global_displacement(N: int) -> float:
+    """Return the maximum total Manhattan displacement for an ``N x N`` grid."""
+
+    _validate_grid_size(N)
+    row_indices = np.arange(N, dtype=float)
+    row_max = N * np.abs(row_indices - row_indices[::-1]).sum()
+    return float(2.0 * row_max)
+
+
+def _max_center_weighted_displacement(N: int, alpha_center: float) -> float:
+    """Return the exact maximum weighted Manhattan displacement."""
+
+    _validate_grid_size(N)
+    coordinates = _tile_coordinates(N)
+    weights = _center_weights(N, alpha_center)
+    weighted_distances = weights[:, np.newaxis] * _manhattan_distances(
+        coordinates[:, np.newaxis, :],
+        coordinates[np.newaxis, :, :],
+    )
+    source_indices, destination_indices = linear_sum_assignment(weighted_distances, maximize=True)
+    return float(weighted_distances[source_indices, destination_indices].sum())
+
+
+def _global_displacement(permutation_values: np.ndarray, N: int) -> float:
+    """Compute global displacement for an already validated permutation."""
+
+    maximum = _max_global_displacement(N)
+    if maximum == 0:
         return 0.0
-    diagonal = math.sqrt(2.0) * (grid_size - 1)
-    normalized_displacement = float(average_displacement(permutation, grid_size) / diagonal)
-    return normalized_displacement
+
+    source_coordinates, destination_coordinates = _source_destination_coordinates(permutation_values, N)
+    total_displacement = _manhattan_distances(source_coordinates, destination_coordinates).sum()
+    return _clip_unit(float(total_displacement / maximum))
 
 
-def adjacency_preservation(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute the fraction of original 4-neighbor tile adjacencies preserved."""
+def _center_weighted_displacement(permutation_values: np.ndarray, N: int, alpha_center: float) -> float:
+    """Compute center-weighted displacement for an already validated permutation."""
 
-    destination_by_source = _source_to_destination(permutation, grid_size)
-    coords = tile_coordinates(grid_size)
-    adjacent_pairs: List[Tuple[int, int]] = []
-    for source in range(grid_size * grid_size):
-        row, col = divmod(source, grid_size)
-        if col + 1 < grid_size:
-            adjacent_pairs.append((source, source + 1))
-        if row + 1 < grid_size:
-            adjacent_pairs.append((source, source + grid_size))
-    if not adjacent_pairs:
-        return 1.0
-    kept = 0
-    for left, right in adjacent_pairs:
-        left_coord = coords[destination_by_source[left]]
-        right_coord = coords[destination_by_source[right]]
-        kept += int(np.abs(left_coord - right_coord).sum() == 1)
-    preservation = float(kept / len(adjacent_pairs))
-    return preservation
-
-
-def locality_disruption(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute one minus adjacency preservation."""
-
-    disruption = float(1.0 - adjacency_preservation(permutation, grid_size))
-    return disruption
-
-
-def displacement_entropy(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute Shannon entropy of tile displacement magnitudes."""
-
-    destination_by_source = _source_to_destination(permutation, grid_size)
-    coords = tile_coordinates(grid_size)
-    distances = np.linalg.norm(coords - coords[destination_by_source], axis=1)
-    unique, counts = np.unique(distances, return_counts=True)
-    if len(unique) <= 1:
+    maximum = _max_center_weighted_displacement(N, alpha_center)
+    if maximum == 0:
         return 0.0
-    probabilities = counts.astype(float) / counts.sum()
-    entropy = float(-(probabilities * np.log2(probabilities)).sum())
-    return entropy
+
+    source_coordinates, destination_coordinates = _source_destination_coordinates(permutation_values, N)
+    weighted_distances = _center_weights(N, alpha_center) * _manhattan_distances(
+        source_coordinates,
+        destination_coordinates,
+    )
+    return _clip_unit(float(weighted_distances.sum() / maximum))
 
 
-def combined_difficulty_score(permutation: Sequence[int], grid_size: int) -> float:
-    """Compute a compact difficulty score from displacement and locality disruption."""
+def _adjacency_preservation_loss(permutation_values: np.ndarray, N: int) -> float:
+    """Compute adjacency loss for an already validated permutation."""
 
-    difficulty_score = float(0.5 * normalized_average_displacement(permutation, grid_size) + 0.5 * locality_disruption(permutation, grid_size))
-    return difficulty_score
+    adjacency_pairs = _original_adjacency_pairs(N)
+    if len(adjacency_pairs) == 0:
+        return 0.0
+
+    coordinates = _tile_coordinates(N)
+    destination_by_source = _source_to_destination(permutation_values)
+    destination_pairs = coordinates[destination_by_source[adjacency_pairs]]
+    pair_distances = _manhattan_distances(destination_pairs[:, 0, :], destination_pairs[:, 1, :])
+    preserved_count = np.count_nonzero(pair_distances == 1)
+    return _clip_unit(1.0 - float(preserved_count / len(adjacency_pairs)))
 
 
-def permutation_metric_row(permutation: Sequence[int], grid_size: int) -> dict:
-    """Return all implemented permutation metrics as one dictionary."""
+def _weighted_hardness_score(
+    adjacency_preservation_loss: float,
+    center_weighted_displacement: float,
+    global_tile_displacement: float,
+    weight_adj: float,
+    weight_center: float,
+    weight_dist: float,
+) -> float:
+    """Fuse normalized component scores into one combined hardness score."""
 
-    metric_row = {
-        "average_displacement": average_displacement(permutation, grid_size),
-        "normalized_average_displacement": normalized_average_displacement(permutation, grid_size),
-        "adjacency_preservation": adjacency_preservation(permutation, grid_size),
-        "locality_disruption": locality_disruption(permutation, grid_size),
-        "displacement_entropy": displacement_entropy(permutation, grid_size),
-        "combined_difficulty": combined_difficulty_score(permutation, grid_size),
-    }
-    return metric_row
+    for name, value in {
+        "adjacency_preservation_loss": adjacency_preservation_loss,
+        "center_weighted_displacement": center_weighted_displacement,
+        "global_tile_displacement": global_tile_displacement,
+    }.items():
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1]")
+
+    hardness = (
+        weight_adj * adjacency_preservation_loss
+        + weight_center * center_weighted_displacement
+        + weight_dist * global_tile_displacement
+    )
+    return _clip_unit(hardness)
+
+
+def _validate_grid_size(N: int) -> None:
+    """Validate a tile grid side length."""
+
+    if N < 1:
+        raise ValueError("N must be at least 1")
+
+
+def _validate_hardness_weights(weight_adj: float, weight_center: float, weight_dist: float) -> None:
+    """Validate that combined hardness weights form a convex sum."""
+
+    total_weight = weight_adj + weight_center + weight_dist
+    if not math.isclose(total_weight, 1.0, rel_tol=1e-9, abs_tol=1e-9):
+        raise ValueError("weight_adj + weight_center + weight_dist must equal 1")
+
+
+def _clip_unit(value: float) -> float:
+    """Clip small floating-point drift into the normalized unit interval."""
+
+    return float(min(1.0, max(0.0, value)))

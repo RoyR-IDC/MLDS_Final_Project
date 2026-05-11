@@ -1,22 +1,49 @@
+import math
+
+import pytest
+
 from src.evaluation.permutation_difficulty import (
-    adjacency_preservation,
-    combined_difficulty_score,
-    locality_disruption,
-    normalized_average_displacement,
+    compute_adjacency_preservation_loss,
+    compute_center_weighted_displacement,
+    compute_combined_hardness,
+    compute_global_displacement,
 )
 
 
-def test_identity_metrics_are_easy():
-    permutation = list(range(9))
-    assert normalized_average_displacement(permutation, 3) == 0.0
-    assert adjacency_preservation(permutation, 3) == 1.0
-    assert locality_disruption(permutation, 3) == 0.0
-    assert combined_difficulty_score(permutation, 3) == 0.0
+def test_global_tile_displacement():
+    permutation = [3, 2, 1, 0]
+
+    assert compute_global_displacement(permutation, 2) == 1.0
 
 
-def test_nontrivial_metrics_are_bounded_and_harder_than_identity():
-    permutation = [8, 7, 6, 5, 4, 3, 2, 1, 0]
-    assert 0.0 < normalized_average_displacement(permutation, 3) <= 1.0
-    assert 0.0 <= adjacency_preservation(permutation, 3) <= 1.0
-    assert 0.0 <= locality_disruption(permutation, 3) <= 1.0
-    assert combined_difficulty_score(permutation, 3) > 0.0
+def test_center_weighted_displacement():
+    alpha_center = 1.0
+    center_weight = math.exp(-alpha_center * 0.0)
+    corner_weight = math.exp(-alpha_center * math.sqrt(2.0))
+    assert center_weight > corner_weight
+
+    center_swap = list(range(25))
+    center_swap[12], center_swap[13] = center_swap[13], center_swap[12]
+    outer_swap = list(range(25))
+    outer_swap[0], outer_swap[1] = outer_swap[1], outer_swap[0]
+
+    center_score = compute_center_weighted_displacement(center_swap, 5, alpha_center)
+    outer_score = compute_center_weighted_displacement(outer_swap, 5, alpha_center)
+
+    assert center_score > outer_score
+    assert 0.0 <= center_score <= 1.0
+    assert 0.0 <= outer_score <= 1.0
+
+
+def test_adjacency_preservation_loss():
+    assert compute_adjacency_preservation_loss([0, 1, 2, 3], 2) == 0.0
+
+    swap_top_row = [1, 0, 2, 3]
+
+    assert compute_adjacency_preservation_loss(swap_top_row, 2) == 0.5
+
+
+def test_combined_hardness_score():
+    assert compute_combined_hardness([3, 2, 1, 0], 2, alpha_center=1.0) == pytest.approx(0.5)
+    with pytest.raises(ValueError):
+        compute_combined_hardness([0, 1, 2, 3], 2, alpha_center=1.0, weight_adj=0.4)

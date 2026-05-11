@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import random
 from typing import Any, Dict, List, Mapping, Sequence
@@ -9,9 +10,16 @@ from typing import Any, Dict, List, Mapping, Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+from tqdm.auto import tqdm
 
+from src.evaluation.permutation_difficulty import (
+    compute_adjacency_preservation_loss,
+    compute_center_weighted_displacement,
+    compute_combined_hardness,
+    compute_global_displacement,
+)
 from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
-from src.preprocessing.permutations import PermutationRecord
+from src.preprocessing.permutations import PermutationRecord, generate_permutations, identity_permutation
 from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir, save_csv
 
@@ -161,10 +169,10 @@ def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) 
     aggregated_results = (
         raw_results.groupby(list(group_columns), dropna=False)
         .agg(
-            mean_val_accuracy=("val_accuracy", "mean"),
-            std_val_accuracy=("val_accuracy", "std"),
-            mean_best_val_accuracy=("best_val_accuracy", "mean"),
-            std_best_val_accuracy=("best_val_accuracy", "std"),
+            mean_final_epoch_val_accuracy=("val_accuracy", "mean"),
+            std_final_epoch_val_accuracy=("val_accuracy", "std"),
+            mean_best_epoch_val_accuracy=("best_val_accuracy", "mean"),
+            std_best_epoch_val_accuracy=("best_val_accuracy", "std"),
             n_runs=("val_accuracy", "count"),
         )
         .reset_index()
@@ -222,7 +230,12 @@ def load_part1_model_baseline_aggregated(
         print(f"Part 1 results exist, but no rows were found for {model_name}.")
         return pd.DataFrame()
 
-    if "mean_best_val_accuracy" not in baseline.columns:
+    if "mean_best_epoch_val_accuracy" not in baseline.columns:
+        if not {"val_accuracy", "best_val_accuracy"}.issubset(baseline.columns):
+            raise ValueError(
+                "Part 1 aggregated results use an unsupported schema. "
+                "Rerun Part 1 to regenerate aggregate columns with explicit final_epoch/best_epoch names."
+            )
         baseline = aggregate_accuracy(
             baseline,
             group_columns=["model_name", "grid_size", "num_tiles"],
@@ -300,8 +313,8 @@ def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_col
         group = group.sort_values("num_tiles")
         ax.errorbar(
             group["num_tiles"],
-            group["mean_best_val_accuracy"],
-            yerr=group["std_best_val_accuracy"].fillna(0.0),
+            group["mean_best_epoch_val_accuracy"],
+            yerr=group["std_best_epoch_val_accuracy"].fillna(0.0),
             marker="o",
             label=str(model_name),
         )
@@ -329,7 +342,7 @@ def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
         sorted_group = group.sort_values("ablation_name")
         ax.plot(
             sorted_group["ablation_name"],
-            sorted_group["mean_best_val_accuracy"],
+            sorted_group["mean_best_epoch_val_accuracy"],
             marker="o",
             label=f"{grid_size}x{grid_size}",
         )
@@ -342,3 +355,279 @@ def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
     fig.tight_layout()
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
+
+
+def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
+    """Return stable output paths for notebook-owned Part 3 analysis."""
+
+    combined_plot = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
+    return {
+        "metrics": os.path.join(results_dir, "permutation_metrics.csv"),
+        "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
+        "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
+        "plots": [combined_plot] if os.path.exists(combined_plot) else [],
+    }
+
+
+def load_or_build_part1_permutations(
+    permutation_csv: str,
+    grid_sizes: Sequence[int],
+    num_permutations: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Load saved Part 1 permutation metadata, or recreate it deterministically."""
+
+    if os.path.exists(permutation_csv):
+        return pd.read_csv(permutation_csv)
+
+    rows = []
+    for grid_size in [int(value) for value in grid_sizes]:
+        rows.append(
+            {
+                "grid_size": grid_size,
+                "permutation_id": 0,
+                "permutation_seed": seed,
+                "permutation": json.dumps(identity_permutation(grid_size)),
+            }
+        )
+        if grid_size == 1:
+            continue
+        for offset, permutation in enumerate(
+            generate_permutations(grid_size, int(num_permutations), seed=seed),
+            start=1,
+        ):
+            rows.append(
+                {
+                    "grid_size": grid_size,
+                    "permutation_id": offset,
+                    "permutation_seed": seed,
+                    "permutation": json.dumps(permutation),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _executable_part1_permutations(permutations: pd.DataFrame) -> pd.DataFrame:
+    """Return permutation rows that correspond to actual Part 1 executions."""
+
+    duplicate_untiled_permutation = (permutations["grid_size"].astype(int) == 1) & (
+        permutations["permutation_id"].astype(int) > 0
+    )
+    executable = permutations[~duplicate_untiled_permutation]
+    return executable.sort_values(["grid_size", "permutation_id"]).reset_index(drop=True)
+
+
+PART3_METRIC_COLUMNS = [
+    "global_tile_displacement",
+    "center_weighted_displacement",
+    "adjacency_preservation_loss",
+    "combined_hardness_score",
+]
+
+
+def compute_part3_permutation_metrics(
+    *,
+    permutation_csv: str,
+    grid_sizes: Sequence[int],
+    num_permutations: int,
+    seed: int,
+    alpha_center: float = 1.0,
+    weight_adj: float = 0.5,
+    weight_center: float = 0.3,
+    weight_dist: float = 0.2,
+    show_progress: bool = False,
+) -> pd.DataFrame:
+    """Compute renamed Part 3 hardness metrics for reusable Part 1 permutations."""
+
+    rows: list[dict[str, Any]] = []
+    permutations = load_or_build_part1_permutations(
+        permutation_csv=permutation_csv,
+        grid_sizes=grid_sizes,
+        num_permutations=num_permutations,
+        seed=seed,
+    )
+    permutations = _executable_part1_permutations(permutations)
+    iterator = permutations.iterrows()
+    if show_progress:
+        iterator = tqdm(
+            iterator,
+            total=len(permutations),
+            desc="Part 3 metrics",
+            unit="permutation",
+        )
+    for _, row in iterator:
+        permutation = json.loads(row["permutation"]) if isinstance(row["permutation"], str) else row["permutation"]
+        grid_size = int(row["grid_size"])
+        global_tile_displacement = compute_global_displacement(permutation, grid_size)
+        center_weighted_displacement = compute_center_weighted_displacement(permutation, grid_size, alpha_center)
+        adjacency_preservation_loss = compute_adjacency_preservation_loss(permutation, grid_size)
+        combined_hardness_score = compute_combined_hardness(
+            permutation=permutation,
+            N=grid_size,
+            alpha_center=alpha_center,
+            weight_adj=weight_adj,
+            weight_center=weight_center,
+            weight_dist=weight_dist,
+        )
+        rows.append(
+            {
+                "grid_size": grid_size,
+                "num_tiles": grid_size * grid_size,
+                "permutation_id": int(row["permutation_id"]),
+                "permutation_seed": row.get("permutation_seed"),
+                "global_tile_displacement": global_tile_displacement,
+                "center_weighted_displacement": center_weighted_displacement,
+                "adjacency_preservation_loss": adjacency_preservation_loss,
+                "combined_hardness_score": combined_hardness_score,
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["grid_size", "permutation_id"]).reset_index(drop=True)
+
+
+def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
+    """Raise if a tiled non-identity permutation has zero hardness for every metric."""
+
+    if metrics.empty:
+        return
+
+    invalid = metrics[
+        (metrics["grid_size"].astype(int) > 1)
+        & (metrics["permutation_id"].astype(int) > 0)
+        & (metrics[PART3_METRIC_COLUMNS].fillna(0.0).eq(0.0).all(axis=1))
+    ]
+    if invalid.empty:
+        return
+
+    row = invalid.iloc[0]
+    raise ValueError(
+        "Part 3 hardness metrics are all zero for a non-identity tiled permutation: "
+        f"grid_size={int(row['grid_size'])}, permutation_id={int(row['permutation_id'])}."
+    )
+
+
+def load_part1_resnet50_results(part1_results_csv: str) -> pd.DataFrame:
+    """Load Part 1 raw results filtered to the trained ResNet50 model."""
+
+    raw_results = pd.read_csv(part1_results_csv)
+    if "model_name" not in raw_results.columns:
+        raise ValueError("Part 1 results must contain a model_name column")
+
+    resnet50_results = raw_results[raw_results["model_name"] == "resnet50"].copy()
+    if resnet50_results.empty:
+        raise ValueError("No Part 1 rows found for model_name='resnet50'")
+    return resnet50_results
+
+
+def compute_part3_metric_correlations(joined: pd.DataFrame) -> pd.DataFrame:
+    """Compute ResNet50 accuracy correlations for each Part 3 hardness metric."""
+
+    rows: list[dict[str, Any]] = []
+    for metric in PART3_METRIC_COLUMNS:
+        frame = joined.dropna(subset=[metric, "best_val_accuracy"])
+        if len(frame) < 2 or frame[metric].nunique() < 2 or frame["best_val_accuracy"].nunique() < 2:
+            pearson = float("nan")
+            spearman = float("nan")
+        else:
+            pearson = float(frame[metric].corr(frame["best_val_accuracy"], method="pearson"))
+            spearman = float(frame[metric].corr(frame["best_val_accuracy"], method="spearman"))
+        rows.append(
+            {
+                "group": "resnet50",
+                "metric": metric,
+                "pearson": pearson,
+                "spearman": spearman,
+                "n": len(frame),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def plot_part3_metrics_vs_accuracy(joined: pd.DataFrame, figures_dir: str) -> None:
+    """Save one combined Part 3 hardness metric-vs-accuracy scatter plot."""
+
+    ensure_dir(figures_dir)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for metric in PART3_METRIC_COLUMNS:
+        ax.scatter(
+            joined[metric],
+            joined["best_val_accuracy"],
+            label=metric.replace("_", " ").title(),
+            alpha=0.8,
+        )
+    ax.set_xlabel("Hardness metric value")
+    ax.set_ylabel("Best validation accuracy")
+    ax.set_title("Part 3 Hardness Metrics vs Accuracy")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(figures_dir, "part3_metrics_vs_accuracy.png"), dpi=160)
+    plt.close(fig)
+
+
+def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
+    """Load saved Part 3 metric, joined, and correlation tables."""
+
+    return {
+        "metrics": pd.read_csv(os.path.join(results_dir, "permutation_metrics.csv")),
+        "joined": pd.read_csv(os.path.join(results_dir, "metric_accuracy_joined.csv")),
+        "correlations": pd.read_csv(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
+    }
+
+
+def run_part3_hardness_analysis(
+    *,
+    results_dir: str,
+    figures_dir: str,
+    part1_results_csv: str,
+    permutation_csv: str,
+    grid_sizes: Sequence[int],
+    num_permutations: int,
+    seed: int,
+    alpha_center: float = 1.0,
+    weight_adj: float = 0.5,
+    weight_center: float = 0.3,
+    weight_dist: float = 0.2,
+    verbose: bool = True,
+    show_progress: bool = True,
+) -> Dict[str, pd.DataFrame]:
+    """Run notebook-owned Part 3 hardness analysis and save output tables/plots."""
+
+    def log(message: str) -> None:
+        if verbose:
+            print(message)
+
+    log("Preparing Part 3 output directories...")
+    ensure_dir(results_dir)
+    ensure_dir(figures_dir)
+    log("Loading or rebuilding Part 1 permutations...")
+    log("Calculating hardness metrics...")
+    metrics = compute_part3_permutation_metrics(
+        permutation_csv=permutation_csv,
+        grid_sizes=grid_sizes,
+        num_permutations=num_permutations,
+        seed=seed,
+        alpha_center=alpha_center,
+        weight_adj=weight_adj,
+        weight_center=weight_center,
+        weight_dist=weight_dist,
+        show_progress=show_progress,
+    )
+    validate_part3_non_identity_metrics(metrics)
+    log("Saving hardness metric table...")
+    save_csv(metrics, os.path.join(results_dir, "permutation_metrics.csv"))
+
+    log("Loading Part 1 ResNet50 results...")
+    raw_results = load_part1_resnet50_results(part1_results_csv)
+    log("Joining hardness metrics with ResNet50 accuracy...")
+    joined = raw_results.merge(metrics, on=["grid_size", "num_tiles", "permutation_id"], how="left")
+    joined = joined.sort_values(["grid_size", "permutation_id"]).reset_index(drop=True)
+    log("Saving joined metric-accuracy table...")
+    save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
+
+    log("Computing metric-accuracy correlations...")
+    correlations = compute_part3_metric_correlations(joined)
+    log("Saving correlations and plots...")
+    save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
+    plot_part3_metrics_vs_accuracy(joined, figures_dir)
+    log("Part 3 hardness analysis complete.")
+    return {"metrics": metrics, "joined": joined, "correlations": correlations}

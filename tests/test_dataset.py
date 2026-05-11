@@ -5,9 +5,8 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from PIL import Image
-from src.preprocessing.dogs_cats import build_dataloaders, make_tile_compatible_image_size
+from src.preprocessing.dogs_cats import PILToFloatTensor, build_dataloaders, make_tile_compatible_image_size
 from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
-from torchvision import transforms
 
 
 def _make_image(path, color):
@@ -26,7 +25,7 @@ def test_tile_dataset_basic(tmp_path):
         _make_image(p, (i * 30 % 255, i * 60 % 255, i * 90 % 255))
         samples.append((str(p), 0 if 'cat' in str(p) else 1))
 
-    base_dataset = ImageFileDataset(samples, transform=transforms.Compose([transforms.ToTensor()]))
+    base_dataset = ImageFileDataset(samples, transform=PILToFloatTensor())
     ds = TilePermutationDataset(base_dataset, grid_size=1, permutation=None, seed=0)
     assert len(ds) == 4
     x, y = ds[0]
@@ -47,7 +46,7 @@ def test_tile_dataset_permutation(tmp_path):
 
     # grid 2x2 with explicit identity permutation
     perm = [0, 1, 2, 3]
-    base_dataset = ImageFileDataset(samples, transform=transforms.Compose([transforms.ToTensor()]))
+    base_dataset = ImageFileDataset(samples, transform=PILToFloatTensor())
     ds = TilePermutationDataset(base_dataset, grid_size=2, permutation=perm, seed=0)
     x, y = ds[0]
     assert x.shape[0] == 3

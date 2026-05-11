@@ -8,10 +8,19 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.evaluation.experiment_results import (
     aggregate_accuracy,
+    compute_part3_metric_correlations,
+    compute_part3_permutation_metrics,
+    load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
+    load_part1_resnet50_results,
+    part3_output_paths,
+    plot_accuracy_vs_tiles,
+    plot_part3_metrics_vs_accuracy,
+    run_part3_hardness_analysis,
     save_rows,
 )
 
@@ -88,9 +97,37 @@ def test_aggregate_accuracy_averages_permutations_by_tile_count():
     row = aggregated.iloc[0]
     assert row["model_name"] == "resnet50"
     assert row["num_tiles"] == 4
-    assert row["mean_val_accuracy"] == 0.60
-    assert row["mean_best_val_accuracy"] == 0.70
+    assert row["mean_final_epoch_val_accuracy"] == 0.60
+    assert row["mean_best_epoch_val_accuracy"] == 0.70
     assert row["n_runs"] == 2
+
+
+def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "num_tiles": 1,
+                "mean_final_epoch_val_accuracy": 0.40,
+                "std_final_epoch_val_accuracy": 0.01,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.02,
+            },
+            {
+                "model_name": "resnet50",
+                "num_tiles": 9,
+                "mean_final_epoch_val_accuracy": 0.45,
+                "std_final_epoch_val_accuracy": 0.01,
+                "mean_best_epoch_val_accuracy": 0.65,
+                "std_best_epoch_val_accuracy": 0.03,
+            },
+        ]
+    )
+    output_path = tmp_path / "accuracy_vs_tiles.png"
+
+    plot_accuracy_vs_tiles(aggregated, str(output_path))
+
+    assert output_path.exists()
 
 
 def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
@@ -131,6 +168,27 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
     assert rows[0]["model_name"] == "resnet50"
 
 
+def test_part1_baseline_aggregated_rejects_legacy_accuracy_column_names(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "grid_size": 1,
+                "num_tiles": 1,
+                "mean_val_accuracy": 0.75,
+                "std_val_accuracy": 0.0,
+                "mean_best_val_accuracy": 0.80,
+                "std_best_val_accuracy": 0.0,
+                "n_runs": 1,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_aggregated_results.csv", index=False)
+    config = SimpleNamespace(results_dir=str(tmp_path), part="part2", config_name="part2_improvement")
+
+    with pytest.raises(ValueError, match="unsupported schema"):
+        load_part1_model_baseline_aggregated(config, "resnet50")
+
+
 def test_aggregate_accuracy_keeps_ablation_groups_separate():
     raw_results = pd.DataFrame(
         [
@@ -157,3 +215,228 @@ def test_aggregate_accuracy_keeps_ablation_groups_separate():
 
     assert set(aggregated["ablation_name"]) == {"augmentation_only", "pretrained_finetune"}
     assert len(aggregated) == 2
+
+
+def test_part3_helpers_reuse_permutation_csv_filter_resnet50_and_emit_renamed_metrics(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "grid_size": 2,
+                "permutation_id": 7,
+                "permutation_seed": 99,
+                "permutation": "[3, 2, 1, 0]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_permutations.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 7,
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "deit_small",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 7,
+                "best_val_accuracy": 0.80,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    metrics = compute_part3_permutation_metrics(
+        permutation_csv=str(tmp_path / "part1_permutations.csv"),
+        grid_sizes=[1],
+        num_permutations=0,
+        seed=42,
+    )
+    resnet50_results = load_part1_resnet50_results(str(tmp_path / "part1_raw_results.csv"))
+
+    assert metrics["permutation_id"].tolist() == [7]
+    assert set(
+        [
+            "global_tile_displacement",
+            "center_weighted_displacement",
+            "adjacency_preservation_loss",
+            "combined_hardness_score",
+        ]
+    ).issubset(metrics.columns)
+    assert resnet50_results["model_name"].tolist() == ["resnet50"]
+
+
+def test_part3_metrics_exclude_duplicate_1x1_permutation_rows(tmp_path):
+    pd.DataFrame(
+        [
+            {"grid_size": 1, "permutation_id": 0, "permutation_seed": 42, "permutation": "[0]"},
+            {"grid_size": 1, "permutation_id": 1, "permutation_seed": 42, "permutation": "[0]"},
+            {"grid_size": 2, "permutation_id": 0, "permutation_seed": 42, "permutation": "[0, 1, 2, 3]"},
+            {"grid_size": 2, "permutation_id": 1, "permutation_seed": 42, "permutation": "[2, 1, 3, 0]"},
+        ]
+    ).to_csv(tmp_path / "part1_permutations.csv", index=False)
+
+    metrics = compute_part3_permutation_metrics(
+        permutation_csv=str(tmp_path / "part1_permutations.csv"),
+        grid_sizes=[1, 2],
+        num_permutations=1,
+        seed=42,
+    )
+
+    assert metrics[["grid_size", "permutation_id"]].to_dict("records") == [
+        {"grid_size": 1, "permutation_id": 0},
+        {"grid_size": 2, "permutation_id": 0},
+        {"grid_size": 2, "permutation_id": 1},
+    ]
+
+
+def test_part3_non_identity_2x2_permutation_has_nonzero_metric(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "grid_size": 2,
+                "permutation_id": 1,
+                "permutation_seed": 42,
+                "permutation": "[2, 1, 3, 0]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_permutations.csv", index=False)
+
+    metrics = compute_part3_permutation_metrics(
+        permutation_csv=str(tmp_path / "part1_permutations.csv"),
+        grid_sizes=[2],
+        num_permutations=1,
+        seed=42,
+    )
+
+    metric_columns = [
+        "global_tile_displacement",
+        "center_weighted_displacement",
+        "adjacency_preservation_loss",
+        "combined_hardness_score",
+    ]
+    assert metrics.loc[0, metric_columns].gt(0.0).any()
+
+
+def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "grid_size": 2,
+                "permutation_id": 1,
+                "permutation_seed": 42,
+                "permutation": "[0, 1, 2, 3]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_permutations.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet50",
+                "grid_size": 2,
+                "num_tiles": 4,
+                "permutation_id": 1,
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    with pytest.raises(ValueError, match="metrics are all zero"):
+        run_part3_hardness_analysis(
+            results_dir=str(tmp_path),
+            figures_dir=str(tmp_path),
+            part1_results_csv=str(tmp_path / "part1_raw_results.csv"),
+            permutation_csv=str(tmp_path / "part1_permutations.csv"),
+            grid_sizes=[2],
+            num_permutations=1,
+            seed=42,
+            verbose=False,
+            show_progress=False,
+        )
+
+
+def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
+    joined = pd.DataFrame(
+        [
+            {
+                "best_val_accuracy": 0.70,
+                "global_tile_displacement": 0.10,
+                "center_weighted_displacement": 0.20,
+                "adjacency_preservation_loss": 0.30,
+                "combined_hardness_score": 0.25,
+            },
+            {
+                "best_val_accuracy": 0.60,
+                "global_tile_displacement": 0.80,
+                "center_weighted_displacement": 0.70,
+                "adjacency_preservation_loss": 0.60,
+                "combined_hardness_score": 0.70,
+            },
+        ]
+    )
+
+    plot_part3_metrics_vs_accuracy(joined, str(tmp_path))
+    paths = part3_output_paths(str(tmp_path), str(tmp_path))
+
+    assert paths["plots"] == [str(tmp_path / "part3_metrics_vs_accuracy.png")]
+    assert (tmp_path / "part3_metrics_vs_accuracy.png").exists()
+
+
+def test_part3_correlations_are_nan_for_constant_accuracy():
+    joined = pd.DataFrame(
+        [
+            {
+                "best_val_accuracy": 0.50,
+                "global_tile_displacement": 0.00,
+                "center_weighted_displacement": 0.00,
+                "adjacency_preservation_loss": 0.00,
+                "combined_hardness_score": 0.00,
+            },
+            {
+                "best_val_accuracy": 0.50,
+                "global_tile_displacement": 0.50,
+                "center_weighted_displacement": 0.40,
+                "adjacency_preservation_loss": 0.30,
+                "combined_hardness_score": 0.45,
+            },
+        ]
+    )
+
+    correlations = compute_part3_metric_correlations(joined)
+
+    assert correlations["pearson"].isna().all()
+    assert correlations["spearman"].isna().all()
+
+
+def test_part3_correlations_are_finite_for_non_constant_accuracy():
+    joined = pd.DataFrame(
+        [
+            {
+                "best_val_accuracy": 0.80,
+                "global_tile_displacement": 0.00,
+                "center_weighted_displacement": 0.10,
+                "adjacency_preservation_loss": 0.20,
+                "combined_hardness_score": 0.15,
+            },
+            {
+                "best_val_accuracy": 0.70,
+                "global_tile_displacement": 0.50,
+                "center_weighted_displacement": 0.40,
+                "adjacency_preservation_loss": 0.30,
+                "combined_hardness_score": 0.45,
+            },
+            {
+                "best_val_accuracy": 0.60,
+                "global_tile_displacement": 0.90,
+                "center_weighted_displacement": 0.80,
+                "adjacency_preservation_loss": 0.70,
+                "combined_hardness_score": 0.80,
+            },
+        ]
+    )
+
+    correlations = compute_part3_metric_correlations(joined)
+
+    assert np.isfinite(correlations["pearson"]).all()
+    assert np.isfinite(correlations["spearman"]).all()
