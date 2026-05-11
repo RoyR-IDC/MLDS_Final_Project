@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from src.evaluation.permutation_difficulty import (
+from src.evaluation.tile_order_difficulty import (
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -10,9 +10,9 @@ from src.evaluation.permutation_difficulty import (
 
 
 def test_global_tile_displacement():
-    permutation = [3, 2, 1, 0]
+    output_tile_order = [3, 2, 1, 0]
 
-    assert compute_global_displacement(permutation, 2) == 1.0
+    assert compute_global_displacement(output_tile_order, 2) == 1.0
 
 
 def test_center_weighted_displacement():

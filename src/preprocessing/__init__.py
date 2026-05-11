@@ -1,1 +1,1 @@
-"""Preprocessing, dataset, dataloader, and tile permutation helpers."""
+"""Preprocessing, dataset, dataloader, and tile-order helpers."""

@@ -16,7 +16,7 @@ def test_grouped_config_normalizes_to_runner_keys():
         "input_output": {"data_dir": "data/dogs-vs-cats/train", "results_dir": "outputs/results"},
         "data": {"batch_size": 8, "image_size": 224},
         "models": {"model_names": ["resnet18"], "num_classes": 2},
-        "experiment": {"grid_sizes": [1, 2], "num_permutations": 1},
+        "experiment": {"grid_side_lengths": [1, 2], "num_tile_orders": 1},
     }
 
     normalized_config = normalize_config(raw_config)
@@ -26,7 +26,7 @@ def test_grouped_config_normalizes_to_runner_keys():
     assert normalized_config["batch_size"] == 8
     assert normalized_config["model_names"] == ["resnet18"]
     assert normalized_config["model_name"] == "resnet18"
-    assert normalized_config["grid_sizes"] == [1, 2]
+    assert normalized_config["grid_side_lengths"] == [1, 2]
 
 
 def test_config_normalization_rejects_models_outside_supported_trio():
@@ -96,14 +96,14 @@ def test_official_configs_are_not_duplicated():
 def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     dataclass_fields = Part2ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
-    grid_sizes = dataclass_fields["grid_sizes"].default_factory()
+    grid_side_lengths = dataclass_fields["grid_side_lengths"].default_factory()
     ablations = dataclass_fields["ablations"].default_factory()
 
     assert dataclass_fields["part"].default == "part2"
     assert dataclass_fields["config_name"].default == "part2_improvement"
     assert model_names == ["resnet18"]
-    assert grid_sizes == [1, 2, 3, 4]
-    assert dataclass_fields["num_permutations"].default == 3
+    assert grid_side_lengths == [1, 2, 3, 4]
+    assert dataclass_fields["num_tile_orders"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
         "augmentation_only",
         "finetune_only",
@@ -167,7 +167,7 @@ def test_cv_experiment_config_exposes_single_seed_field():
     field_names = {field.name for field in fields(CVExperimentConfig)}
 
     assert "seed" in field_names
-    assert "permutation_seed" not in field_names
+    assert "tile_order_seed" not in field_names
 
 
 def test_part1_model_defaults_to_lightweight_pretrained_trio():
@@ -185,8 +185,8 @@ def test_local_testing_defaults_use_larger_part1_signal():
 
     assert config.sample_data is True
     assert config.sample_limit == 256
-    assert config.grid_sizes == [1, 3]
-    assert config.num_permutations == 2
+    assert config.grid_side_lengths == [1, 3]
+    assert config.num_tile_orders == 2
     assert config.epochs == 3
     assert config.plot_samples is True
 

@@ -12,23 +12,24 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
+from src.preprocessing.tile_orders import GridSideLength
+from src.preprocessing.tile_order_dataset import ImageFileDataset, TileOrderDataset
 
 
 Sample = Tuple[str, int]
 
 
-def make_tile_compatible_image_size(image_size: int, grid_size: int) -> int:
-    """Return the smallest square size that can be split by ``grid_size``."""
+def make_tile_compatible_image_size(image_size: int, grid_side_length: GridSideLength) -> int:
+    """Return the smallest square size that can be split by ``grid_side_length``."""
 
     if image_size < 1:
         raise ValueError("image_size must be at least 1")
-    if grid_size < 1:
-        raise ValueError("grid_size must be at least 1")
-    remainder = image_size % grid_size
+    if grid_side_length < 1:
+        raise ValueError("grid_side_length must be at least 1")
+    remainder = image_size % grid_side_length
     if remainder == 0:
         return image_size
-    return image_size + grid_size - remainder
+    return image_size + grid_side_length - remainder
 
 
 class PILToFloatTensor:
@@ -183,40 +184,40 @@ def build_transforms(image_size: int = 224, train: bool = False, standard_augmen
 def build_dataset(
     samples: Sequence[Sample],
     image_size: int,
-    grid_size: int = 1,
-    permutation: Optional[Sequence[int]] = None,
-    random_permutations: Optional[Sequence[Sequence[int]]] = None,
+    grid_side_length: GridSideLength = 1,
+    output_tile_order: Optional[Sequence[int]] = None,
+    random_tile_orders: Optional[Sequence[Sequence[int]]] = None,
     seed: int = 0,
     train: bool = False,
     standard_augmentation: bool = False,
 ) -> Dataset:
-    """Build an image dataset with optional tile permutation wrapping.
+    """Build an image dataset with optional tile-order wrapping.
 
     Args:
         samples: Labeled image samples.
         image_size: Output square image size.
-        grid_size: Number of tiles along each image side.
-        permutation: Optional fixed permutation.
-        random_permutations: Optional permutation pool sampled per item.
-        seed: Seed used for deterministic sampled permutations.
+        grid_side_length: Number of tiles along each image side.
+        output_tile_order: Optional fixed output tile order.
+        random_tile_orders: Optional tile-order pool sampled per item.
+        seed: Seed used for deterministic dataset sampling.
         train: Whether to build training transforms.
         standard_augmentation: Whether to add standard image augmentations.
 
     Returns:
-        Image dataset, optionally wrapped with tile permutation behavior.
+        Image dataset, optionally wrapped with tile-order behavior.
     """
 
-    tile_image_size = make_tile_compatible_image_size(image_size, grid_size)
+    tile_image_size = make_tile_compatible_image_size(image_size, grid_side_length)
     transform = build_transforms(image_size=tile_image_size, train=train, standard_augmentation=standard_augmentation)
     base_dataset = ImageFileDataset(samples, transform=transform)
-    if grid_size == 1 and not random_permutations:
+    if grid_side_length == 1 and not random_tile_orders:
         dataset = base_dataset
         return dataset
-    dataset = TilePermutationDataset(
+    dataset = TileOrderDataset(
         base_dataset,
-        grid_size=grid_size,
-        permutation=permutation,
-        random_permutations=random_permutations,
+        grid_side_length=grid_side_length,
+        output_tile_order=output_tile_order,
+        random_tile_orders=random_tile_orders,
         seed=seed,
     )
     return dataset
@@ -226,9 +227,9 @@ def build_dataloaders(
     train_samples: Sequence[Sample],
     val_samples: Sequence[Sample],
     image_size: int = 224,
-    grid_size: int = 1,
-    permutation: Optional[Sequence[int]] = None,
-    random_permutations: Optional[Sequence[Sequence[int]]] = None,
+    grid_side_length: GridSideLength = 1,
+    output_tile_order: Optional[Sequence[int]] = None,
+    random_tile_orders: Optional[Sequence[Sequence[int]]] = None,
     seed: int = 0,
     batch_size: int = 32,
     num_workers: int = 2,
@@ -240,10 +241,10 @@ def build_dataloaders(
         train_samples: Training samples.
         val_samples: Validation samples.
         image_size: Output square image size.
-        grid_size: Number of tiles along each image side.
-        permutation: Optional fixed tile permutation.
-        random_permutations: Optional permutation pool for training.
-        seed: Seed used for sampled permutation behavior.
+        grid_side_length: Number of tiles along each image side.
+        output_tile_order: Optional fixed output tile order.
+        random_tile_orders: Optional tile-order pool for training.
+        seed: Seed used for sampled tile-order behavior.
         batch_size: Dataloader batch size.
         num_workers: Number of dataloader workers.
         standard_augmentation: Whether to apply standard training augmentations.
@@ -255,9 +256,9 @@ def build_dataloaders(
     train_dataset = build_dataset(
         train_samples,
         image_size=image_size,
-        grid_size=grid_size,
-        permutation=permutation,
-        random_permutations=random_permutations,
+        grid_side_length=grid_side_length,
+        output_tile_order=output_tile_order,
+        random_tile_orders=random_tile_orders,
         seed=seed,
         train=True,
         standard_augmentation=standard_augmentation,
@@ -265,8 +266,8 @@ def build_dataloaders(
     val_dataset = build_dataset(
         val_samples,
         image_size=image_size,
-        grid_size=grid_size,
-        permutation=permutation,
+        grid_side_length=grid_side_length,
+        output_tile_order=output_tile_order,
         seed=seed,
         train=False,
         standard_augmentation=False,

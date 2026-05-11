@@ -12,10 +12,10 @@ from torchvision import transforms
 
 # Import repo modules through the canonical preprocessing path.
 try:
-    from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
+    from src.preprocessing.tile_order_dataset import ImageFileDataset, TileOrderDataset
 except Exception:
     ImageFileDataset = None
-    TilePermutationDataset = None
+    TileOrderDataset = None
 
 try:
     from src.training.engine import evaluate, train_one_epoch
@@ -153,22 +153,22 @@ def create_synthetic_rgb_images(n: int, size: Tuple[int, int] = (224, 224), seed
     return imgs
 
 
-def split_into_tiles(img: Image.Image, grid: int) -> List[Image.Image]:
-    """Split PIL ``img`` into ``grid x grid`` tiles and return them in row-major order.
+def split_into_tiles(img: Image.Image, grid_side_length: int) -> List[Image.Image]:
+    """Split PIL ``img`` into a square tile grid and return tiles in row-major order.
 
     Args:
         img: PIL Image.
-        grid: Number of tiles along each axis.
+        grid_side_length: Number of tiles along each axis.
 
     Returns:
         List of PIL Image tiles.
     """
     w, h = img.size
-    tile_w = w // grid
-    tile_h = h // grid
+    tile_w = w // grid_side_length
+    tile_h = h // grid_side_length
     tiles: List[Image.Image] = []
-    for r in range(grid):
-        for c in range(grid):
+    for r in range(grid_side_length):
+        for c in range(grid_side_length):
             left = c * tile_w
             upper = r * tile_h
             right = left + tile_w
@@ -177,22 +177,22 @@ def split_into_tiles(img: Image.Image, grid: int) -> List[Image.Image]:
     return tiles
 
 
-def visualize_tiles(tiles: Sequence[Image.Image], permutation: Optional[Sequence[int]] = None, cols: int = 0):
-    """Return a matplotlib Figure visualizing tiles in either original or permuted order.
+def visualize_tiles(tiles: Sequence[Image.Image], output_tile_order: Optional[Sequence[int]] = None, cols: int = 0):
+    """Return a matplotlib Figure visualizing tiles in original or reordered output order.
 
     Args:
         tiles: Sequence of PIL Image tiles.
-        permutation: Optional sequence mapping output positions to source tile indices.
+        output_tile_order: Optional sequence mapping output positions to source tile indices.
         cols: Number of columns for display. If 0, set to grid width.
 
     Returns:
         matplotlib.figure.Figure
     """
     n = len(tiles)
-    if permutation is None:
+    if output_tile_order is None:
         order = list(range(n))
     else:
-        order = list(permutation)
+        order = list(output_tile_order)
     G = int(np.sqrt(n))
     if cols <= 0:
         cols = G
@@ -235,7 +235,7 @@ def build_tiny_dataloader(
 ) -> Tuple[DataLoader, Dataset]:
     """Build a small DataLoader for quick experiments.
 
-    If ``sample_paths`` is provided and the repo's ``TilePermutationDataset`` is available,
+    If ``sample_paths`` is provided and the repo's ``TileOrderDataset`` is available,
     it will be used. Otherwise a small synthetic dataset is returned.
 
     Returns:
@@ -244,9 +244,9 @@ def build_tiny_dataloader(
     if base_transform is None:
         base_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
-    if sample_paths is not None and ImageFileDataset is not None and TilePermutationDataset is not None:
+    if sample_paths is not None and ImageFileDataset is not None and TileOrderDataset is not None:
         base_dataset = ImageFileDataset(sample_paths, transform=base_transform)
-        dataset = TilePermutationDataset(base_dataset, grid_size=grid, seed=seed)
+        dataset = TileOrderDataset(base_dataset, grid_side_length=grid, seed=seed)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         return dataloader, dataset
 
@@ -270,8 +270,8 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         dataloader: training DataLoader (will be reused as validation here for quick checks).
         device: device to run on; defaults to CUDA if available else CPU.
         optimizer: optional optimizer. If None, SGD is created.
-        epoch: Unused compatibility argument.
-        mixup_alpha: Unused compatibility argument.
+        epoch: Currently unused argument.
+        mixup_alpha: Currently unused argument.
 
     Returns:
         Dict with keys 'train' and 'val' mapping to summary dicts.

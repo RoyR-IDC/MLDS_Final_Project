@@ -10,8 +10,8 @@ from PIL import Image as PILImage
 import torchvision
 
 from src.preprocessing.dogs_cats import PILToFloatTensor, Sample, make_tile_compatible_image_size
-from src.preprocessing.permutations import PermutationRecord
-from src.preprocessing.tile_permutation import apply_tile_permutation
+from src.preprocessing.tile_orders import TileOrderRecord
+from src.preprocessing.tile_order_dataset import apply_tile_order
 
 
 def _class_name(label: int) -> str:
@@ -24,36 +24,36 @@ def _select_balanced_display_samples(samples: Sequence[Sample], samples_per_clas
     return cat_samples + dog_samples
 
 
-def _select_display_permutation_records(
-    permutation_records: Sequence[PermutationRecord],
+def _select_display_tile_order_records(
+    tile_order_records: Sequence[TileOrderRecord],
     max_records: int,
-) -> list[PermutationRecord]:
+) -> list[TileOrderRecord]:
     """Select non-1x1 records, because the regular image already shows that case."""
 
     if max_records < 0:
         raise ValueError("max_records must be non-negative")
-    display_records = [record for record in permutation_records if record.grid_size > 1]
+    display_records = [record for record in tile_order_records if record.grid_side_length > 1]
     return display_records[:max_records]
 
 
-def plot_permutation_samples(
+def plot_tile_order_samples(
     samples: Sequence[Sample],
-    permutation_records: Sequence[PermutationRecord],
+    tile_order_records: Sequence[TileOrderRecord],
     image_size: int,
     samples_per_class: int = 2,
     max_records: int = 4,
 ) -> plt.Figure:
-    """Plot original samples next to selected tile-permuted variants.
+    """Plot original samples next to selected tile-reordered variants.
 
     The original image column represents the unpermuted 1x1 case, so 1x1
-    permutation records are intentionally skipped to avoid duplicate columns.
+    tile-order records are intentionally skipped to avoid duplicate columns.
 
     Args:
         samples: Labeled ``(path, label)`` image samples.
-        permutation_records: Candidate permutation records to visualize.
+        tile_order_records: Candidate tile-order records to visualize.
         image_size: Base image size used by the experiment config.
         samples_per_class: Number of cat and dog samples to display.
-        max_records: Maximum non-1x1 permutation records to display.
+        max_records: Maximum non-1x1 tile-order records to display.
 
     Returns:
         Matplotlib figure containing the sample grid.
@@ -63,7 +63,7 @@ def plot_permutation_samples(
     if not sample_pairs:
         raise ValueError("No samples available to plot")
 
-    display_records = _select_display_permutation_records(permutation_records, max_records)
+    display_records = _select_display_tile_order_records(tile_order_records, max_records)
     n_columns = 1 + len(display_records)
     fig, axes = plt.subplots(
         len(sample_pairs),
@@ -81,7 +81,7 @@ def plot_permutation_samples(
             axes[row_index, 0].axis("off")
 
             for col_index, record in enumerate(display_records, start=1):
-                tile_image_size = make_tile_compatible_image_size(image_size, record.grid_size)
+                tile_image_size = make_tile_compatible_image_size(image_size, record.grid_side_length)
                 transform = torchvision.transforms.Compose(
                     [
                         torchvision.transforms.Resize((tile_image_size, tile_image_size)),
@@ -89,14 +89,18 @@ def plot_permutation_samples(
                     ]
                 )
                 image_tensor = transform(image)
-                permuted_tensor = apply_tile_permutation(image_tensor, record.grid_size, record.permutation)
-                permuted_image = np.asarray(
-                    permuted_tensor.detach().cpu().permute(1, 2, 0).numpy(force=True),
+                reordered_tensor = apply_tile_order(
+                    image_tensor,
+                    record.grid_side_length,
+                    record.output_tile_order,
+                )
+                reordered_image = np.asarray(
+                    reordered_tensor.detach().cpu().permute(1, 2, 0).numpy(force=True),
                     dtype=np.float32,
                 ).clip(0.0, 1.0)
-                axes[row_index, col_index].imshow(permuted_image)
+                axes[row_index, col_index].imshow(reordered_image)
                 axes[row_index, col_index].set_title(
-                    f"{label_name} {record.grid_size}x{record.grid_size} perm {record.permutation_id}"
+                    f"{label_name} {record.grid_side_length}x{record.grid_side_length} order {record.tile_order_id}"
                 )
                 axes[row_index, col_index].axis("off")
 

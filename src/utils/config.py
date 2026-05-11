@@ -159,9 +159,9 @@ class CVExperimentConfig:
     )
     pretrained: bool = True
 
-    # Grid and permutation experiment configuration
-    grid_sizes: list[int] = field(default_factory=lambda: [1, 3, 4])
-    num_permutations: int = 5
+    # Tile grid and output-order experiment configuration
+    grid_side_lengths: list[int] = field(default_factory=lambda: [1, 3, 4])
+    num_tile_orders: int = 5
 
     # Training configuration
     epochs: int = 10
@@ -258,8 +258,8 @@ class CVExperimentConfig:
         self.sample_data = True
         self.sample_limit = 256
         self.model_names = ["resnet18"]
-        self.grid_sizes = [1, 3]
-        self.num_permutations = 2
+        self.grid_side_lengths = [1, 3]
+        self.num_tile_orders = 2
         self.epochs = 3
         self.plot_samples = True
 
@@ -276,8 +276,8 @@ class Part2ExperimentConfig(CVExperimentConfig):
     part: str = "part2"
     config_name: str = "part2_improvement"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
-    grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
-    num_permutations: int = 3
+    grid_side_lengths: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
+    num_tile_orders: int = 3
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {

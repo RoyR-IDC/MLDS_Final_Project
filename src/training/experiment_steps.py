@@ -26,7 +26,7 @@ from src.evaluation.experiment_results import (
 )
 from src.models.factory import get_model
 from src.preprocessing.dogs_cats import build_dataloaders
-from src.preprocessing.permutations import PermutationRecord, build_permutation_records
+from src.preprocessing.tile_orders import TileOrderRecord, build_tile_order_records
 from src.training.engine import TrainingRunComponents, build_optimizer, train_and_validate
 from src.utils.config import CVExperimentConfig
 
@@ -120,7 +120,7 @@ def train_and_evaluate_model_configuration(
     return metrics
 
 
-def save_model_permutation_progress(
+def save_model_tile_order_progress(
     *,
     rows: Sequence[Mapping[str, Any]],
     output_path: str,
@@ -152,10 +152,10 @@ def build_pending_result_row(
     config: CVExperimentConfig,
     run_id: str,
     model_name: str,
-    record: PermutationRecord,
+    record: TileOrderRecord,
     seed: int,
 ) -> dict[str, Any]:
-    """Build an empty result row before a permutation training run starts."""
+    """Build an empty result row before a tile-order training run starts."""
 
     return build_result_row(
         config=config,
@@ -176,29 +176,29 @@ def build_pending_result_row(
 
 
 def _result_row_key(row: Mapping[str, Any]) -> tuple[int, int]:
-    """Return the per-model permutation key for a raw result row."""
+    """Return the per-model tile-order key for a raw result row."""
 
-    return int(row["grid_size"]), int(row["permutation_id"])
+    return int(row["grid_side_length"]), int(row["tile_order_id"])
 
 
-def collect_model_permutation_results(
+def collect_model_tile_order_results(
     *,
     config: CVExperimentConfig,
     model_name: str,
     run_id: str,
     train_samples: Sequence[tuple[str, int]],
     validation_samples: Sequence[tuple[str, int]],
-    permutation_records: Sequence[PermutationRecord],
+    tile_order_records: Sequence[TileOrderRecord],
     seed: int,
     device: torch.device,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Train one model across permutation records and collect result rows."""
+    """Train one model across tile-order records and collect result rows."""
 
     executable_records = [
         record
-        for record in permutation_records
-        if not (record.grid_size == 1 and record.permutation_id > 0)
+        for record in tile_order_records
+        if not (record.grid_side_length == 1 and record.tile_order_id > 0)
     ]
     rows = [
         build_pending_result_row(
@@ -213,7 +213,7 @@ def collect_model_permutation_results(
     row_indices = {_result_row_key(row): index for index, row in enumerate(rows)}
 
     if raw_results_output_path:
-        save_model_permutation_progress(
+        save_model_tile_order_progress(
             rows=rows,
             output_path=raw_results_output_path,
             run_id=run_id,
@@ -228,17 +228,17 @@ def collect_model_permutation_results(
         print()
         print("=" * 80)
         print(
-            f"[{record_index}/{len(executable_records)}] Running permutation "
-            f"grid={record.grid_size}x{record.grid_size}, "
-            f"permutation_id={record.permutation_id}, seed={record.permutation_seed}"
+            f"[{record_index}/{len(executable_records)}] Running tile order "
+            f"grid_side_length={record.grid_side_length}, "
+            f"tile_order_id={record.tile_order_id}, seed={record.tile_order_seed}"
         )
         print("Building dataloaders...")
         train_loader, validation_loader = build_dataloaders(
             train_samples=train_samples,
             val_samples=validation_samples,
             image_size=config.image_size,
-            grid_size=record.grid_size,
-            permutation=record.permutation,
+            grid_side_length=record.grid_side_length,
+            output_tile_order=record.output_tile_order,
             seed=seed,
             batch_size=config.batch_size,
             num_workers=config.num_workers,
@@ -248,11 +248,11 @@ def collect_model_permutation_results(
             "Finished building dataloaders: "
             f"{len(train_loader)} train batches, {len(validation_loader)} validation batches."
         )
-        print(f"Training model '{model_name}' on the current permutation...")
+        print(f"Training model '{model_name}' on the current tile order...")
         progress_desc = (
             f"{model_name} "
-            f"{record.grid_size}x{record.grid_size} "
-            f"perm {record.permutation_id}"
+            f"{record.grid_side_length}x{record.grid_side_length} "
+            f"order {record.tile_order_id}"
         )
         training_start = perf_counter()
         metrics = train_and_evaluate_model_configuration(
@@ -268,7 +268,7 @@ def collect_model_permutation_results(
         metrics["training_duration_seconds"] = training_duration_seconds
         metrics["run_status"] = "completed"
         print(
-            f"Done training model '{model_name}' on permutation_id={record.permutation_id} "
+            f"Done training model '{model_name}' on tile_order_id={record.tile_order_id} "
             f"in {training_duration_seconds:.2f} seconds."
         )
         row = build_result_row(
@@ -279,9 +279,9 @@ def collect_model_permutation_results(
             seed=seed,
             metrics=metrics,
         )
-        rows[row_indices[(record.grid_size, record.permutation_id)]] = row
+        rows[row_indices[(record.grid_side_length, record.tile_order_id)]] = row
         if raw_results_output_path:
-            save_model_permutation_progress(
+            save_model_tile_order_progress(
                 rows=rows,
                 output_path=raw_results_output_path,
                 run_id=run_id,
@@ -291,13 +291,13 @@ def collect_model_permutation_results(
     return rows
 
 
-def get_executable_permutation_records(records: Sequence[PermutationRecord]) -> list[PermutationRecord]:
-    """Filter out duplicate random permutations for the un-tiled 1x1 condition."""
+def get_executable_tile_order_records(records: Sequence[TileOrderRecord]) -> list[TileOrderRecord]:
+    """Filter out duplicate random tile orders for the un-tiled 1x1 condition."""
 
     return [
         record
         for record in records
-        if not (record.grid_size == 1 and record.permutation_id > 0)
+        if not (record.grid_side_length == 1 and record.tile_order_id > 0)
     ]
 
 
@@ -307,15 +307,15 @@ def collect_part2_ablation_results(
     ablations: Sequence[Mapping[str, Any]],
     train_samples: Sequence[tuple[str, int]],
     validation_samples: Sequence[tuple[str, int]],
-    permutation_records: Sequence[PermutationRecord],
+    tile_order_records: Sequence[TileOrderRecord],
     device: torch.device,
     run_id: str,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Train all Part 2 improvement ablations across permutation records."""
+    """Train all Part 2 improvement ablations across tile-order records."""
 
     model_name = getattr(config, "model_name", config.model_names[0])
-    executable_records = get_executable_permutation_records(permutation_records)
+    executable_records = get_executable_tile_order_records(tile_order_records)
     rows: list[dict[str, Any]] = []
     row_indices: dict[tuple[str, int, int], int] = {}
 
@@ -329,11 +329,11 @@ def collect_part2_ablation_results(
                 seed=config.seed,
             )
             row["ablation_name"] = ablation["name"]
-            row_indices[(str(ablation["name"]), record.grid_size, record.permutation_id)] = len(rows)
+            row_indices[(str(ablation["name"]), record.grid_side_length, record.tile_order_id)] = len(rows)
             rows.append(row)
 
     if raw_results_output_path:
-        save_model_permutation_progress(
+        save_model_tile_order_progress(
             rows=rows,
             output_path=raw_results_output_path,
             run_id=run_id,
@@ -353,16 +353,16 @@ def collect_part2_ablation_results(
             print()
             print(
                 f"[{record_index}/{len(executable_records)}] "
-                f"grid={record.grid_size}x{record.grid_size}, "
-                f"permutation_id={record.permutation_id}, "
-                f"seed={record.permutation_seed}"
+                f"grid_side_length={record.grid_side_length}, "
+                f"tile_order_id={record.tile_order_id}, "
+                f"seed={record.tile_order_seed}"
             )
             train_loader, validation_loader = build_dataloaders(
                 train_samples=train_samples,
                 val_samples=validation_samples,
                 image_size=config.image_size,
-                grid_size=record.grid_size,
-                permutation=record.permutation,
+                grid_side_length=record.grid_side_length,
+                output_tile_order=record.output_tile_order,
                 seed=config.seed,
                 batch_size=config.batch_size,
                 num_workers=config.num_workers,
@@ -371,8 +371,8 @@ def collect_part2_ablation_results(
             progress_desc = (
                 f"{model_name} "
                 f"{ablation['name']} "
-                f"{record.grid_size}x{record.grid_size} "
-                f"perm {record.permutation_id}"
+                f"{record.grid_side_length}x{record.grid_side_length} "
+                f"order {record.tile_order_id}"
             )
             training_start = perf_counter()
             metrics = train_and_evaluate_model_configuration(
@@ -392,7 +392,7 @@ def collect_part2_ablation_results(
             metrics["run_status"] = "completed"
             print(
                 f"Done training model '{model_name}' for ablation={ablation['name']} "
-                f"on permutation_id={record.permutation_id} "
+                f"on tile_order_id={record.tile_order_id} "
                 f"in {training_duration_seconds:.2f} seconds."
             )
             row = build_result_row(
@@ -404,9 +404,9 @@ def collect_part2_ablation_results(
                 metrics=metrics,
             )
             row["ablation_name"] = ablation["name"]
-            rows[row_indices[(str(ablation["name"]), record.grid_size, record.permutation_id)]] = row
+            rows[row_indices[(str(ablation["name"]), record.grid_side_length, record.tile_order_id)]] = row
             if raw_results_output_path:
-                save_model_permutation_progress(
+                save_model_tile_order_progress(
                     rows=rows,
                     output_path=raw_results_output_path,
                     run_id=run_id,
@@ -425,9 +425,9 @@ def run_part2_improvement_experiments(
     model_name = getattr(config, "model_name", config.model_names[0])
     resolved_device = device or get_device(config)
     train_samples, validation_samples, _ = load_experiment_samples(config, seed=config.seed)
-    permutation_records = build_permutation_records(
-        grid_sizes=config.grid_sizes,
-        num_permutations=config.num_permutations,
+    tile_order_records = build_tile_order_records(
+        grid_side_lengths=config.grid_side_lengths,
+        num_tile_orders=config.num_tile_orders,
         seed=config.seed,
         include_identity=True,
     )
@@ -441,7 +441,7 @@ def run_part2_improvement_experiments(
             ablations=getattr(config, "ablations"),
             train_samples=train_samples,
             validation_samples=validation_samples,
-            permutation_records=permutation_records,
+            tile_order_records=tile_order_records,
             device=resolved_device,
             run_id=run_id,
             raw_results_output_path=output_paths["raw_results"],
@@ -452,7 +452,7 @@ def run_part2_improvement_experiments(
     raw_results = pd.DataFrame(rows)
     aggregated_results = save_aggregated_accuracy(
         raw_results,
-        group_columns=["model_name", "ablation_name", "grid_size", "num_tiles"],
+        group_columns=["model_name", "ablation_name", "grid_side_length", "tile_count"],
         output_path=output_paths["aggregated_results"],
     )
 

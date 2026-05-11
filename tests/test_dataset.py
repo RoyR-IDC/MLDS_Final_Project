@@ -6,7 +6,7 @@ pytest.importorskip("torchvision")
 
 from PIL import Image
 from src.preprocessing.dogs_cats import PILToFloatTensor, build_dataloaders, make_tile_compatible_image_size
-from src.preprocessing.tile_permutation import ImageFileDataset, TilePermutationDataset
+from src.preprocessing.tile_order_dataset import ImageFileDataset, TileOrderDataset
 
 
 def _make_image(path, color):
@@ -26,7 +26,7 @@ def test_tile_dataset_basic(tmp_path):
         samples.append((str(p), 0 if 'cat' in str(p) else 1))
 
     base_dataset = ImageFileDataset(samples, transform=PILToFloatTensor())
-    ds = TilePermutationDataset(base_dataset, grid_size=1, permutation=None, seed=0)
+    ds = TileOrderDataset(base_dataset, grid_side_length=1, output_tile_order=None, seed=0)
     assert len(ds) == 4
     x, y = ds[0]
     # tensor shape C,H,W
@@ -34,7 +34,7 @@ def test_tile_dataset_basic(tmp_path):
     assert isinstance(y, int)
 
 
-def test_tile_dataset_permutation(tmp_path):
+def test_tile_dataset_output_tile_order(tmp_path):
     d = tmp_path / "data2"
     d.mkdir()
     samples = []
@@ -44,10 +44,10 @@ def test_tile_dataset_permutation(tmp_path):
         _make_image(p, (255, 0, 0) if i == 0 else (0, 255, 0))
         samples.append((str(p), 0 if 'cat' in str(p) else 1))
 
-    # grid 2x2 with explicit identity permutation
-    perm = [0, 1, 2, 3]
+    # grid 2x2 with explicit identity output_tile_order
+    order = [0, 1, 2, 3]
     base_dataset = ImageFileDataset(samples, transform=PILToFloatTensor())
-    ds = TilePermutationDataset(base_dataset, grid_size=2, permutation=perm, seed=0)
+    ds = TileOrderDataset(base_dataset, grid_side_length=2, output_tile_order=order, seed=0)
     x, y = ds[0]
     assert x.shape[0] == 3
     assert isinstance(y, int)
@@ -68,8 +68,8 @@ def test_grid_three_dataloader_adjusts_image_size(tmp_path):
         samples[:2],
         samples[2:],
         image_size=224,
-        grid_size=3,
-        permutation=list(range(9)),
+        grid_side_length=3,
+        output_tile_order=list(range(9)),
         batch_size=2,
         num_workers=0,
     )
