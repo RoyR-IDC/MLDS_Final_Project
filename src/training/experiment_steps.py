@@ -310,12 +310,40 @@ def collect_part2_ablation_results(
     permutation_records: Sequence[PermutationRecord],
     device: torch.device,
     run_id: str,
+    raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train all Part 2 improvement ablations across permutation records."""
 
-    rows: list[dict[str, Any]] = []
     model_name = getattr(config, "model_name", config.model_names[0])
     executable_records = get_executable_permutation_records(permutation_records)
+    rows: list[dict[str, Any]] = []
+    row_indices: dict[tuple[str, int, int], int] = {}
+
+    for ablation in ablations:
+        for record in executable_records:
+            row = build_pending_result_row(
+                config=config,
+                run_id=run_id,
+                model_name=model_name,
+                record=record,
+                seed=config.seed,
+            )
+            row["ablation_name"] = ablation["name"]
+            row_indices[(str(ablation["name"]), record.grid_size, record.permutation_id)] = len(rows)
+            rows.append(row)
+
+    if raw_results_output_path:
+        save_model_permutation_progress(
+            rows=rows,
+            output_path=raw_results_output_path,
+            run_id=run_id,
+            model_name=model_name,
+        )
+        print(
+            f"Saved {len(rows)} pending placeholder row(s) for model '{model_name}' "
+            f"to {raw_results_output_path}."
+        )
+
     for ablation in ablations:
         print()
         print("=" * 80)
@@ -340,6 +368,13 @@ def collect_part2_ablation_results(
                 num_workers=config.num_workers,
                 standard_augmentation=bool(ablation["use_standard_augmentation"]),
             )
+            progress_desc = (
+                f"{model_name} "
+                f"{ablation['name']} "
+                f"{record.grid_size}x{record.grid_size} "
+                f"perm {record.permutation_id}"
+            )
+            training_start = perf_counter()
             metrics = train_and_evaluate_model_configuration(
                 config=config,
                 model_name=model_name,
@@ -350,6 +385,15 @@ def collect_part2_ablation_results(
                     "pretrained": bool(ablation["use_pretrained"]),
                     "freeze_backbone": bool(ablation["freeze_backbone"]),
                 },
+                progress_desc=progress_desc,
+            )
+            training_duration_seconds = perf_counter() - training_start
+            metrics["training_duration_seconds"] = training_duration_seconds
+            metrics["run_status"] = "completed"
+            print(
+                f"Done training model '{model_name}' for ablation={ablation['name']} "
+                f"on permutation_id={record.permutation_id} "
+                f"in {training_duration_seconds:.2f} seconds."
             )
             row = build_result_row(
                 config=config,
@@ -360,7 +404,15 @@ def collect_part2_ablation_results(
                 metrics=metrics,
             )
             row["ablation_name"] = ablation["name"]
-            rows.append(row)
+            rows[row_indices[(str(ablation["name"]), record.grid_size, record.permutation_id)]] = row
+            if raw_results_output_path:
+                save_model_permutation_progress(
+                    rows=rows,
+                    output_path=raw_results_output_path,
+                    run_id=run_id,
+                    model_name=model_name,
+                )
+                print(f"Saved {len(rows)} completed row(s) for model '{model_name}' to {raw_results_output_path}.")
     return rows
 
 
@@ -380,6 +432,7 @@ def run_part2_improvement_experiments(
         include_identity=True,
     )
     run_id = datetime.now(timezone.utc).strftime("part2_%Y%m%d_%H%M%S")
+    output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
 
     rows = load_part1_model_baseline_raw_rows(config, model_name)
     rows.extend(
@@ -391,10 +444,10 @@ def run_part2_improvement_experiments(
             permutation_records=permutation_records,
             device=resolved_device,
             run_id=run_id,
+            raw_results_output_path=output_paths["raw_results"],
         )
     )
 
-    output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
     save_rows(rows, output_paths["raw_results"])
     raw_results = pd.DataFrame(rows)
     aggregated_results = save_aggregated_accuracy(

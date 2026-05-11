@@ -260,7 +260,7 @@ class CVExperimentConfig:
         self.model_names = ["resnet18"]
         self.grid_sizes = [1, 3]
         self.num_permutations = 2
-        self.epochs = 5
+        self.epochs = 3
         self.plot_samples = True
 
     def _validate_config_model_names(self) -> None:

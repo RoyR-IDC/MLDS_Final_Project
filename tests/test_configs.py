@@ -187,7 +187,7 @@ def test_local_testing_defaults_use_larger_part1_signal():
     assert config.sample_limit == 256
     assert config.grid_sizes == [1, 3]
     assert config.num_permutations == 2
-    assert config.epochs == 5
+    assert config.epochs == 3
     assert config.plot_samples is True
 
 
