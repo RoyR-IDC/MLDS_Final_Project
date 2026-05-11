@@ -217,9 +217,10 @@ class CVExperimentConfig:
         """Update configs for local testing."""
         self.sample_data = True
         self.sample_limit = 256
+        self.model_names = ["resnet18"]
         self.grid_sizes = [1, 3]
         self.num_permutations = 2
-        self.epochs = 5
+        self.epochs = 3
         self.plot_samples = True
 
 

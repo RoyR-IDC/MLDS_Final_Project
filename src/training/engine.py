@@ -26,6 +26,8 @@ class TrainingRunComponents:
     epochs: int
     use_amp: bool = False
     checkpoint_path: Optional[str] = None
+    progress_desc: str = "Epoch"
+    progress_leave: bool = True
 
 
 def train_one_epoch(
@@ -54,12 +56,13 @@ def train_one_epoch(
     loss_meter = AverageMeter()
     correct = 0
     total = 0
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp and device.type == "cuda")
+    amp_enabled = use_amp and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
     for images, targets in dataloader:
         images = images.to(device)
         targets = targets.to(device)
         optimizer.zero_grad(set_to_none=True)
-        with torch.cuda.amp.autocast(enabled=use_amp and device.type == "cuda"):
+        with torch.amp.autocast("cuda", enabled=amp_enabled):
             logits = model(images)
             loss = criterion(logits, targets)
         scaler.scale(loss).backward()
@@ -116,7 +119,12 @@ def train_and_validate(components: TrainingRunComponents) -> Dict[str, float]:
     best_val_accuracy = 0.0
     last_train = {"train_loss": 0.0, "train_accuracy": 0.0}
     last_val = {"val_loss": 0.0, "val_accuracy": 0.0}
-    with tqdm(total=components.epochs, desc="Epoch", unit="epoch", leave=False) as progress:
+    with tqdm(
+        total=components.epochs,
+        desc=components.progress_desc,
+        unit="epoch",
+        leave=components.progress_leave,
+    ) as progress:
         for _ in range(components.epochs):
             last_train = train_one_epoch(
                 components.model,
