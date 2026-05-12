@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch import nn
+from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.training.metrics import AverageMeter
-from src.training.optimizers import build_optimizer
 
 
 @dataclass
@@ -23,7 +25,7 @@ class TrainingRunComponents:
     val_loader: DataLoader
     optimizer: torch.optim.Optimizer
     criterion: nn.Module
-    device: torch.device
+    device: TorchDevice
     epochs: int
     use_amp: bool = False
     checkpoint_path: Optional[str] = None
@@ -36,7 +38,7 @@ def train_one_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    device: torch.device,
+    device: TorchDevice,
     use_amp: bool = False,
 ) -> Dict[str, float]:
     """Train a model for one epoch.
@@ -58,12 +60,12 @@ def train_one_epoch(
     correct = 0
     total = 0
     amp_enabled = use_amp and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    scaler = GradScaler("cuda", enabled=amp_enabled)
     for images, targets in dataloader:
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        with torch.amp.autocast("cuda", enabled=amp_enabled):
+        with autocast("cuda", enabled=amp_enabled):
             logits = model(images)
             loss = criterion(logits, targets)
         scaler.scale(loss).backward()
@@ -77,7 +79,7 @@ def train_one_epoch(
     return {"train_loss": loss_meter.average, "train_accuracy": correct / max(1, total)}
 
 
-def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, device: torch.device) -> Dict[str, float]:
+def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, device: TorchDevice) -> Dict[str, float]:
     """Evaluate a model on a dataloader."""
 
     model.eval()

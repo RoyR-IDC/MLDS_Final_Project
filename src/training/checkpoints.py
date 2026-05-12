@@ -7,6 +7,7 @@ from typing import Any, Mapping, Optional
 
 import torch
 from torch import nn
+from torch._C import device as TorchDevice
 
 
 def save_checkpoint(
@@ -32,7 +33,7 @@ def save_checkpoint(
     torch.save(state, path)
 
 
-def load_checkpoint(path: str, map_location: str | torch.device | None = None) -> dict[str, Any]:
+def load_checkpoint(path: str, map_location: str | TorchDevice | None = None) -> dict[str, Any]:
     """Load a PyTorch checkpoint."""
 
     return torch.load(path, map_location=map_location)

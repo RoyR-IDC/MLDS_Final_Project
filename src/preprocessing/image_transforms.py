@@ -27,7 +27,7 @@ class PILToFloatTensor:
         if image.mode != "RGB":
             image = image.convert("RGB")
         width, height = image.size
-        data = torch.frombuffer(bytearray(image.tobytes()), dtype=torch.uint8)
+        data = torch.ByteTensor(bytearray(image.tobytes()))
         return data.reshape(height, width, 3).permute(2, 0, 1).float().div(255.0)
 
 

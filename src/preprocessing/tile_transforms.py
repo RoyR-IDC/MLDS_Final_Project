@@ -63,7 +63,7 @@ class TilePermutationTransform:
         _, image_size, _ = image.shape
         tiles_per_side = self.tile_permutation.tiles_per_side
         tile_size = image_size // tiles_per_side
-        output = torch.empty_like(image)
+        output = image.new_empty(image.shape)
 
         for new_row, row in enumerate(self.tile_permutation.order):
             for new_col, (old_row, old_col) in enumerate(row):

@@ -2,13 +2,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from src.preprocessing.tile_transforms import (
+from src.preprocessing.tile_transforms import (  # noqa: E402
     TilePermutationTransform,
     apply_tile_permutation,
     reconstruct_from_tiles,
     split_into_tiles,
 )
-from src.preprocessing.tile_permutations import TilePermutation, identity_tile_permutation, random_tile_permutation
+from src.preprocessing.tile_permutations import TilePermutation, identity_tile_permutation, random_tile_permutation  # noqa: E402
 
 
 def test_identity_tile_permutation_returns_same_tensor():

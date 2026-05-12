@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import timm
-import torch
 from torch import nn
+from torch._C import device as TorchDevice
 import torchvision.models as tv_models
 
 from src.models.registry import TIMM_MODEL_IDS, format_supported_model_names, validate_model_name
@@ -32,7 +32,7 @@ def get_model(
     name: str,
     num_classes: int = 2,
     pretrained: bool = False,
-    device: Optional[torch.device] = None,
+    device: Optional[TorchDevice] = None,
     freeze_backbone: bool = False,
 ) -> nn.Module:
     """Create one of the three supported lightweight image classifiers.

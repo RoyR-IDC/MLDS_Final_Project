@@ -1,5 +1,9 @@
+from typing import cast
+
 import torch
 from torch import nn
+from torch._C import device as TorchDevice
+from torch.utils.data import DataLoader
 
 from src.training import engine
 from src.training.engine import TrainingRunComponents
@@ -28,14 +32,14 @@ class RecordingCriterion(nn.CrossEntropyLoss):
 
 
 def test_model_trainer_moves_model_and_criterion_to_spec_device():
-    device = torch.device("cpu")
+    device = TorchDevice("cpu")
     model = RecordingLinear()
     criterion = RecordingCriterion()
     spec = TrainingRunSpec(
         model_name="recording_model",
         model=model,
-        train_loader=[],
-        val_loader=[],
+        train_loader=cast(DataLoader, []),
+        val_loader=cast(DataLoader, []),
         criterion=criterion,
         device=device,
         config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
@@ -48,13 +52,13 @@ def test_model_trainer_moves_model_and_criterion_to_spec_device():
 
 
 def test_train_and_validate_moves_model_and_criterion_to_component_device(monkeypatch):
-    device = torch.device("cpu")
+    device = TorchDevice("cpu")
     model = RecordingLinear()
     criterion = RecordingCriterion()
     components = TrainingRunComponents(
         model=model,
-        train_loader=[],
-        val_loader=[],
+        train_loader=cast(DataLoader, []),
+        val_loader=cast(DataLoader, []),
         optimizer=torch.optim.SGD(model.parameters(), lr=0.01),
         criterion=criterion,
         device=device,

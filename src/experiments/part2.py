@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
-import torch
+from torch._C import device as TorchDevice
 
 from src.evaluation.experiment_results import (
     get_device,
@@ -35,7 +35,7 @@ def collect_part2_ablation_results(
     train_samples: Sequence[tuple[str, int]],
     validation_samples: Sequence[tuple[str, int]],
     tile_permutation_records: Sequence[TilePermutationRecord],
-    device: torch.device,
+    device: TorchDevice,
     run_id: str,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -128,7 +128,7 @@ def collect_part2_ablation_results(
 
 def run_part2_improvement_experiments(
     config: CVExperimentConfig,
-    device: Optional[torch.device] = None,
+    device: Optional[TorchDevice] = None,
 ) -> pd.DataFrame:
     """Run Part 2 ablations, save raw/aggregated results, and write the comparison plot."""
 

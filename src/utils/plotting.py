@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, cast
 
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image as PILImage
+from torch import Tensor
 import torchvision
 
 from src.preprocessing.image_transforms import PILToFloatTensor, make_tile_compatible_image_size
@@ -47,7 +49,7 @@ def plot_tile_permutation_samples(
     image_size: int,
     samples_per_class: int = 2,
     max_records: int = 4,
-) -> plt.Figure:
+) -> Figure:
     """Plot original samples next to selected tile-reordered variants.
 
     The original image column represents the unpermuted 1x1 case, so 1x1
@@ -86,6 +88,8 @@ def plot_tile_permutation_samples(
             axes[row_index, 0].axis("off")
 
             for col_index, record in enumerate(display_records, start=1):
+                assert record.tiles_per_side is not None
+                assert record.tile_permutation is not None
                 tile_image_size = make_tile_compatible_image_size(image_size, record.tiles_per_side)
                 transform = torchvision.transforms.Compose(
                     [
@@ -93,7 +97,7 @@ def plot_tile_permutation_samples(
                         PILToFloatTensor(),
                     ]
                 )
-                image_tensor = transform(image)
+                image_tensor = cast(Tensor, transform(image))
                 reordered_tensor = apply_tile_permutation(
                     image_tensor,
                     record.tile_permutation,

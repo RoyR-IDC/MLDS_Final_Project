@@ -6,7 +6,8 @@ from time import perf_counter
 from typing import Any, Callable, Optional
 
 import torch
-from torch import nn
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -33,7 +34,7 @@ class ModelTrainer:
             weight_decay=spec.config.weight_decay,
         )
         amp_enabled = spec.config.use_amp and spec.device.type == "cuda"
-        self.scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+        self.scaler = GradScaler("cuda", enabled=amp_enabled)
         self.amp_enabled = amp_enabled
 
     def fit(self, on_progress: Optional[ProgressCallback] = None) -> TrainingResult:
@@ -109,7 +110,7 @@ class ModelTrainer:
             if training:
                 self.optimizer.zero_grad(set_to_none=True)
 
-            with torch.amp.autocast("cuda", enabled=self.amp_enabled and training):
+            with autocast("cuda", enabled=self.amp_enabled and training):
                 logits = self.spec.model(images)
                 loss = self.spec.criterion(logits, targets)
 

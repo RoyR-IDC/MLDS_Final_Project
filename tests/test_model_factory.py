@@ -1,6 +1,5 @@
 import pytest
 import timm
-import torch
 
 from src.models.factory import TIMM_MODEL_IDS, get_model
 
@@ -9,7 +8,7 @@ from src.models.factory import TIMM_MODEL_IDS, get_model
 def test_model_factory_builds_supported_lightweight_models_without_pretrained_weights(model_name):
     model = get_model(model_name, num_classes=2, pretrained=False)
 
-    output = model(torch.zeros(1, 3, 224, 224))
+    output = model(next(model.parameters()).new_zeros((1, 3, 224, 224)))
 
     assert output.shape == (1, 2)
 

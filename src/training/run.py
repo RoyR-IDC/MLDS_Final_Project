@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, Optional
 
-import torch
 from torch import nn
+from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 
 
@@ -55,7 +55,7 @@ class TrainingRunSpec:
     train_loader: DataLoader
     val_loader: DataLoader
     criterion: nn.Module
-    device: torch.device
+    device: TorchDevice
     config: TrainingConfig
     checkpoint_config: CheckpointConfig = field(default_factory=CheckpointConfig)
     metadata: dict[str, Any] = field(default_factory=dict)

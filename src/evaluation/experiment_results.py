@@ -10,6 +10,7 @@ from typing import Any, Dict, Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+from torch._C import device as TorchDevice
 from tqdm.auto import tqdm
 
 from src.evaluation.tile_permutation_difficulty import (
@@ -35,7 +36,16 @@ from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir, save_csv
 
 
-def get_device(config: CVExperimentConfig) -> torch.device:
+__all__ = [
+    "aggregate_accuracy",
+    "build_result_row",
+    "experiment_output_paths",
+    "save_aggregated_accuracy",
+    "save_rows",
+]
+
+
+def get_device(config: CVExperimentConfig) -> TorchDevice:
     """Return a configured device, falling back to CPU when needed.
 
     Args:
@@ -47,10 +57,10 @@ def get_device(config: CVExperimentConfig) -> torch.device:
 
     requested = str(config.device).lower()
     if requested == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = TorchDevice("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Selected device: {device}")
         return device
-    device = torch.device(requested)
+    device = TorchDevice(requested)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA was requested, but no CUDA GPU is available. In Colab, choose "

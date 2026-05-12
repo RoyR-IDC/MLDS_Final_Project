@@ -1,12 +1,11 @@
 from typing import List, Optional, Sequence, Tuple
 import os
-import sys
 import random
 import numpy as np
 from PIL import Image
-import io
 import matplotlib.pyplot as plt
 import torch
+from torch._C import device as TorchDevice
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
@@ -258,7 +257,7 @@ def build_tiny_dataloader(
     return dataloader, dataset
 
 
-def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device: Optional[torch.device] = None, optimizer: Optional[torch.optim.Optimizer] = None, epoch: int = 0, mixup_alpha: float = 0.0):
+def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device: Optional[TorchDevice] = None, optimizer: Optional[torch.optim.Optimizer] = None, epoch: int = 0, mixup_alpha: float = 0.0):
     """Run a single train + validate step using repo training helpers when available.
 
     This function will attempt to use ``train_one_epoch`` and ``evaluate`` from
@@ -277,7 +276,7 @@ def run_quick_train_step(model: torch.nn.Module, dataloader: DataLoader, device:
         Dict with keys 'train' and 'val' mapping to summary dicts.
     """
     if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = TorchDevice('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     if optimizer is None:
         optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)

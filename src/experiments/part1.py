@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
-import torch
 from torch import nn
+from torch._C import device as TorchDevice
+from torch.utils.data import DataLoader
 
 from src.evaluation.experiment_results import get_device, load_experiment_samples, plot_accuracy_vs_tiles
 from src.experiments.results import (
@@ -75,9 +76,9 @@ def build_training_spec(
     *,
     config: CVExperimentConfig,
     model_name: str,
-    train_loader: torch.utils.data.DataLoader,
-    val_loader: torch.utils.data.DataLoader,
-    device: torch.device,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    device: TorchDevice,
     run_id: str,
     record: TilePermutationRecord,
     seed: int,
@@ -212,7 +213,7 @@ def collect_model_tile_permutation_results(
     validation_samples: Sequence[tuple[str, int]],
     tile_permutation_records: Sequence[TilePermutationRecord],
     seed: int,
-    device: torch.device,
+    device: TorchDevice,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train one model across tile-permutation records and collect result rows."""
@@ -284,7 +285,7 @@ def collect_model_tile_permutation_results(
     return rows
 
 
-def run_part1_experiments(config: CVExperimentConfig, device: Optional[torch.device] = None) -> pd.DataFrame:
+def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevice] = None) -> pd.DataFrame:
     """Run Part 1 model comparison experiments and save raw/aggregated outputs."""
 
     resolved_device = device or get_device(config)
