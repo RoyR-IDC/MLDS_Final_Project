@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from src.evaluation.permutation_difficulty import (
+from src.evaluation.tile_permutation_difficulty import (
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -10,9 +10,9 @@ from src.evaluation.permutation_difficulty import (
 
 
 def test_global_tile_displacement():
-    permutation = [3, 2, 1, 0]
+    tile_permutation = [[(1, 1), (1, 0)], [(0, 1), (0, 0)]]
 
-    assert compute_global_displacement(permutation, 2) == 1.0
+    assert compute_global_displacement(tile_permutation, 2) == 1.0
 
 
 def test_center_weighted_displacement():
@@ -21,10 +21,10 @@ def test_center_weighted_displacement():
     corner_weight = math.exp(-alpha_center * math.sqrt(2.0))
     assert center_weight > corner_weight
 
-    center_swap = list(range(25))
-    center_swap[12], center_swap[13] = center_swap[13], center_swap[12]
-    outer_swap = list(range(25))
-    outer_swap[0], outer_swap[1] = outer_swap[1], outer_swap[0]
+    center_swap = [[(row, col) for col in range(5)] for row in range(5)]
+    center_swap[2][2], center_swap[2][3] = center_swap[2][3], center_swap[2][2]
+    outer_swap = [[(row, col) for col in range(5)] for row in range(5)]
+    outer_swap[0][0], outer_swap[0][1] = outer_swap[0][1], outer_swap[0][0]
 
     center_score = compute_center_weighted_displacement(center_swap, 5, alpha_center)
     outer_score = compute_center_weighted_displacement(outer_swap, 5, alpha_center)
@@ -35,11 +35,12 @@ def test_center_weighted_displacement():
 
 
 def test_combined_hardness_score():
-    expected = 0.5 * compute_global_displacement([3, 2, 1, 0], 2) + 0.5 * compute_center_weighted_displacement(
-        [3, 2, 1, 0],
+    tile_permutation = [[(1, 1), (1, 0)], [(0, 1), (0, 0)]]
+    expected = 0.5 * compute_global_displacement(tile_permutation, 2) + 0.5 * compute_center_weighted_displacement(
+        tile_permutation,
         2,
         alpha_center=1.0,
     )
-    assert compute_combined_hardness([3, 2, 1, 0], 2, alpha_center=1.0) == pytest.approx(expected)
+    assert compute_combined_hardness(tile_permutation, 2, alpha_center=1.0) == pytest.approx(expected)
     with pytest.raises(ValueError):
         compute_combined_hardness([0, 1, 2, 3], 2, alpha_center=1.0, weight_center=0.4)

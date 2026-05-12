@@ -1,12 +1,12 @@
 """Plotting and aggregation utilities for tile-permutation experiments.
 
 This module provides helpers to aggregate the runner's `summary.csv`,
-produce the Accuracy vs Number of Tiles plot, compute permutation difficulty
+produce the Accuracy vs Number of Tiles plot, compute tile-permutation difficulty
 metrics for each run, and produce scatter plots of metric vs accuracy with
 correlation statistics.
 
 Usage:
-    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --n_permutations 5
+    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --num_tile_permutations 5
 """
 import os
 import json
@@ -14,26 +14,29 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from src.evaluation.permutation_difficulty import (
+from src.evaluation.tile_permutation_difficulty import (
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
 )
-from src.preprocessing.permutations import generate_permutations, identity_permutation
+from src.preprocessing.tile_permutations import (
+    generate_tile_permutations,
+    tile_permutation_from_jsonable,
+)
 
 
 def aggregate_summary(summary_csv: str) -> pd.DataFrame:
-    """Read summary CSV and aggregate mean/std accuracy per (model, grid).
+    """Read summary CSV and aggregate mean/std accuracy per model and tile count.
 
     Args:
         summary_csv: Path to runner summary CSV.
 
     Returns:
-        DataFrame with columns ``model``, ``grid``, ``mean_acc``, ``std_acc``, and ``n_runs``.
+        DataFrame with columns ``model_name``, ``tiles_per_side``, accuracy stats, and ``n_runs``.
     """
     summary = pd.read_csv(summary_csv)
-    aggregated = summary.groupby(['model', 'grid'])['val_acc'].agg(['mean', 'std', 'count']).reset_index()
-    aggregated = aggregated.rename(columns={'mean': 'mean_acc', 'std': 'std_acc', 'count': 'n_runs'})
+    aggregated = summary.groupby(['model_name', 'num_tiles'], dropna=False)['val_accuracy'].agg(['mean', 'std', 'count']).reset_index()
+    aggregated = aggregated.rename(columns={'mean': 'mean_val_accuracy', 'std': 'std_val_accuracy', 'count': 'n_runs'})
     return aggregated
 
 
@@ -46,12 +49,18 @@ def plot_accuracy_vs_tiles(summary_csv: str, out_dir: str):
     """
     os.makedirs(out_dir, exist_ok=True)
     aggregated = aggregate_summary(summary_csv)
-    model_names = aggregated['model'].unique()
+    model_names = aggregated['model_name'].unique()
     plt.figure(figsize=(8, 6))
     for model_name in model_names:
-        model_results = aggregated[aggregated['model'] == model_name].sort_values('grid')
-        plt.errorbar(model_results['grid'], model_results['mean_acc'], yerr=model_results['std_acc'], label=model_name, marker='o')
-    plt.xlabel('Number of tiles (GxG)')
+        model_results = aggregated[aggregated['model_name'] == model_name].sort_values('num_tiles')
+        plt.errorbar(
+            model_results['num_tiles'],
+            model_results['mean_val_accuracy'],
+            yerr=model_results['std_val_accuracy'],
+            label=model_name,
+            marker='o',
+        )
+    plt.xlabel('Number of tiles')
     plt.ylabel('Validation Accuracy')
     plt.title('Accuracy vs Number of Tiles')
     plt.legend()
@@ -62,34 +71,31 @@ def plot_accuracy_vs_tiles(summary_csv: str, out_dir: str):
     print('Saved', out_path)
 
 
-def _get_permutation_for_row(grid: int, perm_idx: int, n_permutations: int = 5, gen_seed: int = 42):
-    """Reconstruct permutation used by the runner for a given grid and perm_idx.
+def _get_tile_permutation_for_row(tiles_per_side: int | None, permutation_idx: int, n_tile_permutations: int = 5, gen_seed: int = 42):
+    """Reconstruct the generated tile permutation for one summary row.
 
     Args:
-        grid: Number of tiles along each image side.
-        perm_idx: Permutation index from the legacy summary.
-        n_permutations: Number of permutations used by the legacy runner.
-        gen_seed: Seed used by the legacy runner.
+        tiles_per_side: Number of tiles along each image side.
+        permutation_idx: Tile-permutation ID from the summary.
+        n_tile_permutations: Number of tile permutations used by the runner.
+        gen_seed: Seed used by the runner.
 
     Returns:
-        Tile permutation for the summary row.
+        Output tile permutation for the summary row.
     """
-    if perm_idx == 0:
-        permutation = identity_permutation(grid)
-        return permutation
-    permutations = generate_permutations(grid, n_permutations - 1, seed=gen_seed)
-    # Permutation index 1 corresponds to the first generated permutation.
-    permutation = permutations[perm_idx - 1]
-    return permutation
+    if tiles_per_side is None or permutation_idx == 0:
+        return None
+    tile_permutations = generate_tile_permutations(tiles_per_side, n_tile_permutations - 1, seed=gen_seed)
+    return tile_permutations[permutation_idx - 1]
 
 
-def compute_metrics_for_summary(summary_csv: str, out_dir: str, n_permutations: int = 5):
-    """Attach permutation metrics to each row in summary CSV and save augmented CSV.
+def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
+    """Attach tile-permutation metrics to each row in summary CSV and save augmented CSV.
 
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Directory to save augmented CSV and JSON stats.
-        n_permutations: Number of permutations used by the runner.
+        num_tile_permutations: Number of tile permutations used by the runner.
 
     Returns:
         DataFrame with added metric columns.
@@ -98,20 +104,27 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, n_permutations: 
     summary = pd.read_csv(summary_csv)
     metric_rows = []
     for _, row in summary.iterrows():
-        grid_size = int(row['grid'])
-        perm_idx = int(row['perm_idx'])
-        permutation = _get_permutation_for_row(grid_size, perm_idx, n_permutations=n_permutations)
+        tiles_per_side = None if pd.isna(row.get('tiles_per_side')) else int(row['tiles_per_side'])
+        if 'tile_permutation' in row and not pd.isna(row['tile_permutation']):
+            serialized_tile_permutation = json.loads(row['tile_permutation'])
+            tile_permutation = tile_permutation_from_jsonable(serialized_tile_permutation, tiles_per_side)
+        else:
+            tile_permutation = _get_tile_permutation_for_row(
+                tiles_per_side,
+                int(row['tile_permutation_id']),
+                n_tile_permutations=num_tile_permutations,
+            )
         metric_rows.append(
             {
-                'global_tile_displacement': compute_global_displacement(permutation, grid_size),
+                'global_tile_displacement': compute_global_displacement(tile_permutation, tiles_per_side),
                 'center_weighted_displacement': compute_center_weighted_displacement(
-                    permutation,
-                    grid_size,
+                    tile_permutation,
+                    tiles_per_side,
                     alpha_center=1.0,
                 ),
                 'combined_hardness_score': compute_combined_hardness(
-                    permutation,
-                    grid_size,
+                    tile_permutation,
+                    tiles_per_side,
                     alpha_center=1.0,
                 ),
             }
@@ -144,9 +157,9 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     stats = {}
     for metric in metrics:
         fig, ax = plt.subplots(figsize=(6, 5))
-        ax.scatter(summary[metric], summary['val_acc'], alpha=0.6)
+        ax.scatter(summary[metric], summary['val_accuracy'], alpha=0.6)
         # Fit linear regression
-        coefficient = np.polyfit(summary[metric], summary['val_acc'], 1)
+        coefficient = np.polyfit(summary[metric], summary['val_accuracy'], 1)
         x_values = np.linspace(summary[metric].min(), summary[metric].max(), 100)
         y_values = np.polyval(coefficient, x_values)
         ax.plot(x_values, y_values, color='red', linewidth=1)
@@ -157,21 +170,21 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
         fig.savefig(path, bbox_inches='tight')
         plt.close(fig)
         # Correlations overall
-        pearson = float(np.corrcoef(summary[metric], summary['val_acc'])[0, 1])
+        pearson = float(np.corrcoef(summary[metric], summary['val_accuracy'])[0, 1])
         # Spearman via ranks
         ranks_x = summary[metric].rank().values
-        ranks_y = summary['val_acc'].rank().values
+        ranks_y = summary['val_accuracy'].rank().values
         spearman = float(np.corrcoef(ranks_x, ranks_y)[0, 1])
         stats[metric] = {'pearson': pearson, 'spearman': spearman}
         # Per-model stats
         per_model = {}
-        for model_name in summary['model'].unique():
-            model_summary = summary[summary['model'] == model_name]
+        for model_name in summary['model_name'].unique():
+            model_summary = summary[summary['model_name'] == model_name]
             if len(model_summary) < 2:
                 continue
-            model_pearson = float(np.corrcoef(model_summary[metric], model_summary['val_acc'])[0, 1])
+            model_pearson = float(np.corrcoef(model_summary[metric], model_summary['val_accuracy'])[0, 1])
             model_ranks_x = model_summary[metric].rank().values
-            model_ranks_y = model_summary['val_acc'].rank().values
+            model_ranks_y = model_summary['val_accuracy'].rank().values
             model_spearman = float(np.corrcoef(model_ranks_x, model_ranks_y)[0, 1])
             per_model[model_name] = {'pearson': model_pearson, 'spearman': model_spearman}
         stats[f'{metric}_per_model'] = per_model
@@ -183,13 +196,13 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     return stats
 
 
-def main(summary_csv: str, out_dir: str, n_permutations: int = 5):
-    """Run all legacy summary plotting steps.
+def main(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
+    """Run all summary plotting steps.
 
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Base output directory.
-        n_permutations: Number of permutations used by the runner.
+        num_tile_permutations: Number of tile permutations used by the runner.
 
     Returns:
         Dictionary with metric correlation statistics.
@@ -198,7 +211,7 @@ def main(summary_csv: str, out_dir: str, n_permutations: int = 5):
     agg_out = os.path.join(out_dir, 'plots')
     os.makedirs(agg_out, exist_ok=True)
     plot_accuracy_vs_tiles(summary_csv, agg_out)
-    augmented_summary = compute_metrics_for_summary(summary_csv, agg_out, n_permutations=n_permutations)
+    augmented_summary = compute_metrics_for_summary(summary_csv, agg_out, num_tile_permutations=num_tile_permutations)
     stats = plot_metric_vs_accuracy(os.path.join(agg_out, 'summary_with_metrics.csv'), agg_out)
     del augmented_summary
     correlation_stats = stats
@@ -210,6 +223,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--summary', type=str, required=True)
     p.add_argument('--out', type=str, required=True)
-    p.add_argument('--n_permutations', type=int, default=5)
+    p.add_argument('--num_tile_permutations', type=int, default=5)
     args = p.parse_args()
-    main(args.summary, args.out, args.n_permutations)
+    main(args.summary, args.out, args.num_tile_permutations)

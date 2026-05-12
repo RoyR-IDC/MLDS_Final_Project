@@ -120,21 +120,25 @@ Core modules to add or fix
 
 Inspect the current src structure first. Then add or modify modules as needed, preferably along these lines:
 
-- src/data/dogs_cats.py
+- src/preprocessing/labels.py and src/preprocessing/samples.py
+  - label parsing from filenames
   - dataset discovery
   - train/validation/test split
-  - label parsing from filenames
-  - transforms
+
+- src/preprocessing/datasets.py and src/preprocessing/dataloaders.py
+  - DogsCatsDataset
   - dataloader creation
 
-- src/data/tile_permutation.py
-  - TilePermutationDataset wrapper
+- src/preprocessing/image_transforms.py and src/preprocessing/tile_transforms.py
+  - standard Dogs/Cats image transforms
   - split image tensor into tiles
   - apply permutation
   - reconstruct image tensor
+
+- src/preprocessing/tile_permutations.py
   - identity permutation
   - seeded random permutation generation
-  - reusable list of permutations per grid/seed
+  - reusable list of permutations per tiles-per-side value/seed
 
 - src/models/factory.py
   - get_model(name, num_classes, pretrained, device, ...)

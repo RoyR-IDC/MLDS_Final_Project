@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch import nn
+from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -22,7 +25,7 @@ class TrainingRunComponents:
     val_loader: DataLoader
     optimizer: torch.optim.Optimizer
     criterion: nn.Module
-    device: torch.device
+    device: TorchDevice
     epochs: int
     use_amp: bool = False
     checkpoint_path: Optional[str] = None
@@ -35,7 +38,7 @@ def train_one_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    device: torch.device,
+    device: TorchDevice,
     use_amp: bool = False,
 ) -> Dict[str, float]:
     """Train a model for one epoch.
@@ -57,12 +60,12 @@ def train_one_epoch(
     correct = 0
     total = 0
     amp_enabled = use_amp and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    scaler = GradScaler("cuda", enabled=amp_enabled)
     for images, targets in dataloader:
-        images = images.to(device)
-        targets = targets.to(device)
+        images = images.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        with torch.amp.autocast("cuda", enabled=amp_enabled):
+        with autocast("cuda", enabled=amp_enabled):
             logits = model(images)
             loss = criterion(logits, targets)
         scaler.scale(loss).backward()
@@ -76,7 +79,7 @@ def train_one_epoch(
     return {"train_loss": loss_meter.average, "train_accuracy": correct / max(1, total)}
 
 
-def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, device: torch.device) -> Dict[str, float]:
+def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, device: TorchDevice) -> Dict[str, float]:
     """Evaluate a model on a dataloader."""
 
     model.eval()
@@ -85,8 +88,8 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
     total = 0
     with torch.no_grad():
         for images, targets in dataloader:
-            images = images.to(device)
-            targets = targets.to(device)
+            images = images.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
             logits = model(images)
             loss = criterion(logits, targets)
             batch_size = targets.numel()
@@ -96,26 +99,11 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
     return {"val_loss": loss_meter.average, "val_accuracy": correct / max(1, total)}
 
 
-def build_optimizer(model: nn.Module, name: str, learning_rate: float, weight_decay: float = 0.0) -> torch.optim.Optimizer:
-    """Build an optimizer from a short config name."""
-
-    trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    name = name.lower()
-    if name == "adamw":
-        optimizer = torch.optim.AdamW(trainable, lr=learning_rate, weight_decay=weight_decay)
-        return optimizer
-    if name == "adam":
-        optimizer = torch.optim.Adam(trainable, lr=learning_rate, weight_decay=weight_decay)
-        return optimizer
-    if name == "sgd":
-        optimizer = torch.optim.SGD(trainable, lr=learning_rate, momentum=0.9, weight_decay=weight_decay)
-        return optimizer
-    raise ValueError(f"Unsupported optimizer: {name}")
-
-
 def train_and_validate(components: TrainingRunComponents) -> Dict[str, float]:
     """Train and validate a model, returning final and best metrics."""
 
+    components.model = components.model.to(components.device)
+    components.criterion = components.criterion.to(components.device)
     best_val_accuracy = 0.0
     last_train = {"train_loss": 0.0, "train_accuracy": 0.0}
     last_val = {"val_loss": 0.0, "val_accuracy": 0.0}

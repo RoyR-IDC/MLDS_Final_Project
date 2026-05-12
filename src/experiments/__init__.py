@@ -1,2 +1,1 @@
-"""Compatibility imports for notebook experiment entrypoints."""
-
+"""Notebook experiment entrypoints."""
