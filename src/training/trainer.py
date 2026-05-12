@@ -24,6 +24,8 @@ class ModelTrainer:
 
     def __init__(self, spec: TrainingRunSpec) -> None:
         self.spec = spec
+        self.spec.model = self.spec.model.to(self.spec.device)
+        self.spec.criterion = self.spec.criterion.to(self.spec.device)
         self.optimizer = build_optimizer(
             spec.model,
             name=spec.config.optimizer_name,
@@ -101,8 +103,8 @@ class ModelTrainer:
         total = 0
 
         for images, targets in dataloader:
-            images = images.to(self.spec.device)
-            targets = targets.to(self.spec.device)
+            images = images.to(self.spec.device, non_blocking=True)
+            targets = targets.to(self.spec.device, non_blocking=True)
 
             if training:
                 self.optimizer.zero_grad(set_to_none=True)

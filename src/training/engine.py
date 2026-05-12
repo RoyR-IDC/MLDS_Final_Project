@@ -60,8 +60,8 @@ def train_one_epoch(
     amp_enabled = use_amp and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
     for images, targets in dataloader:
-        images = images.to(device)
-        targets = targets.to(device)
+        images = images.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
         with torch.amp.autocast("cuda", enabled=amp_enabled):
             logits = model(images)
@@ -86,8 +86,8 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
     total = 0
     with torch.no_grad():
         for images, targets in dataloader:
-            images = images.to(device)
-            targets = targets.to(device)
+            images = images.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
             logits = model(images)
             loss = criterion(logits, targets)
             batch_size = targets.numel()
@@ -100,6 +100,8 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
 def train_and_validate(components: TrainingRunComponents) -> Dict[str, float]:
     """Train and validate a model, returning final and best metrics."""
 
+    components.model = components.model.to(components.device)
+    components.criterion = components.criterion.to(components.device)
     best_val_accuracy = 0.0
     last_train = {"train_loss": 0.0, "train_accuracy": 0.0}
     last_val = {"val_loss": 0.0, "val_accuracy": 0.0}
