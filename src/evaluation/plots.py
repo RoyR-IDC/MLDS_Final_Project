@@ -1,12 +1,12 @@
-"""Plotting and aggregation utilities for tile-order experiments.
+"""Plotting and aggregation utilities for tile-permutation experiments.
 
 This module provides helpers to aggregate the runner's `summary.csv`,
-produce the Accuracy vs Number of Tiles plot, compute tile-order difficulty
+produce the Accuracy vs Number of Tiles plot, compute tile-permutation difficulty
 metrics for each run, and produce scatter plots of metric vs accuracy with
 correlation statistics.
 
 Usage:
-    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --num_tile_orders 5
+    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --num_tile_permutations 5
 """
 import os
 import json
@@ -14,25 +14,28 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from src.evaluation.tile_order_difficulty import (
+from src.evaluation.tile_permutation_difficulty import (
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
 )
-from src.preprocessing.tile_orders import generate_tile_orders, identity_tile_order
+from src.preprocessing.tile_permutations import (
+    generate_tile_permutations,
+    tile_permutation_from_jsonable,
+)
 
 
 def aggregate_summary(summary_csv: str) -> pd.DataFrame:
-    """Read summary CSV and aggregate mean/std accuracy per model and grid side length.
+    """Read summary CSV and aggregate mean/std accuracy per model and tile count.
 
     Args:
         summary_csv: Path to runner summary CSV.
 
     Returns:
-        DataFrame with columns ``model_name``, ``grid_side_length``, accuracy stats, and ``n_runs``.
+        DataFrame with columns ``model_name``, ``tiles_per_side``, accuracy stats, and ``n_runs``.
     """
     summary = pd.read_csv(summary_csv)
-    aggregated = summary.groupby(['model_name', 'grid_side_length'])['val_accuracy'].agg(['mean', 'std', 'count']).reset_index()
+    aggregated = summary.groupby(['model_name', 'num_tiles'], dropna=False)['val_accuracy'].agg(['mean', 'std', 'count']).reset_index()
     aggregated = aggregated.rename(columns={'mean': 'mean_val_accuracy', 'std': 'std_val_accuracy', 'count': 'n_runs'})
     return aggregated
 
@@ -49,15 +52,15 @@ def plot_accuracy_vs_tiles(summary_csv: str, out_dir: str):
     model_names = aggregated['model_name'].unique()
     plt.figure(figsize=(8, 6))
     for model_name in model_names:
-        model_results = aggregated[aggregated['model_name'] == model_name].sort_values('grid_side_length')
+        model_results = aggregated[aggregated['model_name'] == model_name].sort_values('num_tiles')
         plt.errorbar(
-            model_results['grid_side_length'],
+            model_results['num_tiles'],
             model_results['mean_val_accuracy'],
             yerr=model_results['std_val_accuracy'],
             label=model_name,
             marker='o',
         )
-    plt.xlabel('Grid side length')
+    plt.xlabel('Number of tiles')
     plt.ylabel('Validation Accuracy')
     plt.title('Accuracy vs Number of Tiles')
     plt.legend()
@@ -68,31 +71,31 @@ def plot_accuracy_vs_tiles(summary_csv: str, out_dir: str):
     print('Saved', out_path)
 
 
-def _get_output_tile_order_for_row(grid_side_length: int, order_idx: int, n_tile_orders: int = 5, gen_seed: int = 42):
-    """Reconstruct the generated tile order for one summary row.
+def _get_tile_permutation_for_row(tiles_per_side: int | None, permutation_idx: int, n_tile_permutations: int = 5, gen_seed: int = 42):
+    """Reconstruct the generated tile permutation for one summary row.
 
     Args:
-        grid_side_length: Number of tiles along each image side.
-        order_idx: Tile-order ID from the summary.
-        n_tile_orders: Number of tile orders used by the runner.
+        tiles_per_side: Number of tiles along each image side.
+        permutation_idx: Tile-permutation ID from the summary.
+        n_tile_permutations: Number of tile permutations used by the runner.
         gen_seed: Seed used by the runner.
 
     Returns:
-        Output tile order for the summary row.
+        Output tile permutation for the summary row.
     """
-    if order_idx == 0:
-        return identity_tile_order(grid_side_length)
-    output_tile_orders = generate_tile_orders(grid_side_length, n_tile_orders - 1, seed=gen_seed)
-    return output_tile_orders[order_idx - 1]
+    if tiles_per_side is None or permutation_idx == 0:
+        return None
+    tile_permutations = generate_tile_permutations(tiles_per_side, n_tile_permutations - 1, seed=gen_seed)
+    return tile_permutations[permutation_idx - 1]
 
 
-def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_orders: int = 5):
-    """Attach tile-order metrics to each row in summary CSV and save augmented CSV.
+def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
+    """Attach tile-permutation metrics to each row in summary CSV and save augmented CSV.
 
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Directory to save augmented CSV and JSON stats.
-        num_tile_orders: Number of tile orders used by the runner.
+        num_tile_permutations: Number of tile permutations used by the runner.
 
     Returns:
         DataFrame with added metric columns.
@@ -101,24 +104,27 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_orders:
     summary = pd.read_csv(summary_csv)
     metric_rows = []
     for _, row in summary.iterrows():
-        grid_side_length = int(row['grid_side_length'])
-        order_idx = int(row['tile_order_id'])
-        output_tile_order = _get_output_tile_order_for_row(
-            grid_side_length,
-            order_idx,
-            n_tile_orders=num_tile_orders,
-        )
+        tiles_per_side = None if pd.isna(row.get('tiles_per_side')) else int(row['tiles_per_side'])
+        if 'tile_permutation' in row and not pd.isna(row['tile_permutation']):
+            serialized_tile_permutation = json.loads(row['tile_permutation'])
+            tile_permutation = tile_permutation_from_jsonable(serialized_tile_permutation, tiles_per_side)
+        else:
+            tile_permutation = _get_tile_permutation_for_row(
+                tiles_per_side,
+                int(row['tile_permutation_id']),
+                n_tile_permutations=num_tile_permutations,
+            )
         metric_rows.append(
             {
-                'global_tile_displacement': compute_global_displacement(output_tile_order, grid_side_length),
+                'global_tile_displacement': compute_global_displacement(tile_permutation, tiles_per_side),
                 'center_weighted_displacement': compute_center_weighted_displacement(
-                    output_tile_order,
-                    grid_side_length,
+                    tile_permutation,
+                    tiles_per_side,
                     alpha_center=1.0,
                 ),
                 'combined_hardness_score': compute_combined_hardness(
-                    output_tile_order,
-                    grid_side_length,
+                    tile_permutation,
+                    tiles_per_side,
                     alpha_center=1.0,
                 ),
             }
@@ -190,13 +196,13 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     return stats
 
 
-def main(summary_csv: str, out_dir: str, num_tile_orders: int = 5):
+def main(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
     """Run all summary plotting steps.
 
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Base output directory.
-        num_tile_orders: Number of tile orders used by the runner.
+        num_tile_permutations: Number of tile permutations used by the runner.
 
     Returns:
         Dictionary with metric correlation statistics.
@@ -205,7 +211,7 @@ def main(summary_csv: str, out_dir: str, num_tile_orders: int = 5):
     agg_out = os.path.join(out_dir, 'plots')
     os.makedirs(agg_out, exist_ok=True)
     plot_accuracy_vs_tiles(summary_csv, agg_out)
-    augmented_summary = compute_metrics_for_summary(summary_csv, agg_out, num_tile_orders=num_tile_orders)
+    augmented_summary = compute_metrics_for_summary(summary_csv, agg_out, num_tile_permutations=num_tile_permutations)
     stats = plot_metric_vs_accuracy(os.path.join(agg_out, 'summary_with_metrics.csv'), agg_out)
     del augmented_summary
     correlation_stats = stats
@@ -217,6 +223,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--summary', type=str, required=True)
     p.add_argument('--out', type=str, required=True)
-    p.add_argument('--num_tile_orders', type=int, default=5)
+    p.add_argument('--num_tile_permutations', type=int, default=5)
     args = p.parse_args()
-    main(args.summary, args.out, args.num_tile_orders)
+    main(args.summary, args.out, args.num_tile_permutations)

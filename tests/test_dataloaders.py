@@ -1,0 +1,40 @@
+import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("torchvision")
+
+from PIL import Image
+
+from src.preprocessing.dataloaders import build_dataloaders
+from src.preprocessing.image_transforms import make_tile_compatible_image_size
+from src.preprocessing.tile_permutations import identity_tile_permutation
+
+
+def _make_image(path, color):
+    Image.new("RGB", (224, 224), color).save(path)
+
+
+def test_grid_three_dataloader_adjusts_image_size(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    samples = []
+    for index in range(4):
+        label_name = "cat" if index % 2 == 0 else "dog"
+        path = data_dir / f"{label_name}.{index}.jpg"
+        _make_image(path, (index * 40 % 255, index * 70 % 255, index * 100 % 255))
+        samples.append((str(path), 0 if label_name == "cat" else 1))
+
+    assert make_tile_compatible_image_size(224, 3) == 225
+    train_loader, _ = build_dataloaders(
+        samples[:2],
+        samples[2:],
+        image_size=224,
+        tiles_per_side=3,
+        tile_permutation=identity_tile_permutation(3),
+        batch_size=2,
+        num_workers=0,
+    )
+    images, targets = next(iter(train_loader))
+
+    assert images.shape == (2, 3, 225, 225)
+    assert targets.shape == (2,)

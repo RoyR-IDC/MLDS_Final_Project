@@ -13,7 +13,7 @@ import pytest
 from src.evaluation.experiment_results import (
     aggregate_accuracy,
     compute_part3_metric_correlations,
-    compute_part3_tile_order_metrics,
+    compute_part3_tile_permutation_metrics,
     load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
     load_part1_model_results,
@@ -69,34 +69,34 @@ def test_save_rows_handles_array_like_keys_and_values(tmp_path):
     ]
 
 
-def test_aggregate_accuracy_averages_output_tile_orders_by_tile_count():
+def test_aggregate_accuracy_averages_tile_permutations_by_num_tiles():
     raw_results = pd.DataFrame(
         [
             {
                 "model_name": "resnet18",
-                "grid_side_length": 2,
-                "tile_count": 4,
-                "tile_order_id": 0,
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 0,
                 "val_accuracy": 0.50,
                 "best_val_accuracy": 0.60,
             },
             {
                 "model_name": "resnet18",
-                "grid_side_length": 2,
-                "tile_count": 4,
-                "tile_order_id": 1,
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
                 "val_accuracy": 0.70,
                 "best_val_accuracy": 0.80,
             },
         ]
     )
 
-    aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "grid_side_length", "tile_count"])
+    aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "tiles_per_side", "num_tiles"])
 
     assert len(aggregated) == 1
     row = aggregated.iloc[0]
     assert row["model_name"] == "resnet18"
-    assert row["tile_count"] == 4
+    assert row["num_tiles"] == 4
     assert row["mean_final_epoch_val_accuracy"] == 0.60
     assert row["mean_best_epoch_val_accuracy"] == 0.70
     assert row["n_runs"] == 2
@@ -107,7 +107,7 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
         [
             {
                 "model_name": "resnet18",
-                "tile_count": 1,
+                "num_tiles": 1,
                 "mean_final_epoch_val_accuracy": 0.40,
                 "std_final_epoch_val_accuracy": 0.01,
                 "mean_best_epoch_val_accuracy": 0.75,
@@ -115,7 +115,7 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
             },
             {
                 "model_name": "resnet18",
-                "tile_count": 9,
+                "num_tiles": 9,
                 "mean_final_epoch_val_accuracy": 0.45,
                 "std_final_epoch_val_accuracy": 0.01,
                 "mean_best_epoch_val_accuracy": 0.65,
@@ -138,9 +138,10 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
                 "run_id": "part1_run",
                 "config_name": "part1",
                 "model_name": "resnet18",
-                "grid_side_length": 1,
-                "tile_count": 1,
-                "tile_order_id": 0,
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation": None,
                 "val_accuracy": 0.75,
                 "best_val_accuracy": 0.80,
             },
@@ -149,9 +150,10 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
                 "run_id": "part1_run",
                 "config_name": "part1",
                 "model_name": "deit_tiny",
-                "grid_side_length": 1,
-                "tile_count": 1,
-                "tile_order_id": 0,
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation": None,
                 "val_accuracy": 0.70,
                 "best_val_accuracy": 0.72,
             },
@@ -173,8 +175,8 @@ def test_part1_baseline_aggregated_rejects_unsupported_accuracy_column_names(tmp
         [
             {
                 "model_name": "resnet18",
-                "grid_side_length": 1,
-                "tile_count": 1,
+                "tiles_per_side": None,
+                "num_tiles": 1,
                 "mean_val_accuracy": 0.75,
                 "std_val_accuracy": 0.0,
                 "mean_best_val_accuracy": 0.80,
@@ -195,67 +197,67 @@ def test_aggregate_accuracy_keeps_ablation_groups_separate():
             {
                 "model_name": "resnet18",
                 "ablation_name": "augmentation_only",
-                "grid_side_length": 1,
-                "tile_count": 1,
+                "tiles_per_side": None,
+                "num_tiles": 1,
                 "val_accuracy": 0.60,
                 "best_val_accuracy": 0.65,
             },
             {
                 "model_name": "resnet18",
                 "ablation_name": "finetune_only",
-                "grid_side_length": 1,
-                "tile_count": 1,
+                "tiles_per_side": None,
+                "num_tiles": 1,
                 "val_accuracy": 0.80,
                 "best_val_accuracy": 0.85,
             },
         ]
     )
 
-    aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "ablation_name", "grid_side_length", "tile_count"])
+    aggregated = aggregate_accuracy(raw_results, group_columns=["model_name", "ablation_name", "tiles_per_side", "num_tiles"])
 
     assert set(aggregated["ablation_name"]) == {"augmentation_only", "finetune_only"}
     assert len(aggregated) == 2
 
 
-def test_part3_helpers_reuse_tile_order_csv_filter_model_and_emit_renamed_metrics(tmp_path):
+def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_metrics(tmp_path):
     pd.DataFrame(
         [
             {
-                "grid_side_length": 2,
-                "tile_order_id": 7,
-                "tile_order_seed": 99,
-                "output_tile_order": "[3, 2, 1, 0]",
+                "tiles_per_side": 2,
+                "tile_permutation_id": 7,
+                "tile_permutation_seed": 99,
+                "tile_permutation": "[[[1, 1], [1, 0]], [[0, 1], [0, 0]]]",
             }
         ]
-    ).to_csv(tmp_path / "part1_output_tile_orders.csv", index=False)
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
     pd.DataFrame(
         [
             {
                 "model_name": "resnet18",
-                "grid_side_length": 2,
-                "tile_count": 4,
-                "tile_order_id": 7,
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 7,
                 "best_val_accuracy": 0.75,
             },
             {
                 "model_name": "deit_tiny",
-                "grid_side_length": 2,
-                "tile_count": 4,
-                "tile_order_id": 7,
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 7,
                 "best_val_accuracy": 0.80,
             },
         ]
     ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
 
-    metrics = compute_part3_tile_order_metrics(
-        tile_order_csv=str(tmp_path / "part1_output_tile_orders.csv"),
-        grid_side_lengths=[1],
-        num_tile_orders=0,
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[1],
+        num_tile_permutations=0,
         seed=42,
     )
     model_results = load_part1_model_results(str(tmp_path / "part1_raw_results.csv"), "resnet18")
 
-    assert metrics["tile_order_id"].tolist() == [7]
+    assert metrics["tile_permutation_id"].tolist() == [7]
     assert set(
         [
             "global_tile_displacement",
@@ -265,46 +267,50 @@ def test_part3_helpers_reuse_tile_order_csv_filter_model_and_emit_renamed_metric
     ).issubset(metrics.columns)
     assert model_results["model_name"].tolist() == ["resnet18"]
 
-def test_part3_metrics_exclude_duplicate_1x1_output_tile_order_rows(tmp_path):
+def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
     pd.DataFrame(
         [
-            {"grid_side_length": 1, "tile_order_id": 0, "tile_order_seed": 42, "output_tile_order": "[0]"},
-            {"grid_side_length": 1, "tile_order_id": 1, "tile_order_seed": 42, "output_tile_order": "[0]"},
-            {"grid_side_length": 2, "tile_order_id": 0, "tile_order_seed": 42, "output_tile_order": "[0, 1, 2, 3]"},
-            {"grid_side_length": 2, "tile_order_id": 1, "tile_order_seed": 42, "output_tile_order": "[2, 1, 3, 0]"},
+            {"tiles_per_side": None, "tile_permutation_id": 0, "tile_permutation_seed": 42, "tile_permutation": "null"},
+            {
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+            },
         ]
-    ).to_csv(tmp_path / "part1_output_tile_orders.csv", index=False)
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
 
-    metrics = compute_part3_tile_order_metrics(
-        tile_order_csv=str(tmp_path / "part1_output_tile_orders.csv"),
-        grid_side_lengths=[1, 2],
-        num_tile_orders=1,
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[1, 2],
+        num_tile_permutations=1,
         seed=42,
     )
 
-    assert metrics[["grid_side_length", "tile_order_id"]].to_dict("records") == [
-        {"grid_side_length": 1, "tile_order_id": 0},
-        {"grid_side_length": 2, "tile_order_id": 0},
-        {"grid_side_length": 2, "tile_order_id": 1},
-    ]
+    assert pd.isna(metrics.loc[0, "tiles_per_side"])
+    assert metrics.loc[0, "tile_permutation_id"] == 0
+    assert metrics.loc[1, ["tiles_per_side", "tile_permutation_id"]].to_dict() == {
+        "tiles_per_side": 2,
+        "tile_permutation_id": 1,
+    }
 
 
-def test_part3_non_identity_2x2_output_tile_order_has_nonzero_metric(tmp_path):
+def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
     pd.DataFrame(
         [
             {
-                "grid_side_length": 2,
-                "tile_order_id": 1,
-                "tile_order_seed": 42,
-                "output_tile_order": "[2, 1, 3, 0]",
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
             }
         ]
-    ).to_csv(tmp_path / "part1_output_tile_orders.csv", index=False)
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
 
-    metrics = compute_part3_tile_order_metrics(
-        tile_order_csv=str(tmp_path / "part1_output_tile_orders.csv"),
-        grid_side_lengths=[2],
-        num_tile_orders=1,
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[2],
+        num_tile_permutations=1,
         seed=42,
     )
 
@@ -320,20 +326,20 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
     pd.DataFrame(
         [
             {
-                "grid_side_length": 2,
-                "tile_order_id": 1,
-                "tile_order_seed": 42,
-                "output_tile_order": "[0, 1, 2, 3]",
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[0, 0], [0, 1]], [[1, 0], [1, 1]]]",
             }
         ]
-    ).to_csv(tmp_path / "part1_output_tile_orders.csv", index=False)
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
     pd.DataFrame(
         [
             {
                 "model_name": "resnet18",
-                "grid_side_length": 2,
-                "tile_count": 4,
-                "tile_order_id": 1,
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
                 "best_val_accuracy": 0.75,
             }
         ]
@@ -344,9 +350,9 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
             results_dir=str(tmp_path),
             figures_dir=str(tmp_path),
             part1_results_csv=str(tmp_path / "part1_raw_results.csv"),
-            tile_order_csv=str(tmp_path / "part1_output_tile_orders.csv"),
-            grid_side_lengths=[2],
-            num_tile_orders=1,
+            tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+            tiles_per_side_values=[2],
+            num_tile_permutations=1,
             seed=42,
             model_name="resnet18",
             verbose=False,

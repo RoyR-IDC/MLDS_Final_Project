@@ -2,33 +2,35 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from src.preprocessing.tile_orders import TileOrderRecord
+from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
 from src.training import experiment_steps
 from src.training.experiment_steps import (
-    collect_model_tile_order_results,
+    collect_model_tile_permutation_results,
     collect_part2_ablation_results,
-    get_executable_tile_order_records,
+    get_executable_tile_permutation_records,
 )
 
 
-def test_executable_tile_order_records_skip_duplicate_one_by_one_output_tile_orders():
+def test_executable_tile_permutation_records_returns_records():
     records = [
-        TileOrderRecord(grid_side_length=1, tile_order_id=0, tile_order_seed=42, output_tile_order=[0]),
-        TileOrderRecord(grid_side_length=1, tile_order_id=1, tile_order_seed=42, output_tile_order=[0]),
-        TileOrderRecord(grid_side_length=2, tile_order_id=0, tile_order_seed=42, output_tile_order=[0, 1, 2, 3]),
-        TileOrderRecord(grid_side_length=2, tile_order_id=1, tile_order_seed=42, output_tile_order=[1, 0, 3, 2]),
+        TilePermutationRecord(tiles_per_side=None, tile_permutation_id=0, tile_permutation_seed=42, tile_permutation=None),
+        TilePermutationRecord(
+            tiles_per_side=2,
+            tile_permutation_id=1,
+            tile_permutation_seed=42,
+            tile_permutation=random_tile_permutation(2, seed=42),
+        ),
     ]
 
-    executable_records = get_executable_tile_order_records(records)
+    executable_records = get_executable_tile_permutation_records(records)
 
-    assert [(record.grid_side_length, record.tile_order_id) for record in executable_records] == [
-        (1, 0),
-        (2, 0),
+    assert [(record.tiles_per_side, record.tile_permutation_id) for record in executable_records] == [
+        (None, 0),
         (2, 1),
     ]
 
 
-def test_collect_model_tile_order_results_records_training_duration_and_progress_desc(monkeypatch, tmp_path):
+def test_collect_model_tile_permutation_results_records_training_duration_and_progress_desc(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
         config_name="test_config",
@@ -37,11 +39,11 @@ def test_collect_model_tile_order_results_records_training_duration_and_progress
         num_workers=0,
         pretrained=False,
     )
-    record = TileOrderRecord(
-        grid_side_length=2,
-        tile_order_id=3,
-        tile_order_seed=99,
-        output_tile_order=[0, 1, 2, 3],
+    record = TilePermutationRecord(
+        tiles_per_side=2,
+        tile_permutation_id=3,
+        tile_permutation_seed=99,
+        tile_permutation=identity_tile_permutation(2),
     )
     progress_descriptions = []
 
@@ -74,30 +76,30 @@ def test_collect_model_tile_order_results_records_training_duration_and_progress
                 "run_id": "run",
                 "config_name": "test_config",
                 "model_name": "deit_tiny",
-                "grid_side_length": 1,
-                "tile_count": 1,
-                "tile_order_id": 0,
-                "tile_order_seed": 99,
+                "tiles_per_side": 1,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation_seed": 99,
                 "seed": 42,
                 "best_val_accuracy": 0.5,
             }
         ]
     ).to_csv(raw_results_path, index=False)
 
-    rows = collect_model_tile_order_results(
+    rows = collect_model_tile_permutation_results(
         config=config,
         model_name="resnet18",
         run_id="run",
         train_samples=[("cat.jpg", 0)],
         validation_samples=[("dog.jpg", 1)],
-        tile_order_records=[record],
+        tile_permutation_records=[record],
         seed=42,
         device="cpu",
         raw_results_output_path=str(raw_results_path),
     )
 
     assert rows[0]["training_duration_seconds"] == 2.5
-    assert progress_descriptions == ["resnet18 2x2 order 3"]
+    assert progress_descriptions == ["resnet18 2x2 permutation 3"]
 
     saved = pd.read_csv(raw_results_path)
     assert sorted(saved["model_name"]) == ["deit_tiny", "resnet18"]
@@ -105,7 +107,7 @@ def test_collect_model_tile_order_results_records_training_duration_and_progress
     assert saved.loc[saved["model_name"] == "resnet18", "run_status"].iloc[0] == "completed"
 
 
-def test_collect_model_tile_order_results_leaves_pending_placeholders_after_crash(monkeypatch, tmp_path):
+def test_collect_model_tile_permutation_results_leaves_pending_placeholders_after_crash(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
         config_name="test_config",
@@ -115,17 +117,17 @@ def test_collect_model_tile_order_results_leaves_pending_placeholders_after_cras
         pretrained=False,
     )
     records = [
-        TileOrderRecord(
-            grid_side_length=2,
-            tile_order_id=0,
-            tile_order_seed=99,
-            output_tile_order=[0, 1, 2, 3],
+        TilePermutationRecord(
+            tiles_per_side=2,
+            tile_permutation_id=0,
+            tile_permutation_seed=99,
+            tile_permutation=identity_tile_permutation(2),
         ),
-        TileOrderRecord(
-            grid_side_length=2,
-            tile_order_id=1,
-            tile_order_seed=100,
-            output_tile_order=[1, 0, 3, 2],
+        TilePermutationRecord(
+            tiles_per_side=2,
+            tile_permutation_id=1,
+            tile_permutation_seed=100,
+            tile_permutation=random_tile_permutation(2, seed=100),
         ),
     ]
 
@@ -162,13 +164,13 @@ def test_collect_model_tile_order_results_leaves_pending_placeholders_after_cras
     raw_results_path = tmp_path / "part1_raw_results.csv"
 
     try:
-        collect_model_tile_order_results(
+        collect_model_tile_permutation_results(
             config=config,
             model_name="resnet18",
             run_id="run",
             train_samples=[("cat.jpg", 0)],
             validation_samples=[("dog.jpg", 1)],
-            tile_order_records=records,
+            tile_permutation_records=records,
             seed=42,
             device="cpu",
             raw_results_output_path=str(raw_results_path),
@@ -178,7 +180,7 @@ def test_collect_model_tile_order_results_leaves_pending_placeholders_after_cras
     else:
         raise AssertionError("Expected simulated crash")
 
-    saved = pd.read_csv(raw_results_path).sort_values("tile_order_id")
+    saved = pd.read_csv(raw_results_path).sort_values("tile_permutation_id")
 
     assert saved["run_status"].tolist() == ["completed", "pending"]
     assert saved["training_duration_seconds"].tolist()[0] == 2.5
@@ -198,17 +200,17 @@ def test_collect_part2_ablation_results_saves_placeholders_and_completed_rows(mo
         pretrained=True,
     )
     records = [
-        TileOrderRecord(
-            grid_side_length=2,
-            tile_order_id=0,
-            tile_order_seed=99,
-            output_tile_order=[0, 1, 2, 3],
+        TilePermutationRecord(
+            tiles_per_side=2,
+            tile_permutation_id=0,
+            tile_permutation_seed=99,
+            tile_permutation=identity_tile_permutation(2),
         ),
-        TileOrderRecord(
-            grid_side_length=2,
-            tile_order_id=1,
-            tile_order_seed=100,
-            output_tile_order=[1, 0, 3, 2],
+        TilePermutationRecord(
+            tiles_per_side=2,
+            tile_permutation_id=1,
+            tile_permutation_seed=100,
+            tile_permutation=random_tile_permutation(2, seed=100),
         ),
     ]
     ablations = [
@@ -260,7 +262,7 @@ def test_collect_part2_ablation_results_saves_placeholders_and_completed_rows(mo
             ablations=ablations,
             train_samples=[("cat.jpg", 0)],
             validation_samples=[("dog.jpg", 1)],
-            tile_order_records=records,
+            tile_permutation_records=records,
             device="cpu",
             run_id="part2_run",
             raw_results_output_path=str(raw_results_path),
@@ -270,11 +272,11 @@ def test_collect_part2_ablation_results_saves_placeholders_and_completed_rows(mo
     else:
         raise AssertionError("Expected simulated crash")
 
-    saved = pd.read_csv(raw_results_path).sort_values("tile_order_id")
+    saved = pd.read_csv(raw_results_path).sort_values("tile_permutation_id")
 
     assert progress_descriptions == [
-        "resnet18 augmentation_only 2x2 order 0",
-        "resnet18 augmentation_only 2x2 order 1",
+        "resnet18 augmentation_only 2x2 permutation 0",
+        "resnet18 augmentation_only 2x2 permutation 1",
     ]
     assert saved["run_status"].tolist() == ["completed", "pending"]
     assert saved["ablation_name"].tolist() == ["augmentation_only", "augmentation_only"]

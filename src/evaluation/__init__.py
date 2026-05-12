@@ -1,1 +1,1 @@
-"""Evaluation, plotting, and tile-order difficulty analysis helpers."""
+"""Evaluation, plotting, and tile-permutation difficulty analysis helpers."""

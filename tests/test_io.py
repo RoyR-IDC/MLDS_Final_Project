@@ -9,10 +9,15 @@ from src.utils.io import save_csv
 
 def test_save_csv_writes_mapping_rows_without_pandas_constructor(tmp_path):
     rows = [
-        {"grid_side_length": 1, "tile_order_id": 0, "tile_order_seed": 42, "output_tile_order": "[0]"},
-        {"grid_side_length": 2, "tile_order_id": 1, "tile_order_seed": 42, "output_tile_order": "[2, 1, 3, 0]"},
+        {"tiles_per_side": None, "tile_permutation_id": 0, "tile_permutation_seed": 42, "tile_permutation": "null"},
+        {
+            "tiles_per_side": 2,
+            "tile_permutation_id": 1,
+            "tile_permutation_seed": 42,
+            "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+        },
     ]
-    output_path = tmp_path / "output_tile_orders.csv"
+    output_path = tmp_path / "tile_permutations.csv"
 
     save_csv(rows, str(output_path))
 
@@ -20,6 +25,11 @@ def test_save_csv_writes_mapping_rows_without_pandas_constructor(tmp_path):
         saved_rows = list(csv.DictReader(handle))
 
     assert saved_rows == [
-        {"grid_side_length": "1", "tile_order_id": "0", "tile_order_seed": "42", "output_tile_order": "[0]"},
-        {"grid_side_length": "2", "tile_order_id": "1", "tile_order_seed": "42", "output_tile_order": "[2, 1, 3, 0]"},
+        {"tiles_per_side": "", "tile_permutation_id": "0", "tile_permutation_seed": "42", "tile_permutation": "null"},
+        {
+            "tiles_per_side": "2",
+            "tile_permutation_id": "1",
+            "tile_permutation_seed": "42",
+            "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+        },
     ]

@@ -12,10 +12,11 @@ from torchvision import transforms
 
 # Import repo modules through the canonical preprocessing path.
 try:
-    from src.preprocessing.tile_order_dataset import ImageFileDataset, TileOrderDataset
+    from src.preprocessing.image_transforms import PILToFloatTensor
+    from src.preprocessing.datasets import DogsCatsDataset
 except Exception:
-    ImageFileDataset = None
-    TileOrderDataset = None
+    PILToFloatTensor = None
+    DogsCatsDataset = None
 
 try:
     from src.training.engine import evaluate, train_one_epoch
@@ -153,22 +154,22 @@ def create_synthetic_rgb_images(n: int, size: Tuple[int, int] = (224, 224), seed
     return imgs
 
 
-def split_into_tiles(img: Image.Image, grid_side_length: int) -> List[Image.Image]:
+def split_into_tiles(img: Image.Image, tiles_per_side: int) -> List[Image.Image]:
     """Split PIL ``img`` into a square tile grid and return tiles in row-major order.
 
     Args:
         img: PIL Image.
-        grid_side_length: Number of tiles along each axis.
+        tiles_per_side: Number of tiles along each axis.
 
     Returns:
         List of PIL Image tiles.
     """
     w, h = img.size
-    tile_w = w // grid_side_length
-    tile_h = h // grid_side_length
+    tile_w = w // tiles_per_side
+    tile_h = h // tiles_per_side
     tiles: List[Image.Image] = []
-    for r in range(grid_side_length):
-        for c in range(grid_side_length):
+    for r in range(tiles_per_side):
+        for c in range(tiles_per_side):
             left = c * tile_w
             upper = r * tile_h
             right = left + tile_w
@@ -177,22 +178,22 @@ def split_into_tiles(img: Image.Image, grid_side_length: int) -> List[Image.Imag
     return tiles
 
 
-def visualize_tiles(tiles: Sequence[Image.Image], output_tile_order: Optional[Sequence[int]] = None, cols: int = 0):
+def visualize_tiles(tiles: Sequence[Image.Image], tile_permutation: Optional[Sequence[int]] = None, cols: int = 0):
     """Return a matplotlib Figure visualizing tiles in original or reordered output order.
 
     Args:
         tiles: Sequence of PIL Image tiles.
-        output_tile_order: Optional sequence mapping output positions to source tile indices.
+        tile_permutation: Optional sequence mapping output positions to source tile indices.
         cols: Number of columns for display. If 0, set to grid width.
 
     Returns:
         matplotlib.figure.Figure
     """
     n = len(tiles)
-    if output_tile_order is None:
+    if tile_permutation is None:
         order = list(range(n))
     else:
-        order = list(output_tile_order)
+        order = list(tile_permutation)
     G = int(np.sqrt(n))
     if cols <= 0:
         cols = G
@@ -235,7 +236,7 @@ def build_tiny_dataloader(
 ) -> Tuple[DataLoader, Dataset]:
     """Build a small DataLoader for quick experiments.
 
-    If ``sample_paths`` is provided and the repo's ``TileOrderDataset`` is available,
+    If ``sample_paths`` is provided and the repo's ``DogsCatsDataset`` is available,
     it will be used. Otherwise a small synthetic dataset is returned.
 
     Returns:
@@ -244,9 +245,8 @@ def build_tiny_dataloader(
     if base_transform is None:
         base_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
-    if sample_paths is not None and ImageFileDataset is not None and TileOrderDataset is not None:
-        base_dataset = ImageFileDataset(sample_paths, transform=base_transform)
-        dataset = TileOrderDataset(base_dataset, grid_side_length=grid, seed=seed)
+    if sample_paths is not None and DogsCatsDataset is not None:
+        dataset = DogsCatsDataset(sample_paths, transform=base_transform)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         return dataloader, dataset
 

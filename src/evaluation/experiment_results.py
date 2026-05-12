@@ -12,14 +12,19 @@ import pandas as pd
 import torch
 from tqdm.auto import tqdm
 
-from src.evaluation.tile_order_difficulty import (
+from src.evaluation.tile_permutation_difficulty import (
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
 )
 from src.models.registry import validate_model_name
-from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
-from src.preprocessing.tile_orders import TileOrderRecord, generate_tile_orders, identity_tile_order
+from src.preprocessing.samples import Sample, discover_samples, stratified_split
+from src.preprocessing.tile_permutations import (
+    TilePermutationRecord,
+    generate_tile_permutations,
+    tile_permutation_from_jsonable,
+    tile_permutation_to_jsonable,
+)
 from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir, save_csv
 
@@ -93,21 +98,23 @@ def build_result_row(
     config: CVExperimentConfig,
     run_id: str,
     model_name: str,
-    record: TileOrderRecord,
+    record: TilePermutationRecord,
     seed: int,
     metrics: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build one experiment result row for repeated accuracy measurements."""
 
+    num_tiles = 1 if record.tiles_per_side is None else record.tiles_per_side * record.tiles_per_side
     row = {
         'part': config.part,
         'run_id': run_id,
         'config_name': config.config_name,
         'model_name': model_name,
-        'grid_side_length': record.grid_side_length,
-        'tile_count': record.grid_side_length * record.grid_side_length,
-        'tile_order_id': record.tile_order_id,
-        'tile_order_seed': record.tile_order_seed,
+        'tiles_per_side': record.tiles_per_side,
+        'num_tiles': num_tiles,
+        'tile_permutation_id': record.tile_permutation_id,
+        'tile_permutation_seed': record.tile_permutation_seed,
+        'tile_permutation': tile_permutation_to_jsonable(record.tile_permutation),
         'seed': seed,
         **metrics,
     }
@@ -238,7 +245,7 @@ def load_part1_model_baseline_aggregated(
             )
         baseline = aggregate_accuracy(
             baseline,
-            group_columns=["model_name", "grid_side_length", "tile_count"],
+            group_columns=["model_name", "tiles_per_side", "num_tiles"],
         )
 
     baseline["ablation_name"] = ablation_name
@@ -265,7 +272,7 @@ def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) 
         "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
     }
     if part_name == "part1":
-        output_paths["tile_orders"] = os.path.join(results_dir, "part1_tile_orders.csv")
+        output_paths["tile_permutations"] = os.path.join(results_dir, "part1_tile_permutations.csv")
     return output_paths
 
 
@@ -310,9 +317,9 @@ def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_col
     ensure_dir(os.path.dirname(output_path) or ".")
     fig, ax = plt.subplots(figsize=(8, 5))
     for model_name, group in aggregated.groupby(model_column):
-        group = group.sort_values("tile_count")
+        group = group.sort_values("num_tiles")
         ax.errorbar(
-            group["tile_count"],
+            group["num_tiles"],
             group["mean_best_epoch_val_accuracy"],
             yerr=group["std_best_epoch_val_accuracy"].fillna(0.0),
             marker="o",
@@ -338,13 +345,13 @@ def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
 
     ensure_dir(os.path.dirname(output_path) or ".")
     fig, ax = plt.subplots(figsize=(8, 5))
-    for grid_side_length, group in aggregated.groupby("grid_side_length"):
+    for tiles_per_side, group in aggregated.groupby("tiles_per_side"):
         sorted_group = group.sort_values("ablation_name")
         ax.plot(
             sorted_group["ablation_name"],
             sorted_group["mean_best_epoch_val_accuracy"],
             marker="o",
-            label=f"{grid_side_length}x{grid_side_length}",
+            label=f"{tiles_per_side}x{tiles_per_side}",
         )
     ax.set_xlabel("Ablation")
     ax.set_ylabel("Best validation accuracy")
@@ -362,59 +369,55 @@ def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
 
     combined_plot = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
     return {
-        "metrics": os.path.join(results_dir, "tile_order_metrics.csv"),
+        "metrics": os.path.join(results_dir, "tile_permutation_metrics.csv"),
         "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
         "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
         "plots": [combined_plot] if os.path.exists(combined_plot) else [],
     }
 
 
-def load_or_build_part1_tile_orders(
-    tile_order_csv: str,
-    grid_side_lengths: Sequence[int],
-    num_tile_orders: int,
+def load_or_build_part1_tile_permutations(
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
     seed: int,
 ) -> pd.DataFrame:
-    """Load saved Part 1 tile-order metadata, or recreate it deterministically."""
+    """Load saved Part 1 tile-permutation metadata, or recreate it deterministically."""
 
-    if os.path.exists(tile_order_csv):
-        return pd.read_csv(tile_order_csv)
+    if os.path.exists(tile_permutation_csv):
+        return pd.read_csv(tile_permutation_csv)
 
-    rows = []
-    for grid_side_length in [int(value) for value in grid_side_lengths]:
-        rows.append(
-            {
-                "grid_side_length": grid_side_length,
-                "tile_order_id": 0,
-                "tile_order_seed": seed,
-                "output_tile_order": json.dumps(identity_tile_order(grid_side_length)),
-            }
-        )
-        if grid_side_length == 1:
+    rows = [
+        {
+            "tiles_per_side": None,
+            "tile_permutation_id": 0,
+            "tile_permutation_seed": seed,
+            "tile_permutation": json.dumps(None),
+        }
+    ]
+    for tiles_per_side in [int(value) for value in tiles_per_side_values]:
+        if tiles_per_side == 1:
             continue
-        for offset, output_tile_order in enumerate(
-            generate_tile_orders(grid_side_length, int(num_tile_orders), seed=seed),
+        for offset, tile_permutation in enumerate(
+            generate_tile_permutations(tiles_per_side, int(num_tile_permutations), seed=seed),
             start=1,
         ):
             rows.append(
                 {
-                    "grid_side_length": grid_side_length,
-                    "tile_order_id": offset,
-                    "tile_order_seed": seed,
-                    "output_tile_order": json.dumps(output_tile_order),
+                    "tiles_per_side": tiles_per_side,
+                    "tile_permutation_id": offset,
+                    "tile_permutation_seed": seed,
+                    "tile_permutation": json.dumps(tile_permutation_to_jsonable(tile_permutation)),
                 }
             )
     return pd.DataFrame(rows)
 
 
-def _executable_part1_tile_orders(tile_orders: pd.DataFrame) -> pd.DataFrame:
-    """Return tile-order rows that correspond to actual Part 1 executions."""
+def _executable_part1_tile_permutations(tile_permutations: pd.DataFrame) -> pd.DataFrame:
+    """Return tile-permutation rows that correspond to actual Part 1 executions."""
 
-    duplicate_untiled_tile_order = (tile_orders["grid_side_length"].astype(int) == 1) & (
-        tile_orders["tile_order_id"].astype(int) > 0
-    )
-    executable = tile_orders[~duplicate_untiled_tile_order]
-    return executable.sort_values(["grid_side_length", "tile_order_id"]).reset_index(drop=True)
+    executable = tile_permutations.copy()
+    return executable.sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
 
 
 PART3_METRIC_COLUMNS = [
@@ -424,78 +427,83 @@ PART3_METRIC_COLUMNS = [
 ]
 
 
-def compute_part3_tile_order_metrics(
+def compute_part3_tile_permutation_metrics(
     *,
-    tile_order_csv: str,
-    grid_side_lengths: Sequence[int],
-    num_tile_orders: int,
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
     seed: int,
     alpha_center: float = 1.0,
     weight_center: float = 0.5,
     weight_dist: float = 0.5,
     show_progress: bool = False,
 ) -> pd.DataFrame:
-    """Compute Part 3 hardness metrics for reusable Part 1 tile orders."""
+    """Compute Part 3 hardness metrics for reusable Part 1 tile permutations."""
 
     rows: list[dict[str, Any]] = []
-    tile_orders = load_or_build_part1_tile_orders(
-        tile_order_csv=tile_order_csv,
-        grid_side_lengths=grid_side_lengths,
-        num_tile_orders=num_tile_orders,
+    tile_permutations = load_or_build_part1_tile_permutations(
+        tile_permutation_csv=tile_permutation_csv,
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=num_tile_permutations,
         seed=seed,
     )
-    tile_orders = _executable_part1_tile_orders(tile_orders)
-    iterator = tile_orders.iterrows()
+    tile_permutations = _executable_part1_tile_permutations(tile_permutations)
+    iterator = tile_permutations.iterrows()
     if show_progress:
         iterator = tqdm(
             iterator,
-            total=len(tile_orders),
+            total=len(tile_permutations),
             desc="Part 3 metrics",
-            unit="tile order",
+            unit="tile permutation",
         )
     for _, row in iterator:
-        output_tile_order = (
-            json.loads(row["output_tile_order"])
-            if isinstance(row["output_tile_order"], str)
-            else row["output_tile_order"]
-        )
-        grid_side_length = int(row["grid_side_length"])
-        global_tile_displacement = compute_global_displacement(output_tile_order, grid_side_length)
+        raw_tile_permutation = row["tile_permutation"]
+        if raw_tile_permutation is None or (isinstance(raw_tile_permutation, float) and pd.isna(raw_tile_permutation)):
+            serialized_tile_permutation = None
+        elif isinstance(raw_tile_permutation, str):
+            serialized_tile_permutation = json.loads(raw_tile_permutation)
+        else:
+            serialized_tile_permutation = raw_tile_permutation
+        tiles_per_side = None if pd.isna(row["tiles_per_side"]) else int(row["tiles_per_side"])
+        tile_permutation = tile_permutation_from_jsonable(serialized_tile_permutation, tiles_per_side)
+        num_tiles = 1 if tiles_per_side is None else tiles_per_side * tiles_per_side
+        global_tile_displacement = compute_global_displacement(tile_permutation, tiles_per_side)
         center_weighted_displacement = compute_center_weighted_displacement(
-            output_tile_order,
-            grid_side_length,
+            tile_permutation,
+            tiles_per_side,
             alpha_center,
         )
         combined_hardness_score = compute_combined_hardness(
-            output_tile_order=output_tile_order,
-            grid_side_length=grid_side_length,
+            tile_permutation=tile_permutation,
+            tiles_per_side=tiles_per_side,
             alpha_center=alpha_center,
             weight_center=weight_center,
             weight_dist=weight_dist,
         )
         rows.append(
             {
-                "grid_side_length": grid_side_length,
-                "tile_count": grid_side_length * grid_side_length,
-                "tile_order_id": int(row["tile_order_id"]),
-                "tile_order_seed": row.get("tile_order_seed"),
+                "tiles_per_side": tiles_per_side,
+                "num_tiles": num_tiles,
+                "tile_permutation_id": int(row["tile_permutation_id"]),
+                "tile_permutation_seed": row.get("tile_permutation_seed"),
                 "global_tile_displacement": global_tile_displacement,
                 "center_weighted_displacement": center_weighted_displacement,
                 "combined_hardness_score": combined_hardness_score,
             }
         )
-    return pd.DataFrame(rows).sort_values(["grid_side_length", "tile_order_id"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
 
 
 def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
-    """Raise if a tiled non-identity tile order has zero hardness for every metric."""
+    """Raise if a tiled non-baseline permutation has zero hardness for every metric."""
 
     if metrics.empty:
         return
 
     invalid = metrics[
-        (metrics["grid_side_length"].astype(int) > 1)
-        & (metrics["tile_order_id"].astype(int) > 0)
+        (metrics["tiles_per_side"].notna())
+        & (metrics["tiles_per_side"].astype(float) > 1)
+        & (metrics["tile_permutation_id"].astype(int) > 0)
         & (metrics[PART3_METRIC_COLUMNS].fillna(0.0).eq(0.0).all(axis=1))
     ]
     if invalid.empty:
@@ -503,8 +511,8 @@ def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
 
     row = invalid.iloc[0]
     raise ValueError(
-        "Part 3 hardness metrics are all zero for a non-identity tiled output order: "
-        f"grid_side_length={int(row['grid_side_length'])}, tile_order_id={int(row['tile_order_id'])}."
+        "Part 3 hardness metrics are all zero for a tiled permutation: "
+        f"tiles_per_side={int(row['tiles_per_side'])}, tile_permutation_id={int(row['tile_permutation_id'])}."
     )
 
 
@@ -572,7 +580,7 @@ def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
     """Load saved Part 3 metric, joined, and correlation tables."""
 
     return {
-        "metrics": pd.read_csv(os.path.join(results_dir, "tile_order_metrics.csv")),
+        "metrics": pd.read_csv(os.path.join(results_dir, "tile_permutation_metrics.csv")),
         "joined": pd.read_csv(os.path.join(results_dir, "metric_accuracy_joined.csv")),
         "correlations": pd.read_csv(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
     }
@@ -583,9 +591,9 @@ def run_part3_hardness_analysis(
     results_dir: str,
     figures_dir: str,
     part1_results_csv: str,
-    tile_order_csv: str,
-    grid_side_lengths: Sequence[int],
-    num_tile_orders: int,
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
     seed: int,
     model_name: str = "resnet18",
     alpha_center: float = 1.0,
@@ -603,12 +611,12 @@ def run_part3_hardness_analysis(
     log("Preparing Part 3 output directories...")
     ensure_dir(results_dir)
     ensure_dir(figures_dir)
-    log("Loading or rebuilding Part 1 tile orders...")
+    log("Loading or rebuilding Part 1 tile permutations...")
     log("Calculating hardness metrics...")
-    metrics = compute_part3_tile_order_metrics(
-        tile_order_csv=tile_order_csv,
-        grid_side_lengths=grid_side_lengths,
-        num_tile_orders=num_tile_orders,
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=tile_permutation_csv,
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=num_tile_permutations,
         seed=seed,
         alpha_center=alpha_center,
         weight_center=weight_center,
@@ -617,13 +625,13 @@ def run_part3_hardness_analysis(
     )
     validate_part3_non_identity_metrics(metrics)
     log("Saving hardness metric table...")
-    save_csv(metrics, os.path.join(results_dir, "tile_order_metrics.csv"))
+    save_csv(metrics, os.path.join(results_dir, "tile_permutation_metrics.csv"))
 
     log(f"Loading Part 1 {model_name} results...")
     raw_results = load_part1_model_results(part1_results_csv, model_name)
     log(f"Joining hardness metrics with {model_name} accuracy...")
-    joined = raw_results.merge(metrics, on=["grid_side_length", "tile_count", "tile_order_id"], how="left")
-    joined = joined.sort_values(["grid_side_length", "tile_order_id"]).reset_index(drop=True)
+    joined = raw_results.merge(metrics, on=["tiles_per_side", "num_tiles", "tile_permutation_id"], how="left")
+    joined = joined.sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
     log("Saving joined metric-accuracy table...")
     save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
 
