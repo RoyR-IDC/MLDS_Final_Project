@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.training.metrics import AverageMeter
+from src.training.optimizers import build_optimizer
 
 
 @dataclass
@@ -94,23 +95,6 @@ def evaluate(model: nn.Module, dataloader: DataLoader, criterion: nn.Module, dev
             correct += int((logits.argmax(dim=1) == targets).sum().item())
             total += batch_size
     return {"val_loss": loss_meter.average, "val_accuracy": correct / max(1, total)}
-
-
-def build_optimizer(model: nn.Module, name: str, learning_rate: float, weight_decay: float = 0.0) -> torch.optim.Optimizer:
-    """Build an optimizer from a short config name."""
-
-    trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    name = name.lower()
-    if name == "adamw":
-        optimizer = torch.optim.AdamW(trainable, lr=learning_rate, weight_decay=weight_decay)
-        return optimizer
-    if name == "adam":
-        optimizer = torch.optim.Adam(trainable, lr=learning_rate, weight_decay=weight_decay)
-        return optimizer
-    if name == "sgd":
-        optimizer = torch.optim.SGD(trainable, lr=learning_rate, momentum=0.9, weight_decay=weight_decay)
-        return optimizer
-    raise ValueError(f"Unsupported optimizer: {name}")
 
 
 def train_and_validate(components: TrainingRunComponents) -> Dict[str, float]:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, Sequence
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -17,10 +17,16 @@ from src.evaluation.tile_permutation_difficulty import (
     compute_combined_hardness,
     compute_global_displacement,
 )
+from src.experiments.results import (
+    aggregate_accuracy,
+    build_result_row,
+    experiment_output_paths,
+    save_aggregated_accuracy,
+    save_rows,
+)
 from src.models.registry import validate_model_name
 from src.preprocessing.samples import Sample, discover_samples, stratified_split
 from src.preprocessing.tile_permutations import (
-    TilePermutationRecord,
     generate_tile_permutations,
     tile_permutation_from_jsonable,
     tile_permutation_to_jsonable,
@@ -94,99 +100,6 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list
     return split_samples
 
 
-def build_result_row(
-    config: CVExperimentConfig,
-    run_id: str,
-    model_name: str,
-    record: TilePermutationRecord,
-    seed: int,
-    metrics: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Build one experiment result row for repeated accuracy measurements."""
-
-    num_tiles = 1 if record.tiles_per_side is None else record.tiles_per_side * record.tiles_per_side
-    row = {
-        'part': config.part,
-        'run_id': run_id,
-        'config_name': config.config_name,
-        'model_name': model_name,
-        'tiles_per_side': record.tiles_per_side,
-        'num_tiles': num_tiles,
-        'tile_permutation_id': record.tile_permutation_id,
-        'tile_permutation_seed': record.tile_permutation_seed,
-        'tile_permutation': tile_permutation_to_jsonable(record.tile_permutation),
-        'seed': seed,
-        **metrics,
-    }
-    return row
-
-
-def _csv_safe_value(value: Any) -> Any:
-    """Convert array-like experiment values into CSV-friendly scalars/strings."""
-
-    if isinstance(value, torch.Tensor):
-        tensor = value.detach().cpu()
-        if tensor.numel() == 1:
-            return tensor.item()
-        return str(tensor.tolist())
-
-    if isinstance(value, Mapping):
-        return str({str(key): _csv_safe_value(nested_value) for key, nested_value in value.items()})
-
-    if isinstance(value, (list, tuple)):
-        return str([_csv_safe_value(item) for item in value])
-
-    tolist = getattr(value, "tolist", None)
-    if callable(tolist) and not isinstance(value, (str, bytes)):
-        converted = tolist()
-        if converted is value:
-            return value
-        return _csv_safe_value(converted)
-
-    item = getattr(value, "item", None)
-    if callable(item) and not isinstance(value, (str, bytes)):
-        try:
-            return item()
-        except (TypeError, ValueError):
-            return value
-
-    return value
-
-
-def _csv_safe_rows(rows: Sequence[Mapping[Any, Any]]) -> list[dict[str, Any]]:
-    """Return rows with string column names and scalar/string values."""
-
-    safe_rows = []
-    for row in rows:
-        safe_rows.append({str(key): _csv_safe_value(value) for key, value in row.items()})
-    return safe_rows
-
-
-def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame:
-    """Aggregate accuracy columns for repeated experiment runs.
-
-    Args:
-        raw_results: Per-run result table.
-        group_columns: Columns used to group repeated measurements.
-
-    Returns:
-        Aggregated result table with mean, standard deviation, and counts.
-    """
-
-    aggregated_results = (
-        raw_results.groupby(list(group_columns), dropna=False)
-        .agg(
-            mean_final_epoch_val_accuracy=("val_accuracy", "mean"),
-            std_final_epoch_val_accuracy=("val_accuracy", "std"),
-            mean_best_epoch_val_accuracy=("best_val_accuracy", "mean"),
-            std_best_epoch_val_accuracy=("best_val_accuracy", "std"),
-            n_runs=("val_accuracy", "count"),
-        )
-        .reset_index()
-    )
-    return aggregated_results
-
-
 def load_part1_model_baseline_raw_rows(
     config: CVExperimentConfig,
     model_name: str,
@@ -251,58 +164,6 @@ def load_part1_model_baseline_aggregated(
     baseline["ablation_name"] = ablation_name
     baseline["config_name"] = config.config_name
     return baseline
-
-
-def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) -> Dict[str, str]:
-    """Return standard output paths for a notebook-owned experiment.
-
-    Args:
-        results_dir: Directory for CSV result files.
-        figures_dir: Directory for saved figures.
-        part_name: Experiment prefix such as ``part1`` or ``part2``.
-
-    Returns:
-        Mapping of stable artifact names to filesystem paths.
-    """
-
-    figure_name = "accuracy_vs_tiles" if part_name == "part1" else "ablation_comparison"
-    output_paths = {
-        "raw_results": os.path.join(results_dir, f"{part_name}_raw_results.csv"),
-        "aggregated_results": os.path.join(results_dir, f"{part_name}_aggregated_results.csv"),
-        "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
-    }
-    if part_name == "part1":
-        output_paths["tile_permutations"] = os.path.join(results_dir, "part1_tile_permutations.csv")
-    return output_paths
-
-
-def save_rows(rows: Sequence[Mapping[Any, Any]], output_path: str) -> None:
-    """Save experiment rows to CSV.
-
-    Args:
-        rows: Result rows to save.
-        output_path: Destination CSV path.
-    """
-
-    save_csv(_csv_safe_rows(rows), output_path)
-
-
-def save_aggregated_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str], output_path: str) -> pd.DataFrame:
-    """Aggregate raw results and save the aggregated table.
-
-    Args:
-        raw_results: Per-run result table.
-        group_columns: Columns used for aggregation.
-        output_path: Destination CSV path.
-
-    Returns:
-        Aggregated accuracy table.
-    """
-
-    aggregated_results = aggregate_accuracy(raw_results, group_columns)
-    ensure_dir(os.path.dirname(output_path) or ".")
-    aggregated_results.to_csv(output_path, index=False)
-    return aggregated_results
 
 
 def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_column: str = "model_name") -> None:
