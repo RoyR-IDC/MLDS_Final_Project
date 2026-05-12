@@ -262,6 +262,7 @@ def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_
         [
             "global_tile_displacement",
             "center_weighted_displacement",
+            "adjacency_destruction_hardness",
             "combined_hardness_score",
         ]
     ).issubset(metrics.columns)
@@ -317,6 +318,7 @@ def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
     metric_columns = [
         "global_tile_displacement",
         "center_weighted_displacement",
+        "adjacency_destruction_hardness",
         "combined_hardness_score",
     ]
     assert metrics.loc[0, metric_columns].gt(0.0).any()
@@ -367,12 +369,14 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.10,
                 "center_weighted_displacement": 0.20,
+                "adjacency_destruction_hardness": 0.30,
                 "combined_hardness_score": 0.25,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
                 "center_weighted_displacement": 0.70,
+                "adjacency_destruction_hardness": 0.90,
                 "combined_hardness_score": 0.70,
             },
         ]
@@ -392,12 +396,14 @@ def test_part3_correlations_are_nan_for_constant_accuracy():
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.00,
                 "center_weighted_displacement": 0.00,
+                "adjacency_destruction_hardness": 0.00,
                 "combined_hardness_score": 0.00,
             },
             {
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.50,
                 "center_weighted_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.60,
                 "combined_hardness_score": 0.45,
             },
         ]
@@ -416,18 +422,21 @@ def test_part3_correlations_are_finite_for_non_constant_accuracy():
                 "best_val_accuracy": 0.80,
                 "global_tile_displacement": 0.00,
                 "center_weighted_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.00,
                 "combined_hardness_score": 0.15,
             },
             {
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.50,
                 "center_weighted_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.60,
                 "combined_hardness_score": 0.45,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.90,
                 "center_weighted_displacement": 0.80,
+                "adjacency_destruction_hardness": 1.00,
                 "combined_hardness_score": 0.80,
             },
         ]

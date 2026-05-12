@@ -1,4 +1,5 @@
 from src.evaluation.tile_permutation_difficulty import (
+    compute_adjacency_destruction_hardness,
     compute_center_weighted_displacement,
     compute_combined_hardness,
     compute_global_displacement,
@@ -12,6 +13,7 @@ def test_identity_tile_permutation_has_zero_hardness_metrics():
 
     assert compute_global_displacement(tile_permutation, tiles_per_side) == 0.0
     assert compute_center_weighted_displacement(tile_permutation, tiles_per_side, alpha_center=1.0) == 0.0
+    assert compute_adjacency_destruction_hardness(tile_permutation, tiles_per_side) == 0.0
     assert compute_combined_hardness(tile_permutation, tiles_per_side, alpha_center=1.0) == 0.0
 
 
@@ -28,4 +30,5 @@ def test_nontrivial_tile_permutation_has_bounded_hardness_metrics():
 
     assert 0.0 < compute_global_displacement(tile_permutation, tiles_per_side) <= 1.0
     assert 0.0 < compute_center_weighted_displacement(tile_permutation, tiles_per_side, alpha_center=1.0) <= 1.0
+    assert 0.0 < compute_adjacency_destruction_hardness(tile_permutation, tiles_per_side) <= 1.0
     assert 0.0 < compute_combined_hardness(tile_permutation, tiles_per_side, alpha_center=1.0) <= 1.0
