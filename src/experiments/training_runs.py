@@ -45,15 +45,15 @@ def format_stage_summary(stages: Mapping[str, int] | Sequence[tuple[str, int]]) 
     """Return a one-line summary of training stages."""
 
     items = list(stages.items()) if isinstance(stages, MappingABC) else list(stages)
-    stage_text = ", ".join(f"{name}: {format_epoch_count(epochs)}" for name, epochs in items)
-    return f"stages={len(items)} [{stage_text}]"
+    stages_text = "\n".join(f"{index + 1}. {name}: {format_epoch_count(epochs)}" for index, (name, epochs) in enumerate(items))
+    return f"stages={len(items)}\n[{stages_text}]"
 
 
 def format_dataloader_summary(train_loader: DataLoader, val_loader: DataLoader) -> str:
     """Return sample and batch counts for train and validation loaders."""
 
     return (
-        f"\ttrain={len(train_loader.dataset)} samples in {len(train_loader)} batches"
+        f"\n\ttrain={len(train_loader.dataset)} samples in {len(train_loader)} batches"
         f"\n\tvalidation={len(val_loader.dataset)} samples in {len(val_loader)} batches"
     )
 

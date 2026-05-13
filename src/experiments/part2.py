@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import importlib
 from time import perf_counter
 from typing import Any, Mapping, Optional, Sequence
 
@@ -18,6 +19,11 @@ from src.evaluation.experiment_results import (
     plot_ablation_results,
 )
 from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+import src.experiments.training_runs as _training_runs
+
+if not hasattr(_training_runs, "checkpoints_enabled"):
+    importlib.reload(_training_runs)
+
 from src.experiments.training_runs import (
     build_pending_training_result_row,
     build_training_run_spec,
@@ -307,8 +313,8 @@ def build_part2_training_run_spec(
 
     tiles_label = record.tiles_per_side or 1
     progress_desc = (
-        f"{model_name} {ablation['name']} "
-        f"{tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
+        f"{model_name} [{ablation['name']}] "
+        f"{tiles_label}x{tiles_label} permutation #{record.tile_permutation_id}. epochs progress"
     )
     return build_training_run_spec(
         config=config,

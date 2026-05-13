@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import importlib
 from time import perf_counter
 from typing import Any, Optional, Sequence
 
@@ -12,6 +13,11 @@ from torch.utils.data import DataLoader
 
 from src.evaluation.experiment_results import get_device, load_experiment_samples, plot_accuracy_vs_tiles
 from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+import src.experiments.training_runs as _training_runs
+
+if not hasattr(_training_runs, "checkpoints_enabled"):
+    importlib.reload(_training_runs)
+
 from src.experiments.training_runs import (
     build_pending_training_result_row,
     build_training_run_spec,
