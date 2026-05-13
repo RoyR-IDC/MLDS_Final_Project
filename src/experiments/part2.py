@@ -16,14 +16,13 @@ from src.evaluation.experiment_results import (
     load_part1_model_baseline_raw_rows,
     plot_ablation_results,
 )
-from src.experiments.part1 import (
-    _result_row_key,
-    _run_training_with_progress_saves,
-    build_pending_result_row,
-    build_training_spec,
-    get_executable_tile_permutation_records,
-)
 from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+from src.experiments.training_runs import (
+    build_pending_training_result_row,
+    build_training_run_spec,
+    train_model_and_save_progress,
+    training_result_row_key,
+)
 from src.preprocessing.augmentations import (
     BatchAugmentation,
     CompositeBatchAugmentation,
@@ -39,6 +38,7 @@ from src.preprocessing.tile_permutations import (
     random_tile_permutation,
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
+from src.training.run import TrainingRunSpec
 from src.utils.config import CVExperimentConfig
 
 
@@ -213,12 +213,174 @@ def build_curriculum_schedule(
     raise ValueError(f"Unsupported curriculum: {curriculum_name}")
 
 
-def collect_part2_ablation_results(
+def initialize_ablation_result_rows(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablations: Sequence[Mapping[str, Any]],
+    records: Sequence[TilePermutationRecord],
+) -> tuple[list[dict[str, Any]], dict[tuple[Any, ...], int]]:
+    """Create pending Part 2 ablation result rows and their update indexes."""
+
+    rows: list[dict[str, Any]] = []
+    row_indices: dict[tuple[Any, ...], int] = {}
+    for ablation in ablations:
+        for record in records:
+            row = build_pending_training_result_row(
+                config=config,
+                run_id=run_id,
+                model_name=model_name,
+                record=record,
+                seed=config.seed,
+                ablation_name=str(ablation["name"]),
+            )
+            row_indices[training_result_row_key(row)] = len(rows)
+            rows.append(row)
+    return rows, row_indices
+
+
+def _part2_metadata_overrides(
+    *,
+    ablation: Mapping[str, Any],
+    batch_augmentation: BatchAugmentation | None,
+    curriculum_schedule: CurriculumSchedule | None,
+) -> dict[str, Any]:
+    return {
+        "augmentation_name": _ablation_augmentation_name(ablation),
+        "batch_augmentation_name": getattr(batch_augmentation, "name", None),
+        "curriculum_name": _ablation_curriculum_name(ablation),
+        "curriculum_stages": curriculum_schedule.stage_names if curriculum_schedule is not None else None,
+    }
+
+
+def build_part2_training_run_spec(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_loader: DataLoader,
+    validation_loader: DataLoader,
+    device: TorchDevice,
+    batch_augmentation: BatchAugmentation | None,
+    curriculum_schedule: CurriculumSchedule | None,
+) -> TrainingRunSpec:
+    """Build the training spec for one Part 2 ablation/tile run."""
+
+    tiles_label = record.tiles_per_side or 1
+    progress_desc = (
+        f"{model_name} {ablation['name']} "
+        f"{tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
+    )
+    return build_training_run_spec(
+        config=config,
+        model_name=model_name,
+        train_loader=train_loader,
+        val_loader=validation_loader,
+        device=device,
+        run_id=run_id,
+        record=record,
+        seed=config.seed,
+        overrides={
+            "pretrained": bool(ablation.get("use_pretrained", True)),
+        },
+        ablation_name=str(ablation["name"]),
+        progress_desc=progress_desc,
+        batch_augmentation=batch_augmentation,
+        curriculum_schedule=curriculum_schedule,
+        metadata_overrides=_part2_metadata_overrides(
+            ablation=ablation,
+            batch_augmentation=batch_augmentation,
+            curriculum_schedule=curriculum_schedule,
+        ),
+    )
+
+
+def _print_ablation_tile_run_header(
+    *,
+    record_index: int,
+    num_records: int,
+    model_name: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+) -> None:
+    print()
+    print(
+        f"[{record_index}/{num_records}] model={model_name}, ablation={ablation['name']}, "
+        f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
+        f"seed={record.tile_permutation_seed}"
+    )
+
+
+def train_single_ablation_tile_run(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    device: TorchDevice,
+    rows: list[dict[str, Any]],
+    row_indices: dict[tuple[Any, ...], int],
+    raw_results_output_path: Optional[str] = None,
+) -> None:
+    """Train one Part 2 ablation on one tile-permutation record."""
+
+    print("Building dataloaders...")
+    train_loader, validation_loader = build_ablation_dataloaders(
+        ablation=ablation,
+        record=record,
+        train_samples=train_samples,
+        validation_samples=validation_samples,
+        config=config,
+    )
+    batch_augmentation = build_ablation_batch_augmentation(ablation, record)
+    curriculum_schedule = build_curriculum_schedule(
+        ablation=ablation,
+        record=record,
+        train_samples=train_samples,
+        config=config,
+    )
+    print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
+    spec = build_part2_training_run_spec(
+        config=config,
+        model_name=model_name,
+        run_id=run_id,
+        ablation=ablation,
+        record=record,
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        device=device,
+        batch_augmentation=batch_augmentation,
+        curriculum_schedule=curriculum_schedule,
+    )
+    checkpoint_config = getattr(spec, "checkpoint_config", None)
+    print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
+    print(f"Raw results path: {raw_results_output_path}")
+    row_key = (str(ablation["name"]), record.tiles_per_side or 0, record.tile_permutation_id)
+    train_model_and_save_progress(
+        spec=spec,
+        config=config,
+        run_id=run_id,
+        record=record,
+        seed=config.seed,
+        rows=rows,
+        row_index=row_indices[row_key],
+        raw_results_output_path=raw_results_output_path,
+        ablation_name=str(ablation["name"]),
+    )
+
+
+def train_part2_ablation_experiments(
     *,
     config: CVExperimentConfig,
     ablations: Sequence[Mapping[str, Any]],
-    train_samples: Sequence[tuple[str, int]],
-    validation_samples: Sequence[tuple[str, int]],
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
     tile_permutation_records: Sequence[TilePermutationRecord],
     device: TorchDevice,
     run_id: str,
@@ -227,22 +389,14 @@ def collect_part2_ablation_results(
     """Train all Part 2 ablations across tile-permutation records."""
 
     model_name = getattr(config, "model_name", config.model_names[0])
-    executable_records = get_executable_tile_permutation_records(tile_permutation_records)
-    rows: list[dict[str, Any]] = []
-    row_indices: dict[tuple[Any, ...], int] = {}
-
-    for ablation in ablations:
-        for record in executable_records:
-            row = build_pending_result_row(
-                config=config,
-                run_id=run_id,
-                model_name=model_name,
-                record=record,
-                seed=config.seed,
-                ablation_name=str(ablation["name"]),
-            )
-            row_indices[_result_row_key(row)] = len(rows)
-            rows.append(row)
+    executable_records = list(tile_permutation_records)
+    rows, row_indices = initialize_ablation_result_rows(
+        config=config,
+        model_name=model_name,
+        run_id=run_id,
+        ablations=ablations,
+        records=executable_records,
+    )
 
     if raw_results_output_path:
         save_run_rows(rows=rows, output_path=raw_results_output_path, run_id=run_id, model_name=model_name)
@@ -254,72 +408,25 @@ def collect_part2_ablation_results(
         print(f"Running ablation: {ablation['name']}")
 
         for record_index, record in enumerate(executable_records, start=1):
-            print()
-            print(
-                f"[{record_index}/{len(executable_records)}] model={model_name}, ablation={ablation['name']}, "
-                f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-                f"seed={record.tile_permutation_seed}"
+            _print_ablation_tile_run_header(
+                record_index=record_index,
+                num_records=len(executable_records),
+                model_name=model_name,
+                ablation=ablation,
+                record=record,
             )
-            print("Building dataloaders...")
-            train_loader, validation_loader = build_ablation_dataloaders(
+            train_single_ablation_tile_run(
+                config=config,
+                model_name=model_name,
+                run_id=run_id,
                 ablation=ablation,
                 record=record,
                 train_samples=train_samples,
                 validation_samples=validation_samples,
-                config=config,
-            )
-            batch_augmentation = build_ablation_batch_augmentation(ablation, record)
-            curriculum_schedule = build_curriculum_schedule(
-                ablation=ablation,
-                record=record,
-                train_samples=train_samples,
-                config=config,
-            )
-            print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
-            tiles_label = record.tiles_per_side or 1
-            progress_desc = (
-                f"{model_name} {ablation['name']} "
-                f"{tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
-            )
-            spec = build_training_spec(
-                config=config,
-                model_name=model_name,
-                train_loader=train_loader,
-                val_loader=validation_loader,
                 device=device,
-                run_id=run_id,
-                record=record,
-                seed=config.seed,
-                overrides={
-                    "pretrained": bool(ablation.get("use_pretrained", True)),
-                },
-                ablation_name=str(ablation["name"]),
-                progress_desc=progress_desc,
-                batch_augmentation=batch_augmentation,
-                curriculum_schedule=curriculum_schedule,
-                metadata_overrides={
-                    "augmentation_name": _ablation_augmentation_name(ablation),
-                    "batch_augmentation_name": getattr(batch_augmentation, "name", None),
-                    "curriculum_name": _ablation_curriculum_name(ablation),
-                    "curriculum_stages": (
-                        curriculum_schedule.stage_names if curriculum_schedule is not None else None
-                    ),
-                },
-            )
-            checkpoint_config = getattr(spec, "checkpoint_config", None)
-            print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
-            print(f"Raw results path: {raw_results_output_path}")
-            row_key = (str(ablation["name"]), record.tiles_per_side or 0, record.tile_permutation_id)
-            _run_training_with_progress_saves(
-                spec=spec,
-                config=config,
-                run_id=run_id,
-                record=record,
-                seed=config.seed,
                 rows=rows,
-                row_index=row_indices[row_key],
+                row_indices=row_indices,
                 raw_results_output_path=raw_results_output_path,
-                ablation_name=str(ablation["name"]),
             )
     return rows
 
@@ -344,7 +451,7 @@ def run_part2_improvement_experiments(
 
     rows = load_part1_model_baseline_raw_rows(config, model_name)
     rows.extend(
-        collect_part2_ablation_results(
+        train_part2_ablation_experiments(
             config=config,
             ablations=getattr(config, "ablations"),
             train_samples=train_samples,

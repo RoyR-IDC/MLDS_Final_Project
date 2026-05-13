@@ -2,12 +2,12 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from src.experiments import part1, part2
-from src.experiments.part1 import collect_model_tile_permutation_results, get_executable_tile_permutation_records
+from src.experiments import part1, part2, training_runs
+from src.experiments.part1 import get_executable_tile_permutation_records, train_model_on_tile_permutation_records
 from src.experiments.part2 import (
     CORRUPTION_PROBABILITY_SCHEDULE,
     build_curriculum_schedule,
-    collect_part2_ablation_results,
+    train_part2_ablation_experiments,
 )
 from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
 from src.training.run import TrainingResult
@@ -32,7 +32,7 @@ def test_executable_tile_permutation_records_returns_records():
     ]
 
 
-def test_collect_model_tile_permutation_results_saves_mid_run_updates(monkeypatch, tmp_path):
+def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
         config_name="test_config",
@@ -76,16 +76,16 @@ def test_collect_model_tile_permutation_results_saves_mid_run_updates(monkeypatc
     def fake_build_dataloaders(**kwargs):
         return FakeLoader(), FakeLoader()
 
-    def fake_build_training_spec(**kwargs):
+    def fake_build_training_run_spec(**kwargs):
         progress_descriptions.append(kwargs["progress_desc"])
         return SimpleNamespace(model_name=kwargs["model_name"])
 
     monkeypatch.setattr(part1, "build_dataloaders", fake_build_dataloaders)
-    monkeypatch.setattr(part1, "build_training_spec", fake_build_training_spec)
-    monkeypatch.setattr(part1, "ModelTrainer", FakeTrainer)
+    monkeypatch.setattr(part1, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
     raw_results_path = tmp_path / "part1_raw_results.csv"
-    rows = collect_model_tile_permutation_results(
+    rows = train_model_on_tile_permutation_records(
         config=config,
         model_name="resnet18",
         run_id="run",
@@ -107,7 +107,7 @@ def test_collect_model_tile_permutation_results_saves_mid_run_updates(monkeypatc
     assert saved.loc[0, "training_duration_seconds"] == 2.5
 
 
-def test_collect_model_tile_permutation_results_saves_failed_status(monkeypatch, tmp_path):
+def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
         config_name="test_config",
@@ -156,12 +156,12 @@ def test_collect_model_tile_permutation_results_saves_failed_status(monkeypatch,
             return result
 
     monkeypatch.setattr(part1, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
-    monkeypatch.setattr(part1, "build_training_spec", lambda **kwargs: SimpleNamespace(model_name=kwargs["model_name"]))
-    monkeypatch.setattr(part1, "ModelTrainer", FakeTrainer)
+    monkeypatch.setattr(part1, "build_training_run_spec", lambda **kwargs: SimpleNamespace(model_name=kwargs["model_name"]))
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
     raw_results_path = tmp_path / "part1_raw_results.csv"
     try:
-        collect_model_tile_permutation_results(
+        train_model_on_tile_permutation_records(
             config=config,
             model_name="resnet18",
             run_id="run",
@@ -182,7 +182,7 @@ def test_collect_model_tile_permutation_results_saves_failed_status(monkeypatch,
     assert saved["error_message"].tolist()[1] == "simulated crash"
 
 
-def test_collect_part2_ablation_results_uses_same_trainer_core(monkeypatch, tmp_path):
+def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part2",
         config_name="part2_improvement",
@@ -228,17 +228,17 @@ def test_collect_part2_ablation_results_uses_same_trainer_core(monkeypatch, tmp_
             on_progress(result)
             return result
 
-    def fake_build_training_spec(**kwargs):
+    def fake_build_training_run_spec(**kwargs):
         progress_descriptions.append(kwargs["progress_desc"])
         spec_kwargs.append(kwargs)
         return SimpleNamespace(model_name=kwargs["model_name"])
 
     monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
-    monkeypatch.setattr(part2, "build_training_spec", fake_build_training_spec)
-    monkeypatch.setattr(part1, "ModelTrainer", FakeTrainer)
+    monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
     raw_results_path = tmp_path / "part2_raw_results.csv"
-    rows = collect_part2_ablation_results(
+    rows = train_part2_ablation_experiments(
         config=config,
         ablations=ablations,
         train_samples=[("cat.jpg", 0)],

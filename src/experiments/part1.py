@@ -2,33 +2,25 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import pandas as pd
-from torch import nn
 from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 
 from src.evaluation.experiment_results import get_device, load_experiment_samples, plot_accuracy_vs_tiles
-from src.experiments.results import (
-    build_result_row,
-    build_training_result_row,
-    experiment_output_paths,
-    save_aggregated_accuracy,
-    save_rows,
-    save_run_rows,
+from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+from src.experiments.training_runs import (
+    build_pending_training_result_row,
+    build_training_run_spec,
+    train_model_and_save_progress,
+    training_result_row_key,
 )
-from src.models.factory import get_model
 from src.preprocessing.dataloaders import build_dataloaders
-from src.preprocessing.augmentations import BatchAugmentation
+from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import TilePermutationRecord, build_tile_permutation_records
-from src.training.curriculum import CurriculumSchedule
-from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
-from src.training.trainer import ModelTrainer
 from src.utils.config import CVExperimentConfig
-from src.utils.io import ensure_dir
 
 
 def get_executable_tile_permutation_records(records: Sequence[TilePermutationRecord]) -> list[TilePermutationRecord]:
@@ -37,188 +29,128 @@ def get_executable_tile_permutation_records(records: Sequence[TilePermutationRec
     return list(records)
 
 
-def _clean_path_part(value: Any) -> str:
-    return str(value).replace(os.sep, "_").replace(" ", "_").replace(":", "_")
-
-
-def _checkpoint_config(
+def initialize_tile_permutation_result_rows(
     *,
     config: CVExperimentConfig,
     run_id: str,
     model_name: str,
-    record: TilePermutationRecord,
-    ablation_name: str | None = None,
-) -> CheckpointConfig:
-    outputs_dir = getattr(config, "outputs_dir", "") or os.path.dirname(getattr(config, "results_dir", "")) or "outputs"
-    checkpoint_dir = ensure_dir(os.path.join(outputs_dir, "checkpoints", str(config.part), run_id))
-    name_parts = [
-        _clean_path_part(model_name),
-        _clean_path_part(ablation_name) if ablation_name else None,
-        f"tiles_{record.tiles_per_side or 1}",
-        f"perm_{record.tile_permutation_id}",
-    ]
-    stem = "__".join(part for part in name_parts if part)
-    return CheckpointConfig(
-        best_path=os.path.join(checkpoint_dir, f"{stem}__best.pt"),
-        last_path=os.path.join(checkpoint_dir, f"{stem}__last.pt"),
-    )
-
-
-def _training_config(config: CVExperimentConfig) -> TrainingConfig:
-    return TrainingConfig(
-        epochs=int(getattr(config, "epochs", 1)),
-        optimizer_name=str(getattr(config, "optimizer", "adamw")),
-        learning_rate=float(getattr(config, "learning_rate", 0.0003)),
-        weight_decay=float(getattr(config, "weight_decay", 0.0)),
-        use_amp=bool(getattr(config, "use_amp", False)),
-    )
-
-
-def build_training_spec(
-    *,
-    config: CVExperimentConfig,
-    model_name: str,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    device: TorchDevice,
-    run_id: str,
-    record: TilePermutationRecord,
+    records: Sequence[TilePermutationRecord],
     seed: int,
-    overrides: Optional[Mapping[str, Any]] = None,
-    ablation_name: str | None = None,
-    progress_desc: Optional[str] = None,
-    batch_augmentation: BatchAugmentation | None = None,
-    curriculum_schedule: CurriculumSchedule | None = None,
-    metadata_overrides: Optional[Mapping[str, Any]] = None,
-) -> TrainingRunSpec:
-    """Build the shared OOP training specification for one run."""
+) -> tuple[list[dict[str, Any]], dict[tuple[Any, ...], int]]:
+    """Create pending result rows and their update indexes for a model."""
 
-    run_options = dict(overrides or {})
-    print(f"Building model '{model_name}'...")
-    model = get_model(
-        model_name,
-        num_classes=int(getattr(config, "num_classes", 2)),
-        pretrained=bool(run_options.get("pretrained", getattr(config, "pretrained", False))),
-        device=device,
-        freeze_backbone=bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False))),
-    )
-    metadata = {
-        "part": config.part,
-        "config_name": config.config_name,
-        "run_id": run_id,
-        "model_name": model_name,
-        "ablation_name": ablation_name,
-        "tiles_per_side": record.tiles_per_side,
-        "tile_permutation_id": record.tile_permutation_id,
-        "tile_permutation_seed": record.tile_permutation_seed,
-        "seed": seed,
-    }
-    metadata.update(dict(metadata_overrides or {}))
-    return TrainingRunSpec(
-        model_name=model_name,
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        criterion=nn.CrossEntropyLoss(),
-        device=device,
-        config=_training_config(config),
-        checkpoint_config=_checkpoint_config(
+    rows = [
+        build_pending_training_result_row(
             config=config,
             run_id=run_id,
             model_name=model_name,
             record=record,
-            ablation_name=ablation_name,
-        ),
-        metadata=metadata,
-        progress_desc=progress_desc or f"{model_name} epochs",
-        batch_augmentation=batch_augmentation,
-        curriculum_schedule=curriculum_schedule,
-    )
+            seed=seed,
+        )
+        for record in records
+    ]
+    row_indices = {training_result_row_key(row): index for index, row in enumerate(rows)}
+    return rows, row_indices
 
 
-def build_pending_result_row(
+def build_tile_permutation_dataloaders(
     *,
     config: CVExperimentConfig,
-    run_id: str,
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    record: TilePermutationRecord,
+) -> tuple[DataLoader, DataLoader]:
+    """Build dataloaders for one Part 1 tile-permutation run."""
+
+    return build_dataloaders(
+        train_samples=train_samples,
+        val_samples=validation_samples,
+        image_size=config.image_size,
+        tiles_per_side=record.tiles_per_side or 1,
+        tile_permutation=record.tile_permutation,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        standard_augmentation=False,
+    )
+
+
+def _print_tile_permutation_run_header(
+    *,
+    record_index: int,
+    num_records: int,
     model_name: str,
     record: TilePermutationRecord,
-    seed: int,
-    ablation_name: str | None = None,
-) -> dict[str, Any]:
-    """Build an empty result row before a training run starts."""
-
-    result = TrainingResult.pending(
-        model_name=model_name,
-        metadata={
-            "part": config.part,
-            "config_name": config.config_name,
-            "run_id": run_id,
-            "model_name": model_name,
-            "ablation_name": ablation_name,
-            "seed": seed,
-        },
+) -> None:
+    print()
+    print("=" * 80)
+    print(
+        f"[{record_index}/{num_records}] model={model_name}, "
+        f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
+        f"seed={record.tile_permutation_seed}"
     )
-    return build_result_row(
+
+
+def train_single_tile_permutation_run(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    record: TilePermutationRecord,
+    seed: int,
+    device: TorchDevice,
+    rows: list[dict[str, Any]],
+    row_indices: dict[tuple[Any, ...], int],
+    raw_results_output_path: Optional[str] = None,
+) -> None:
+    """Train one model on one tile-permutation record and update result rows."""
+
+    print("Building dataloaders...")
+    train_loader, validation_loader = build_tile_permutation_dataloaders(
         config=config,
-        run_id=run_id,
+        train_samples=train_samples,
+        validation_samples=validation_samples,
+        record=record,
+    )
+    print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
+
+    tiles_label = record.tiles_per_side or 1
+    progress_desc = f"{model_name} {tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
+    spec = build_training_run_spec(
+        config=config,
         model_name=model_name,
+        train_loader=train_loader,
+        val_loader=validation_loader,
+        device=device,
+        run_id=run_id,
         record=record,
         seed=seed,
-        metrics=result.latest_metrics(),
-        ablation_name=ablation_name,
+        overrides={"pretrained": config.pretrained},
+        progress_desc=progress_desc,
+    )
+    checkpoint_config = getattr(spec, "checkpoint_config", None)
+    print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
+    print(f"Raw results path: {raw_results_output_path}")
+    train_model_and_save_progress(
+        spec=spec,
+        config=config,
+        run_id=run_id,
+        record=record,
+        seed=seed,
+        rows=rows,
+        row_index=row_indices[(record.tiles_per_side or 0, record.tile_permutation_id)],
+        raw_results_output_path=raw_results_output_path,
     )
 
 
-def _result_row_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
-    tiles_per_side = 0 if pd.isna(row["tiles_per_side"]) else int(row["tiles_per_side"])
-    ablation_name = row.get("ablation_name")
-    if ablation_name is None or (isinstance(ablation_name, float) and pd.isna(ablation_name)):
-        return tiles_per_side, int(row["tile_permutation_id"])
-    return str(ablation_name), tiles_per_side, int(row["tile_permutation_id"])
-
-
-def _run_training_with_progress_saves(
-    *,
-    spec: TrainingRunSpec,
-    config: CVExperimentConfig,
-    run_id: str,
-    record: TilePermutationRecord,
-    seed: int,
-    rows: list[dict[str, Any]],
-    row_index: int,
-    raw_results_output_path: str | None,
-    ablation_name: str | None = None,
-) -> TrainingResult:
-    """Train one spec and persist row updates whenever the trainer reports progress."""
-
-    def persist_progress(result: TrainingResult) -> None:
-        rows[row_index] = build_training_result_row(
-            config=config,
-            run_id=run_id,
-            model_name=spec.model_name,
-            record=record,
-            seed=seed,
-            result=result,
-            ablation_name=ablation_name,
-        )
-        if raw_results_output_path:
-            save_run_rows(
-                rows=rows,
-                output_path=raw_results_output_path,
-                run_id=run_id,
-                model_name=spec.model_name,
-            )
-
-    return ModelTrainer(spec).fit(on_progress=persist_progress)
-
-
-def collect_model_tile_permutation_results(
+def train_model_on_tile_permutation_records(
     *,
     config: CVExperimentConfig,
     model_name: str,
     run_id: str,
-    train_samples: Sequence[tuple[str, int]],
-    validation_samples: Sequence[tuple[str, int]],
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
     tile_permutation_records: Sequence[TilePermutationRecord],
     seed: int,
     device: TorchDevice,
@@ -227,67 +159,36 @@ def collect_model_tile_permutation_results(
     """Train one model across tile-permutation records and collect result rows."""
 
     executable_records = get_executable_tile_permutation_records(tile_permutation_records)
-    rows = [
-        build_pending_result_row(
-            config=config,
-            run_id=run_id,
-            model_name=model_name,
-            record=record,
-            seed=seed,
-        )
-        for record in executable_records
-    ]
-    row_indices = {_result_row_key(row): index for index, row in enumerate(rows)}
+    rows, row_indices = initialize_tile_permutation_result_rows(
+        config=config,
+        run_id=run_id,
+        model_name=model_name,
+        records=executable_records,
+        seed=seed,
+    )
 
     if raw_results_output_path:
         save_run_rows(rows=rows, output_path=raw_results_output_path, run_id=run_id, model_name=model_name)
         print(f"Saved {len(rows)} pending row(s) for model '{model_name}' to {raw_results_output_path}.")
 
     for record_index, record in enumerate(executable_records, start=1):
-        print()
-        print("=" * 80)
-        print(
-            f"[{record_index}/{len(executable_records)}] model={model_name}, "
-            f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-            f"seed={record.tile_permutation_seed}"
+        _print_tile_permutation_run_header(
+            record_index=record_index,
+            num_records=len(executable_records),
+            model_name=model_name,
+            record=record,
         )
-        print("Building dataloaders...")
-        train_loader, validation_loader = build_dataloaders(
-            train_samples=train_samples,
-            val_samples=validation_samples,
-            image_size=config.image_size,
-            tiles_per_side=record.tiles_per_side or 1,
-            tile_permutation=record.tile_permutation,
-            batch_size=config.batch_size,
-            num_workers=config.num_workers,
-            standard_augmentation=False,
-        )
-        print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
-        tiles_label = record.tiles_per_side or 1
-        progress_desc = f"{model_name} {tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
-        spec = build_training_spec(
+        train_single_tile_permutation_run(
             config=config,
             model_name=model_name,
-            train_loader=train_loader,
-            val_loader=validation_loader,
+            run_id=run_id,
+            train_samples=train_samples,
+            validation_samples=validation_samples,
+            record=record,
+            seed=seed,
             device=device,
-            run_id=run_id,
-            record=record,
-            seed=seed,
-            overrides={"pretrained": config.pretrained},
-            progress_desc=progress_desc,
-        )
-        checkpoint_config = getattr(spec, "checkpoint_config", None)
-        print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
-        print(f"Raw results path: {raw_results_output_path}")
-        _run_training_with_progress_saves(
-            spec=spec,
-            config=config,
-            run_id=run_id,
-            record=record,
-            seed=seed,
             rows=rows,
-            row_index=row_indices[(record.tiles_per_side or 0, record.tile_permutation_id)],
+            row_indices=row_indices,
             raw_results_output_path=raw_results_output_path,
         )
     return rows
@@ -310,7 +211,7 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
     rows: list[dict[str, Any]] = []
     for model_name in config.model_names:
         rows.extend(
-            collect_model_tile_permutation_results(
+            train_model_on_tile_permutation_records(
                 config=config,
                 model_name=model_name,
                 run_id=run_id,
