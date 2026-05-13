@@ -281,22 +281,36 @@ class Part2ExperimentConfig(CVExperimentConfig):
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {
-                "name": "augmentation_only",
+                "name": "random_erasing_only",
                 "use_pretrained": True,
-                "use_standard_augmentation": True,
-                "freeze_backbone": False,
+                "augmentation": "random_erasing",
             },
             {
-                "name": "finetune_only",
+                "name": "same_label_cutmix_only",
                 "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": False,
+                "augmentation": "same_label_cutmix",
             },
             {
-                "name": "augmentation_finetune",
+                "name": "patch_shuffle_only",
                 "use_pretrained": True,
-                "use_standard_augmentation": True,
-                "freeze_backbone": False,
+                "augmentation": "patch_shuffle",
+            },
+            {
+                "name": "combined_corruptions",
+                "use_pretrained": True,
+                "augmentation": "combined_corruptions",
+            },
+            {
+                "name": "permutation_difficulty_curriculum",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "permutation_difficulty",
+            },
+            {
+                "name": "corruption_probability_curriculum",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "corruption_probability",
             },
         ]
     )

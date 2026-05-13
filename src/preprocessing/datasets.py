@@ -20,12 +20,16 @@ class DogsCatsDataset(Dataset[tuple[torch.Tensor, int]]):
         samples: Sequence[tuple[str, int]],
         transform: Callable[[Image.Image], torch.Tensor],
         tile_permutation: Optional[TilePermutation] = None,
+        tile_permutation_probability: float = 1.0,
     ) -> None:
         self.samples = list(samples)
         self.transform = transform
         self.tile_permutation_transform = (
             TilePermutationTransform(tile_permutation) if tile_permutation is not None else None
         )
+        if not 0.0 <= tile_permutation_probability <= 1.0:
+            raise ValueError("tile_permutation_probability must be between 0 and 1")
+        self.tile_permutation_probability = tile_permutation_probability
 
     def __len__(self) -> int:
         """Return the number of samples."""
@@ -38,6 +42,13 @@ class DogsCatsDataset(Dataset[tuple[torch.Tensor, int]]):
         path, label = self.samples[idx]
         with Image.open(path) as image:
             image_tensor = self.transform(image.convert("RGB"))
-        if self.tile_permutation_transform is not None:
+        if self.tile_permutation_transform is not None and self._should_apply_tile_permutation():
             image_tensor = self.tile_permutation_transform(image_tensor)
         return image_tensor, int(label)
+
+    def _should_apply_tile_permutation(self) -> bool:
+        if self.tile_permutation_probability >= 1.0:
+            return True
+        if self.tile_permutation_probability <= 0.0:
+            return False
+        return bool(torch.rand(()).item() < self.tile_permutation_probability)

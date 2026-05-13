@@ -105,9 +105,12 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     assert tiles_per_side_values == [1, 2, 3, 4]
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
-        "augmentation_only",
-        "finetune_only",
-        "augmentation_finetune",
+        "random_erasing_only",
+        "same_label_cutmix_only",
+        "patch_shuffle_only",
+        "combined_corruptions",
+        "permutation_difficulty_curriculum",
+        "corruption_probability_curriculum",
     ]
 
 

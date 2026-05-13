@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.training.checkpoints import save_checkpoint
+from src.training.curriculum import TrainingStage
 from src.training.metrics import AverageMeter
 from src.training.optimizers import build_optimizer
 from src.training.run import EpochResult, TrainingResult, TrainingRunSpec
@@ -47,35 +48,40 @@ class ModelTrainer:
         start_time = perf_counter()
 
         try:
+            stages = self._training_stages()
             with tqdm(
-                total=self.spec.config.epochs,
+                total=sum(stage.epochs for stage in stages),
                 desc=self.spec.progress_desc,
                 unit="epoch",
                 leave=self.spec.progress_leave,
             ) as progress:
-                for epoch in range(1, self.spec.config.epochs + 1):
-                    train_metrics = self.train_one_epoch()
-                    val_metrics = self.evaluate()
-                    best_val_accuracy = max(best_val_accuracy, val_metrics["val_accuracy"])
-                    epoch_result = EpochResult(
-                        epoch=epoch,
-                        train_loss=train_metrics["train_loss"],
-                        train_accuracy=train_metrics["train_accuracy"],
-                        val_loss=val_metrics["val_loss"],
-                        val_accuracy=val_metrics["val_accuracy"],
-                        best_val_accuracy=best_val_accuracy,
-                    )
-                    result.update_from_epoch(epoch_result)
-                    self._save_epoch_checkpoints(result, epoch_result)
-                    self._notify(on_progress, result)
-                    progress.set_postfix(
-                        train_loss=epoch_result.train_loss,
-                        train_accuracy=epoch_result.train_accuracy,
-                        val_loss=epoch_result.val_loss,
-                        val_accuracy=epoch_result.val_accuracy,
-                        best_val_accuracy=epoch_result.best_val_accuracy,
-                    )
-                    progress.update(1)
+                epoch = 0
+                for stage in stages:
+                    for _ in range(stage.epochs):
+                        epoch += 1
+                        train_metrics = self.train_one_epoch(stage.train_loader)
+                        val_metrics = self.evaluate()
+                        best_val_accuracy = max(best_val_accuracy, val_metrics["val_accuracy"])
+                        epoch_result = EpochResult(
+                            epoch=epoch,
+                            train_loss=train_metrics["train_loss"],
+                            train_accuracy=train_metrics["train_accuracy"],
+                            val_loss=val_metrics["val_loss"],
+                            val_accuracy=val_metrics["val_accuracy"],
+                            best_val_accuracy=best_val_accuracy,
+                        )
+                        result.update_from_epoch(epoch_result)
+                        self._save_epoch_checkpoints(result, epoch_result)
+                        self._notify(on_progress, result)
+                        progress.set_postfix(
+                            stage=stage.name,
+                            train_loss=epoch_result.train_loss,
+                            train_accuracy=epoch_result.train_accuracy,
+                            val_loss=epoch_result.val_loss,
+                            val_accuracy=epoch_result.val_accuracy,
+                            best_val_accuracy=epoch_result.best_val_accuracy,
+                        )
+                        progress.update(1)
         except Exception as exc:
             result.mark_failed(perf_counter() - start_time, exc)
             self._notify(on_progress, result)
@@ -85,11 +91,11 @@ class ModelTrainer:
         self._notify(on_progress, result)
         return result
 
-    def train_one_epoch(self) -> dict[str, float]:
+    def train_one_epoch(self, dataloader: Optional[DataLoader] = None) -> dict[str, float]:
         """Train the model for one epoch."""
 
         self.spec.model.train()
-        return self._run_batches(self.spec.train_loader, training=True)
+        return self._run_batches(dataloader or self.spec.train_loader, training=True)
 
     def evaluate(self, dataloader: Optional[DataLoader] = None) -> dict[str, float]:
         """Evaluate the model on a dataloader."""
@@ -108,6 +114,8 @@ class ModelTrainer:
             targets = targets.to(self.spec.device, non_blocking=True)
 
             if training:
+                if self.spec.batch_augmentation is not None:
+                    images, targets = self.spec.batch_augmentation(images, targets)
                 self.optimizer.zero_grad(set_to_none=True)
 
             with autocast("cuda", enabled=self.amp_enabled and training):
@@ -162,3 +170,8 @@ class ModelTrainer:
     def _notify(callback: Optional[ProgressCallback], result: TrainingResult) -> None:
         if callback is not None:
             callback(result)
+
+    def _training_stages(self) -> list[TrainingStage]:
+        if self.spec.curriculum_schedule is not None:
+            return list(self.spec.curriculum_schedule.stages)
+        return [TrainingStage(name="standard", epochs=self.spec.config.epochs, train_loader=self.spec.train_loader)]

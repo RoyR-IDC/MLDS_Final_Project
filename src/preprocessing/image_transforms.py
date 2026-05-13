@@ -31,10 +31,24 @@ class PILToFloatTensor:
         return data.reshape(height, width, 3).permute(2, 0, 1).float().div(255.0)
 
 
-def build_transforms(image_size: int = 224, train: bool = False, standard_augmentation: bool = False) -> transforms.Compose:
+def build_transforms(
+    image_size: int = 224,
+    train: bool = False,
+    standard_augmentation: bool = False,
+    image_augmentation: str | None = None,
+) -> transforms.Compose:
     """Build torchvision transforms for Dogs vs Cats experiments."""
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    if train and image_augmentation == "random_erasing":
+        return transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                PILToFloatTensor(),
+                transforms.RandomErasing(p=1.0, scale=(0.02, 0.2), ratio=(0.3, 3.3)),
+                normalize,
+            ]
+        )
     if train and standard_augmentation:
         return transforms.Compose(
             [

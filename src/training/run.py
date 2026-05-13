@@ -9,6 +9,9 @@ from torch import nn
 from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 
+from src.preprocessing.augmentations import BatchAugmentation
+from src.training.curriculum import CurriculumSchedule
+
 
 RunStatus = Literal["pending", "running", "completed", "failed"]
 
@@ -61,6 +64,8 @@ class TrainingRunSpec:
     metadata: dict[str, Any] = field(default_factory=dict)
     progress_desc: str = "Epoch"
     progress_leave: bool = True
+    batch_augmentation: Optional[BatchAugmentation] = None
+    curriculum_schedule: Optional[CurriculumSchedule] = None
 
 
 @dataclass

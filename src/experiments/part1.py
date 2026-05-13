@@ -22,7 +22,9 @@ from src.experiments.results import (
 )
 from src.models.factory import get_model
 from src.preprocessing.dataloaders import build_dataloaders
+from src.preprocessing.augmentations import BatchAugmentation
 from src.preprocessing.tile_permutations import TilePermutationRecord, build_tile_permutation_records
+from src.training.curriculum import CurriculumSchedule
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
 from src.utils.config import CVExperimentConfig
@@ -85,6 +87,9 @@ def build_training_spec(
     overrides: Optional[Mapping[str, Any]] = None,
     ablation_name: str | None = None,
     progress_desc: Optional[str] = None,
+    batch_augmentation: BatchAugmentation | None = None,
+    curriculum_schedule: CurriculumSchedule | None = None,
+    metadata_overrides: Optional[Mapping[str, Any]] = None,
 ) -> TrainingRunSpec:
     """Build the shared OOP training specification for one run."""
 
@@ -108,6 +113,7 @@ def build_training_spec(
         "tile_permutation_seed": record.tile_permutation_seed,
         "seed": seed,
     }
+    metadata.update(dict(metadata_overrides or {}))
     return TrainingRunSpec(
         model_name=model_name,
         model=model,
@@ -125,6 +131,8 @@ def build_training_spec(
         ),
         metadata=metadata,
         progress_desc=progress_desc or f"{model_name} epochs",
+        batch_augmentation=batch_augmentation,
+        curriculum_schedule=curriculum_schedule,
     )
 
 

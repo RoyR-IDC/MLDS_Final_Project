@@ -4,7 +4,11 @@ import pandas as pd
 
 from src.experiments import part1, part2
 from src.experiments.part1 import collect_model_tile_permutation_results, get_executable_tile_permutation_records
-from src.experiments.part2 import collect_part2_ablation_results
+from src.experiments.part2 import (
+    CORRUPTION_PROBABILITY_SCHEDULE,
+    build_curriculum_schedule,
+    collect_part2_ablation_results,
+)
 from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
 from src.training.run import TrainingResult
 
@@ -201,13 +205,13 @@ def test_collect_part2_ablation_results_uses_same_trainer_core(monkeypatch, tmp_
     ]
     ablations = [
         {
-            "name": "augmentation_only",
+            "name": "same_label_cutmix_only",
             "use_pretrained": True,
-            "use_standard_augmentation": True,
-            "freeze_backbone": False,
+            "augmentation": "same_label_cutmix",
         }
     ]
     progress_descriptions = []
+    spec_kwargs = []
 
     class FakeLoader:
         def __len__(self):
@@ -226,6 +230,7 @@ def test_collect_part2_ablation_results_uses_same_trainer_core(monkeypatch, tmp_
 
     def fake_build_training_spec(**kwargs):
         progress_descriptions.append(kwargs["progress_desc"])
+        spec_kwargs.append(kwargs)
         return SimpleNamespace(model_name=kwargs["model_name"])
 
     monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
@@ -244,6 +249,65 @@ def test_collect_part2_ablation_results_uses_same_trainer_core(monkeypatch, tmp_
         raw_results_output_path=str(raw_results_path),
     )
 
-    assert progress_descriptions == ["resnet18 augmentation_only 2x2 permutation 0"]
+    assert progress_descriptions == ["resnet18 same_label_cutmix_only 2x2 permutation 0"]
+    assert "freeze_backbone" not in spec_kwargs[0]["overrides"]
+    assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "same_label_cutmix"
     assert rows[0]["run_status"] == "completed"
-    assert rows[0]["ablation_name"] == "augmentation_only"
+    assert rows[0]["ablation_name"] == "same_label_cutmix_only"
+
+
+def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=5, seed=42)
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=random_tile_permutation(4, seed=42),
+    )
+
+    class FakeLoader:
+        pass
+
+    monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "permutation_difficulty"},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert schedule.stage_names == ["original", "2x2_permutation", "3x3_permutation", "4x4_permutation"]
+    assert schedule.total_epochs == 5
+
+
+def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=4, seed=42)
+    record = TilePermutationRecord(
+        tiles_per_side=3,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=random_tile_permutation(3, seed=42),
+    )
+    probabilities = []
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        probabilities.append(kwargs.get("tile_permutation_probability"))
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "corruption_probability"},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert probabilities == CORRUPTION_PROBABILITY_SCHEDULE
+    assert schedule.total_epochs == 4
