@@ -84,6 +84,12 @@ def checkpoint_dir_path(*, config: CVExperimentConfig, run_id: str) -> str:
     return ensure_dir(os.path.join(outputs_dir, "checkpoints", str(config.part), run_id))
 
 
+def checkpoints_enabled(config: CVExperimentConfig) -> bool:
+    """Return whether model checkpoints should be written for this runtime."""
+
+    return bool(getattr(config, "using_google_colab", False))
+
+
 def build_checkpoint_config(
     *,
     config: CVExperimentConfig,
@@ -93,6 +99,9 @@ def build_checkpoint_config(
     ablation_name: str | None = None,
 ) -> CheckpointConfig:
     """Build checkpoint destinations for one experiment run."""
+
+    if not checkpoints_enabled(config):
+        return CheckpointConfig(save_best=False, save_last=False)
 
     checkpoint_dir = checkpoint_dir_path(config=config, run_id=run_id)
     name_parts = [

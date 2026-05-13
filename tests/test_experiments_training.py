@@ -32,6 +32,60 @@ def test_executable_tile_permutation_records_returns_records():
     ]
 
 
+def test_checkpoint_config_disabled_outside_colab(tmp_path):
+    config = SimpleNamespace(
+        part="part1",
+        outputs_dir=str(tmp_path / "outputs"),
+        using_google_colab=False,
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=2,
+        tile_permutation_id=3,
+        tile_permutation_seed=99,
+        tile_permutation=identity_tile_permutation(2),
+    )
+
+    checkpoint_config = training_runs.build_checkpoint_config(
+        config=config,
+        run_id="run",
+        model_name="resnet18",
+        record=record,
+    )
+
+    assert checkpoint_config.save_best is False
+    assert checkpoint_config.save_last is False
+    assert checkpoint_config.best_path is None
+    assert checkpoint_config.last_path is None
+    assert not (tmp_path / "outputs" / "checkpoints").exists()
+
+
+def test_checkpoint_config_enabled_on_colab(tmp_path):
+    config = SimpleNamespace(
+        part="part1",
+        outputs_dir=str(tmp_path / "outputs"),
+        using_google_colab=True,
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=2,
+        tile_permutation_id=3,
+        tile_permutation_seed=99,
+        tile_permutation=identity_tile_permutation(2),
+    )
+
+    checkpoint_config = training_runs.build_checkpoint_config(
+        config=config,
+        run_id="run",
+        model_name="resnet18",
+        record=record,
+    )
+
+    assert checkpoint_config.save_best is True
+    assert checkpoint_config.save_last is True
+    assert checkpoint_config.best_path.endswith("resnet18__tiles_2__perm_3__best.pt")
+    assert checkpoint_config.last_path.endswith("resnet18__tiles_2__perm_3__last.pt")
+    assert (tmp_path / "outputs" / "checkpoints" / "part1" / "run").is_dir()
+
+
 def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
@@ -40,6 +94,7 @@ def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypat
         batch_size=4,
         num_workers=0,
         pretrained=False,
+        epochs=1,
         outputs_dir=str(tmp_path / "outputs"),
     )
     record = TilePermutationRecord(
@@ -51,6 +106,8 @@ def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypat
     progress_descriptions = []
 
     class FakeLoader:
+        dataset = [None]
+
         def __len__(self):
             return 1
 
@@ -115,6 +172,7 @@ def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch
         batch_size=4,
         num_workers=0,
         pretrained=False,
+        epochs=1,
         outputs_dir=str(tmp_path / "outputs"),
     )
     records = [
@@ -134,6 +192,8 @@ def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch
     calls = iter(["ok", "fail"])
 
     class FakeLoader:
+        dataset = [None]
+
         def __len__(self):
             return 1
 
@@ -193,6 +253,7 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
         num_workers=0,
         seed=42,
         pretrained=True,
+        epochs=1,
         outputs_dir=str(tmp_path / "outputs"),
     )
     records = [
@@ -214,6 +275,8 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     spec_kwargs = []
 
     class FakeLoader:
+        dataset = [None]
+
         def __len__(self):
             return 1
 

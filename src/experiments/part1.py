@@ -16,6 +16,7 @@ from src.experiments.training_runs import (
     build_pending_training_result_row,
     build_training_run_spec,
     checkpoint_dir_path,
+    checkpoints_enabled,
     format_dataloader_summary,
     format_elapsed_time,
     format_stage_summary,
@@ -223,7 +224,10 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
     output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
 
     print(f"Raw results path: {output_paths['raw_results']}")
-    print(f"Checkpoint directory: {checkpoint_dir_path(config=config, run_id=run_id)}")
+    if checkpoints_enabled(config):
+        print(f"Checkpoint directory: {checkpoint_dir_path(config=config, run_id=run_id)}")
+    else:
+        print("Checkpointing disabled outside Google Colab.")
 
     rows: list[dict[str, Any]] = []
     for model_name in config.model_names:
