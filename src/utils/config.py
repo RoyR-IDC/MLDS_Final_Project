@@ -260,7 +260,7 @@ class CVExperimentConfig:
         self.model_names = ["resnet18"]
         self.tiles_per_side_values = [1, 3]
         self.num_tile_permutations = 2
-        self.epochs = 3
+        self.epochs = 1
         self.plot_samples = True
 
     def _validate_config_model_names(self) -> None:
@@ -335,6 +335,9 @@ class Part2ExperimentConfig(CVExperimentConfig):
                 f"got model_names={model_names}"
             )
         return model_names
+
+    def __post_init__(self) -> None:
+        return super().__post_init__()
 
 
 @dataclass
