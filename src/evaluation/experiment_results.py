@@ -248,10 +248,12 @@ def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
     ax = _as_axes(axis)
     for tiles_per_side, group in aggregated.groupby("tiles_per_side"):
         sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "ablation_name")
-        ax.plot(
+        ax.errorbar(
             sorted_group["ablation_name"],
             sorted_group["mean_best_epoch_val_accuracy"],
-            marker="o",
+            yerr=cast(Any, sorted_group)["std_best_epoch_val_accuracy"].fillna(0.0),
+            fmt="o",
+            linestyle="None",
             label=f"{tiles_per_side}x{tiles_per_side}",
         )
     ax.set_xlabel("Ablation")

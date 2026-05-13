@@ -93,7 +93,7 @@ def build_ablation_batch_augmentation(
         return SameLabelCutMix()
     if augmentation_name == "patch_shuffle":
         return RandomPatchShuffle(tiles_per_side=_patch_shuffle_tiles(record))
-    if augmentation_name == "combined_corruptions":
+    if augmentation_name == "combined_augmentations":
         return CompositeBatchAugmentation(
             [
                 SameLabelCutMix(),
@@ -114,9 +114,9 @@ def build_ablation_dataloaders(
     """Build dataloaders for a non-curriculum Part 2 ablation."""
 
     augmentation_name = _ablation_augmentation_name(ablation)
-    uses_patch_shuffle = augmentation_name in {"patch_shuffle", "combined_corruptions"}
+    uses_patch_shuffle = augmentation_name in {"patch_shuffle", "combined_augmentations"}
     loader_tiles = _patch_shuffle_tiles(record) if uses_patch_shuffle else int(record.tiles_per_side or 1)
-    image_augmentation = "random_erasing" if augmentation_name in {"random_erasing", "combined_corruptions"} else None
+    image_augmentation = "random_erasing" if augmentation_name in {"random_erasing", "combined_augmentations"} else None
     return build_dataloaders(
         train_samples=train_samples,
         val_samples=validation_samples,

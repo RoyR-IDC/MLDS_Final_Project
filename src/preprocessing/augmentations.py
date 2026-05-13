@@ -102,7 +102,7 @@ class CompositeBatchAugmentation:
     """Apply multiple batch augmentation strategies in order."""
 
     augmentations: Sequence[BatchAugmentation]
-    name: str = "combined_corruptions"
+    name: str = "combined_augmentations"
 
     def __call__(self, images: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         for augmentation in self.augmentations:
