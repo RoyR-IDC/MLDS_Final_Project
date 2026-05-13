@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any, Optional, Sequence
 
 import pandas as pd
@@ -14,6 +15,10 @@ from src.experiments.results import experiment_output_paths, save_aggregated_acc
 from src.experiments.training_runs import (
     build_pending_training_result_row,
     build_training_run_spec,
+    checkpoint_dir_path,
+    format_dataloader_summary,
+    format_elapsed_time,
+    format_stage_summary,
     train_model_and_save_progress,
     training_result_row_key,
 )
@@ -80,13 +85,14 @@ def _print_tile_permutation_run_header(
     num_records: int,
     model_name: str,
     record: TilePermutationRecord,
+    stage_summary: str,
 ) -> None:
     print()
     print("=" * 80)
     print(
-        f"[{record_index}/{num_records}] model={model_name}, "
+        f"[{record_index}/{num_records}]\nmodel={model_name}, "
         f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-        f"seed={record.tile_permutation_seed}"
+        f"seed={record.tile_permutation_seed}\n{stage_summary}"
     )
 
 
@@ -102,10 +108,13 @@ def train_single_tile_permutation_run(
     device: TorchDevice,
     rows: list[dict[str, Any]],
     row_indices: dict[tuple[Any, ...], int],
+    session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
 ) -> None:
     """Train one model on one tile-permutation record and update result rows."""
 
+    run_start_time = perf_counter()
+    resolved_session_start_time = session_start_time if session_start_time is not None else run_start_time
     print("Building dataloaders...")
     train_loader, validation_loader = build_tile_permutation_dataloaders(
         config=config,
@@ -113,7 +122,7 @@ def train_single_tile_permutation_run(
         validation_samples=validation_samples,
         record=record,
     )
-    print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
+    print(f"Built dataloaders: {format_dataloader_summary(train_loader, validation_loader)}.")
 
     tiles_label = record.tiles_per_side or 1
     progress_desc = f"{model_name} {tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
@@ -129,9 +138,6 @@ def train_single_tile_permutation_run(
         overrides={"pretrained": config.pretrained},
         progress_desc=progress_desc,
     )
-    checkpoint_config = getattr(spec, "checkpoint_config", None)
-    print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
-    print(f"Raw results path: {raw_results_output_path}")
     train_model_and_save_progress(
         spec=spec,
         config=config,
@@ -142,6 +148,8 @@ def train_single_tile_permutation_run(
         row_index=row_indices[(record.tiles_per_side or 0, record.tile_permutation_id)],
         raw_results_output_path=raw_results_output_path,
     )
+    print(f"Current run runtime: {format_elapsed_time(perf_counter() - run_start_time)}")
+    print(f"Total training runtime: {format_elapsed_time(perf_counter() - resolved_session_start_time)}")
 
 
 def train_model_on_tile_permutation_records(
@@ -154,10 +162,12 @@ def train_model_on_tile_permutation_records(
     tile_permutation_records: Sequence[TilePermutationRecord],
     seed: int,
     device: TorchDevice,
+    session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train one model across tile-permutation records and collect result rows."""
 
+    resolved_session_start_time = session_start_time if session_start_time is not None else perf_counter()
     executable_records = get_executable_tile_permutation_records(tile_permutation_records)
     rows, row_indices = initialize_tile_permutation_result_rows(
         config=config,
@@ -169,14 +179,16 @@ def train_model_on_tile_permutation_records(
 
     if raw_results_output_path:
         save_run_rows(rows=rows, output_path=raw_results_output_path, run_id=run_id, model_name=model_name)
-        print(f"Saved {len(rows)} pending row(s) for model '{model_name}' to {raw_results_output_path}.")
+        print(f"Saved {len(rows)} pending row(s) for model '{model_name}'.")
 
     for record_index, record in enumerate(executable_records, start=1):
+        stage_summary = format_stage_summary([("standard", int(config.epochs))])
         _print_tile_permutation_run_header(
             record_index=record_index,
             num_records=len(executable_records),
             model_name=model_name,
             record=record,
+            stage_summary=stage_summary,
         )
         train_single_tile_permutation_run(
             config=config,
@@ -190,6 +202,7 @@ def train_model_on_tile_permutation_records(
             rows=rows,
             row_indices=row_indices,
             raw_results_output_path=raw_results_output_path,
+            session_start_time=resolved_session_start_time,
         )
     return rows
 
@@ -197,6 +210,7 @@ def train_model_on_tile_permutation_records(
 def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevice] = None) -> pd.DataFrame:
     """Run Part 1 model comparison experiments and save raw/aggregated outputs."""
 
+    session_start_time = perf_counter()
     resolved_device = device or get_device(config)
     train_samples, validation_samples, _ = load_experiment_samples(config, seed=config.seed)
     tile_permutation_records = build_tile_permutation_records(
@@ -207,6 +221,9 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
     )
     run_id = datetime.now(timezone.utc).strftime("part1_%Y%m%d_%H%M%S")
     output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
+
+    print(f"Raw results path: {output_paths['raw_results']}")
+    print(f"Checkpoint directory: {checkpoint_dir_path(config=config, run_id=run_id)}")
 
     rows: list[dict[str, Any]] = []
     for model_name in config.model_names:
@@ -221,6 +238,7 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
                 seed=config.seed,
                 device=resolved_device,
                 raw_results_output_path=output_paths["raw_results"],
+                session_start_time=session_start_time,
             )
         )
 

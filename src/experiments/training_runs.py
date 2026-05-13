@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping as MappingABC, Sequence
 import os
 from typing import Any, Mapping, Optional
 
@@ -21,10 +22,66 @@ from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir
 
 
+def format_elapsed_time(seconds: float) -> str:
+    """Return a compact human-readable elapsed time string."""
+
+    total_seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def format_epoch_count(epochs: int) -> str:
+    """Return an epoch count with singular/plural text."""
+
+    return f"{epochs} epoch" if epochs == 1 else f"{epochs} epochs"
+
+
+def format_stage_summary(stages: Mapping[str, int] | Sequence[tuple[str, int]]) -> str:
+    """Return a one-line summary of training stages."""
+
+    items = list(stages.items()) if isinstance(stages, MappingABC) else list(stages)
+    stage_text = ", ".join(f"{name}: {format_epoch_count(epochs)}" for name, epochs in items)
+    return f"stages={len(items)} [{stage_text}]"
+
+
+def format_dataloader_summary(train_loader: DataLoader, val_loader: DataLoader) -> str:
+    """Return sample and batch counts for train and validation loaders."""
+
+    return (
+        f"\ttrain={len(train_loader.dataset)} samples in {len(train_loader)} batches"
+        f"\n\tvalidation={len(val_loader.dataset)} samples in {len(val_loader)} batches"
+    )
+
+
+def format_stage_dataloader_summary(stages: Sequence[Any]) -> str:
+    """Return sample and batch counts for each stage train loader."""
+
+    return "; ".join(
+        f"{stage.name}={len(stage.train_loader.dataset)} samples / {len(stage.train_loader)} batches"
+        for stage in stages
+    )
+
+
 def clean_checkpoint_name_part(value: Any) -> str:
     """Return a value safe to use inside a checkpoint filename."""
 
     return str(value).replace(os.sep, "_").replace(" ", "_").replace(":", "_")
+
+
+def checkpoint_dir_path(*, config: CVExperimentConfig, run_id: str) -> str:
+    """Return the shared checkpoint directory for one experiment session."""
+
+    outputs_dir = (
+        getattr(config, "outputs_dir", "")
+        or os.path.dirname(getattr(config, "results_dir", ""))
+        or "outputs"
+    )
+    return ensure_dir(os.path.join(outputs_dir, "checkpoints", str(config.part), run_id))
 
 
 def build_checkpoint_config(
@@ -37,8 +94,7 @@ def build_checkpoint_config(
 ) -> CheckpointConfig:
     """Build checkpoint destinations for one experiment run."""
 
-    outputs_dir = getattr(config, "outputs_dir", "") or os.path.dirname(getattr(config, "results_dir", "")) or "outputs"
-    checkpoint_dir = ensure_dir(os.path.join(outputs_dir, "checkpoints", str(config.part), run_id))
+    checkpoint_dir = checkpoint_dir_path(config=config, run_id=run_id)
     name_parts = [
         clean_checkpoint_name_part(model_name),
         clean_checkpoint_name_part(ablation_name) if ablation_name else None,

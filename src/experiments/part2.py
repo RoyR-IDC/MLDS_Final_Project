@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
@@ -20,6 +21,11 @@ from src.experiments.results import experiment_output_paths, save_aggregated_acc
 from src.experiments.training_runs import (
     build_pending_training_result_row,
     build_training_run_spec,
+    checkpoint_dir_path,
+    format_dataloader_summary,
+    format_elapsed_time,
+    format_stage_dataloader_summary,
+    format_stage_summary,
     train_model_and_save_progress,
     training_result_row_key,
 )
@@ -133,6 +139,35 @@ def _difficulty_stage_tiles(record: TilePermutationRecord) -> list[int | None]:
     if target <= 1:
         return [None]
     return [None, *[tiles for tiles in (2, 3, 4) if tiles <= target]]
+
+
+def _planned_stage_items(
+    *,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    config: CVExperimentConfig,
+) -> list[tuple[str, int]]:
+    """Return stage names and epoch counts without building stage dataloaders."""
+
+    curriculum_name = _ablation_curriculum_name(ablation)
+    if curriculum_name is None:
+        return [("standard", int(config.epochs))]
+
+    if curriculum_name == "permutation_difficulty":
+        stage_tiles = _difficulty_stage_tiles(record)
+        epochs = _stage_epochs(int(config.epochs), len(stage_tiles))
+        names = [
+            "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
+            for tiles_per_side in stage_tiles
+        ]
+        return list(zip(names, epochs))
+
+    if curriculum_name == "corruption_probability":
+        epochs = _stage_epochs(int(config.epochs), len(CORRUPTION_PROBABILITY_SCHEDULE))
+        names = [f"permuted_probability_{probability:.1f}" for probability in CORRUPTION_PROBABILITY_SCHEDULE]
+        return list(zip(names, epochs))
+
+    raise ValueError(f"Unsupported curriculum: {curriculum_name}")
 
 
 def build_curriculum_schedule(
@@ -305,12 +340,13 @@ def _print_ablation_tile_run_header(
     model_name: str,
     ablation: Mapping[str, Any],
     record: TilePermutationRecord,
+    stage_summary: str,
 ) -> None:
     print()
     print(
-        f"[{record_index}/{num_records}] model={model_name}, ablation={ablation['name']}, "
+        f"[{record_index}/{num_records}]\nmodel={model_name}, ablation={ablation['name']}, "
         f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-        f"seed={record.tile_permutation_seed}"
+        f"seed={record.tile_permutation_seed}\n{stage_summary}"
     )
 
 
@@ -326,10 +362,13 @@ def train_single_ablation_tile_run(
     device: TorchDevice,
     rows: list[dict[str, Any]],
     row_indices: dict[tuple[Any, ...], int],
+    session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
 ) -> None:
     """Train one Part 2 ablation on one tile-permutation record."""
 
+    run_start_time = perf_counter()
+    resolved_session_start_time = session_start_time if session_start_time is not None else run_start_time
     print("Building dataloaders...")
     train_loader, validation_loader = build_ablation_dataloaders(
         ablation=ablation,
@@ -345,7 +384,9 @@ def train_single_ablation_tile_run(
         train_samples=train_samples,
         config=config,
     )
-    print(f"Built dataloaders: {len(train_loader)} train batches, {len(validation_loader)} validation batches.")
+    print(f"Built dataloaders: {format_dataloader_summary(train_loader, validation_loader)}.")
+    if curriculum_schedule is not None:
+        print(f"Stage dataloaders: {format_stage_dataloader_summary(curriculum_schedule.stages)}.")
     spec = build_part2_training_run_spec(
         config=config,
         model_name=model_name,
@@ -358,9 +399,6 @@ def train_single_ablation_tile_run(
         batch_augmentation=batch_augmentation,
         curriculum_schedule=curriculum_schedule,
     )
-    checkpoint_config = getattr(spec, "checkpoint_config", None)
-    print(f"Best checkpoint path: {getattr(checkpoint_config, 'best_path', None)}")
-    print(f"Raw results path: {raw_results_output_path}")
     row_key = (str(ablation["name"]), record.tiles_per_side or 0, record.tile_permutation_id)
     train_model_and_save_progress(
         spec=spec,
@@ -373,6 +411,8 @@ def train_single_ablation_tile_run(
         raw_results_output_path=raw_results_output_path,
         ablation_name=str(ablation["name"]),
     )
+    print(f"Current run runtime: {format_elapsed_time(perf_counter() - run_start_time)}")
+    print(f"Total training runtime: {format_elapsed_time(perf_counter() - resolved_session_start_time)}")
 
 
 def train_part2_ablation_experiments(
@@ -384,10 +424,12 @@ def train_part2_ablation_experiments(
     tile_permutation_records: Sequence[TilePermutationRecord],
     device: TorchDevice,
     run_id: str,
+    session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train all Part 2 ablations across tile-permutation records."""
 
+    resolved_session_start_time = session_start_time if session_start_time is not None else perf_counter()
     model_name = getattr(config, "model_name", config.model_names[0])
     executable_records = list(tile_permutation_records)
     rows, row_indices = initialize_ablation_result_rows(
@@ -400,7 +442,7 @@ def train_part2_ablation_experiments(
 
     if raw_results_output_path:
         save_run_rows(rows=rows, output_path=raw_results_output_path, run_id=run_id, model_name=model_name)
-        print(f"Saved {len(rows)} pending row(s) for model '{model_name}' to {raw_results_output_path}.")
+        print(f"Saved {len(rows)} pending row(s) for model '{model_name}'.")
 
     for ablation in ablations:
         print()
@@ -408,12 +450,16 @@ def train_part2_ablation_experiments(
         print(f"Running ablation: {ablation['name']}")
 
         for record_index, record in enumerate(executable_records, start=1):
+            stage_summary = format_stage_summary(
+                _planned_stage_items(ablation=ablation, record=record, config=config)
+            )
             _print_ablation_tile_run_header(
                 record_index=record_index,
                 num_records=len(executable_records),
                 model_name=model_name,
                 ablation=ablation,
                 record=record,
+                stage_summary=stage_summary,
             )
             train_single_ablation_tile_run(
                 config=config,
@@ -426,6 +472,7 @@ def train_part2_ablation_experiments(
                 device=device,
                 rows=rows,
                 row_indices=row_indices,
+                session_start_time=resolved_session_start_time,
                 raw_results_output_path=raw_results_output_path,
             )
     return rows
@@ -437,6 +484,7 @@ def run_part2_improvement_experiments(
 ) -> pd.DataFrame:
     """Run Part 2 ablations, save raw/aggregated results, and write the comparison plot."""
 
+    session_start_time = perf_counter()
     model_name = getattr(config, "model_name", config.model_names[0])
     resolved_device = device or get_device(config)
     train_samples, validation_samples, _ = load_experiment_samples(config, seed=config.seed)
@@ -449,6 +497,9 @@ def run_part2_improvement_experiments(
     run_id = datetime.now(timezone.utc).strftime("part2_%Y%m%d_%H%M%S")
     output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
 
+    print(f"Raw results path: {output_paths['raw_results']}")
+    print(f"Checkpoint directory: {checkpoint_dir_path(config=config, run_id=run_id)}")
+
     rows = load_part1_model_baseline_raw_rows(config, model_name)
     rows.extend(
         train_part2_ablation_experiments(
@@ -459,6 +510,7 @@ def run_part2_improvement_experiments(
             tile_permutation_records=tile_permutation_records,
             device=resolved_device,
             run_id=run_id,
+            session_start_time=session_start_time,
             raw_results_output_path=output_paths["raw_results"],
         )
     )
