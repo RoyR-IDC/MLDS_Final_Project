@@ -45,8 +45,8 @@ def format_stage_summary(stages: Mapping[str, int] | Sequence[tuple[str, int]]) 
     """Return a one-line summary of training stages."""
 
     items = list(stages.items()) if isinstance(stages, MappingABC) else list(stages)
-    stages_text = "\n".join(f"{index + 1}. {name}: {format_epoch_count(epochs)}" for index, (name, epochs) in enumerate(items))
-    return f"stages={len(items)}\n[{stages_text}]"
+    stages_text = "\n\t".join(f"{index + 1}. {name}: {format_epoch_count(epochs)}" for index, (name, epochs) in enumerate(items))
+    return f"stages={len(items)}\n{stages_text}"
 
 
 def format_dataloader_summary(train_loader: DataLoader, val_loader: DataLoader) -> str:
