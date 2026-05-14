@@ -22,12 +22,9 @@ from matplotlib.axes import Axes
 from src.evaluation.tile_permutation_difficulty import (
     compute_adjacency_destruction_hardness,
     compute_global_displacement,
+    compute_spatial_permutation_entropy,
 )
-from src.evaluation.experiment_results import (
-    _add_normalized_edge_and_combined_scores,
-    _load_raw_rgb_validation_tensors,
-    _mean_edge_continuity_disruption,
-)
+from src.evaluation.experiment_results import _add_combined_hardness_scores
 from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import (
     generate_tile_permutations,
@@ -145,7 +142,7 @@ def compute_metrics_for_summary(
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Directory to save augmented CSV and JSON stats.
-        validation_samples: Validation samples used to compute edge continuity.
+        validation_samples: Unused legacy argument kept for caller compatibility.
         image_size: Base image size before tile-compatible resizing.
         num_tile_permutations: Number of tile permutations used by the runner.
 
@@ -155,7 +152,6 @@ def compute_metrics_for_summary(
     os.makedirs(out_dir, exist_ok=True)
     summary = _read_csv_dataframe(summary_csv)
     metric_rows = []
-    validation_image_cache = {}
     for _, row in summary.iterrows():
         raw_tiles_per_side = cast(Any, row.get('tiles_per_side'))
         tiles_per_side = None if bool(pd.isna(raw_tiles_per_side)) else int(raw_tiles_per_side)
@@ -169,15 +165,6 @@ def compute_metrics_for_summary(
                 int(cast(Any, row['tile_permutation_id'])),
                 n_tile_permutations=num_tile_permutations,
             )
-        edge_validation_images = []
-        if tile_permutation is not None and tiles_per_side is not None and tiles_per_side > 1:
-            if tiles_per_side not in validation_image_cache:
-                validation_image_cache[tiles_per_side] = _load_raw_rgb_validation_tensors(
-                    validation_samples,
-                    image_size,
-                    tiles_per_side,
-                )
-            edge_validation_images = validation_image_cache[tiles_per_side]
         metric_rows.append(
             {
                 'global_tile_displacement': compute_global_displacement(tile_permutation, tiles_per_side),
@@ -185,17 +172,16 @@ def compute_metrics_for_summary(
                     tile_permutation,
                     tiles_per_side,
                 ),
-                'edge_continuity_disruption_raw': _mean_edge_continuity_disruption(
-                    edge_validation_images,
+                'spatial_permutation_entropy': compute_spatial_permutation_entropy(
                     tile_permutation,
                     tiles_per_side,
                 ),
             }
         )
-    metric_table = _add_normalized_edge_and_combined_scores(
+    metric_table = _add_combined_hardness_scores(
         pd.DataFrame(metric_rows),
         weight_adj=0.5,
-        weight_edge=0.3,
+        weight_entropy=0.3,
         weight_dist=0.2,
     )
     output_table = cast(pd.DataFrame, pd.concat([summary.reset_index(drop=True), metric_table], axis=1))
@@ -220,7 +206,7 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     metrics = [
         'global_tile_displacement',
         'adjacency_destruction_hardness',
-        'edge_continuity_disruption',
+        'spatial_permutation_entropy',
         'combined_hardness_score',
     ]
     stats = {}

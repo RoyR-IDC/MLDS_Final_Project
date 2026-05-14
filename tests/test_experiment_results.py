@@ -275,10 +275,11 @@ def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_
         [
             "global_tile_displacement",
             "adjacency_destruction_hardness",
-            "edge_continuity_disruption",
+            "spatial_permutation_entropy",
             "combined_hardness_score",
         ]
     ).issubset(metrics.columns)
+    assert "edge_continuity_disruption_raw" not in metrics.columns
     assert model_results["model_name"].tolist() == ["resnet18"]
 
 def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
@@ -299,7 +300,7 @@ def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
         tiles_per_side_values=[1, 2],
         num_tile_permutations=1,
         seed=42,
-        validation_samples=_validation_samples(tmp_path),
+        validation_samples=[],
         image_size=4,
     )
 
@@ -335,14 +336,14 @@ def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
     metric_columns = [
         "global_tile_displacement",
         "adjacency_destruction_hardness",
-        "edge_continuity_disruption",
+        "spatial_permutation_entropy",
         "combined_hardness_score",
     ]
     assert metrics.loc[0, metric_columns].gt(0.0).any()
-    assert 0.0 <= metrics.loc[0, "edge_continuity_disruption"] <= 1.0
+    assert 0.0 <= metrics.loc[0, "spatial_permutation_entropy"] <= 1.0
 
 
-def test_part3_edge_normalization_returns_zero_for_constant_raw_range(tmp_path):
+def test_part3_spatial_permutation_entropy_has_no_raw_edge_column(tmp_path):
     pd.DataFrame(
         [
             {
@@ -363,7 +364,8 @@ def test_part3_edge_normalization_returns_zero_for_constant_raw_range(tmp_path):
         image_size=4,
     )
 
-    assert metrics.loc[0, "edge_continuity_disruption"] == 0.0
+    assert "edge_continuity_disruption_raw" not in metrics.columns
+    assert "spatial_permutation_entropy" in metrics.columns
 
 
 def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(tmp_path):
@@ -413,14 +415,14 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.10,
                 "adjacency_destruction_hardness": 0.30,
-                "edge_continuity_disruption": 0.20,
+                "spatial_permutation_entropy": 0.20,
                 "combined_hardness_score": 0.25,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
                 "adjacency_destruction_hardness": 0.90,
-                "edge_continuity_disruption": 0.70,
+                "spatial_permutation_entropy": 0.70,
                 "combined_hardness_score": 0.70,
             },
         ]
@@ -440,14 +442,14 @@ def test_part3_correlations_are_nan_for_constant_accuracy():
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.00,
                 "adjacency_destruction_hardness": 0.00,
-                "edge_continuity_disruption": 0.00,
+                "spatial_permutation_entropy": 0.00,
                 "combined_hardness_score": 0.00,
             },
             {
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.50,
                 "adjacency_destruction_hardness": 0.60,
-                "edge_continuity_disruption": 0.40,
+                "spatial_permutation_entropy": 0.40,
                 "combined_hardness_score": 0.45,
             },
         ]
@@ -466,21 +468,21 @@ def test_part3_correlations_are_finite_for_non_constant_accuracy():
                 "best_val_accuracy": 0.80,
                 "global_tile_displacement": 0.00,
                 "adjacency_destruction_hardness": 0.00,
-                "edge_continuity_disruption": 0.10,
+                "spatial_permutation_entropy": 0.10,
                 "combined_hardness_score": 0.15,
             },
             {
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.50,
                 "adjacency_destruction_hardness": 0.60,
-                "edge_continuity_disruption": 0.40,
+                "spatial_permutation_entropy": 0.40,
                 "combined_hardness_score": 0.45,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.90,
                 "adjacency_destruction_hardness": 1.00,
-                "edge_continuity_disruption": 0.80,
+                "spatial_permutation_entropy": 0.80,
                 "combined_hardness_score": 0.80,
             },
         ]

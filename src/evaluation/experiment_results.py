@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import random
 from typing import Any, Dict, Sequence, cast
@@ -11,7 +10,6 @@ from typing import Any, Dict, Sequence, cast
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import pandas as pd
-from PIL import Image
 import torch
 from torch._C import device as TorchDevice
 from tqdm.auto import tqdm
@@ -19,8 +17,8 @@ from tqdm.auto import tqdm
 from src.evaluation.tile_permutation_difficulty import (
     compute_adjacency_destruction_hardness,
     compute_combined_hardness,
-    compute_edge_continuity_disruption,
     compute_global_displacement,
+    compute_spatial_permutation_entropy,
 )
 from src.experiments.results import (
     aggregate_accuracy,
@@ -30,7 +28,6 @@ from src.experiments.results import (
     save_rows,
 )
 from src.models.registry import validate_model_name
-from src.preprocessing.image_transforms import PILToFloatTensor, make_tile_compatible_image_size
 from src.preprocessing.samples import Sample, discover_samples, stratified_split
 from src.preprocessing.tile_permutations import (
     generate_tile_permutations,
@@ -331,78 +328,32 @@ def _executable_part1_tile_permutations(tile_permutations: pd.DataFrame) -> pd.D
 PART3_METRIC_COLUMNS = [
     "global_tile_displacement",
     "adjacency_destruction_hardness",
-    "edge_continuity_disruption",
+    "spatial_permutation_entropy",
     "combined_hardness_score",
 ]
 
 
-def _load_raw_rgb_validation_tensors(
-    validation_samples: Sequence[Sample],
-    image_size: int,
-    tiles_per_side: int,
-) -> list[torch.Tensor]:
-    """Load validation images as resized raw RGB tensors in [0, 1]."""
-
-    if not validation_samples:
-        raise ValueError("validation_samples must contain at least one sample to compute edge continuity")
-
-    tile_image_size = make_tile_compatible_image_size(image_size, tiles_per_side)
-    to_tensor = PILToFloatTensor()
-    resample = Image.Resampling.BILINEAR
-    images: list[torch.Tensor] = []
-    for path, _ in validation_samples:
-        with Image.open(path) as image:
-            resized = image.convert("RGB").resize((tile_image_size, tile_image_size), resample)
-            images.append(to_tensor(resized))
-    return images
-
-
-def _mean_edge_continuity_disruption(
-    validation_images: Sequence[torch.Tensor],
-    tile_permutation: Any,
-    tiles_per_side: int | None,
-) -> float:
-    """Return mean raw edge disruption over validation images."""
-
-    if tile_permutation is None or tiles_per_side is None or tiles_per_side == 1:
-        return 0.0
-    scores = [
-        compute_edge_continuity_disruption(image, tile_permutation, tiles_per_side)
-        for image in validation_images
-    ]
-    return float(sum(scores) / len(scores))
-
-
-def _add_normalized_edge_and_combined_scores(
+def _add_combined_hardness_scores(
     metrics: pd.DataFrame,
     *,
     weight_adj: float,
-    weight_edge: float,
+    weight_entropy: float,
     weight_dist: float,
 ) -> pd.DataFrame:
-    """Add min-max normalized edge scores and final combined hardness."""
+    """Add final combined hardness from normalized component scores."""
 
     metrics = metrics.copy()
     if metrics.empty:
-        metrics["edge_continuity_disruption"] = []
         metrics["combined_hardness_score"] = []
         return metrics
-
-    raw_edge = cast(Any, metrics)["edge_continuity_disruption_raw"].astype(float)
-    raw_min = float(raw_edge.min())
-    raw_max = float(raw_edge.max())
-    if math.isclose(raw_min, raw_max, rel_tol=1e-12, abs_tol=1e-12):
-        metrics["edge_continuity_disruption"] = 0.0
-    else:
-        metrics["edge_continuity_disruption"] = (raw_edge - raw_min) / (raw_max - raw_min)
 
     metrics["combined_hardness_score"] = [
         compute_combined_hardness(
             adjacency_destruction_hardness=float(row["adjacency_destruction_hardness"]),
-            edge_continuity_disruption=float(row["edge_continuity_disruption"]),
+            spatial_permutation_entropy=float(row["spatial_permutation_entropy"]),
             global_tile_displacement=float(row["global_tile_displacement"]),
             weight_adj=weight_adj,
-            weight_edge=weight_edge,
+            weight_entropy=weight_entropy,
             weight_dist=weight_dist,
         )
         for _, row in metrics.iterrows()
@@ -419,14 +370,13 @@ def compute_part3_tile_permutation_metrics(
     validation_samples: Sequence[Sample],
     image_size: int,
     weight_adj: float = 0.5,
-    weight_edge: float = 0.3,
+    weight_entropy: float = 0.3,
     weight_dist: float = 0.2,
     show_progress: bool = False,
 ) -> pd.DataFrame:
     """Compute Part 3 hardness metrics for reusable Part 1 tile permutations."""
 
     rows: list[dict[str, Any]] = []
-    validation_image_cache: dict[int, list[torch.Tensor]] = {}
     tile_permutations = load_or_build_part1_tile_permutations(
         tile_permutation_csv=tile_permutation_csv,
         tiles_per_side_values=tiles_per_side_values,
@@ -461,17 +411,7 @@ def compute_part3_tile_permutation_metrics(
             tile_permutation,
             tiles_per_side,
         )
-        edge_validation_images: Sequence[torch.Tensor] = []
-        if tile_permutation is not None and tiles_per_side is not None and tiles_per_side > 1:
-            if tiles_per_side not in validation_image_cache:
-                validation_image_cache[tiles_per_side] = _load_raw_rgb_validation_tensors(
-                    validation_samples,
-                    image_size,
-                    tiles_per_side,
-                )
-            edge_validation_images = validation_image_cache[tiles_per_side]
-        edge_continuity_disruption_raw = _mean_edge_continuity_disruption(
-            edge_validation_images,
+        spatial_permutation_entropy = compute_spatial_permutation_entropy(
             tile_permutation,
             tiles_per_side,
         )
@@ -483,13 +423,13 @@ def compute_part3_tile_permutation_metrics(
                 "tile_permutation_seed": cast(Any, row.get("tile_permutation_seed")),
                 "global_tile_displacement": global_tile_displacement,
                 "adjacency_destruction_hardness": adjacency_destruction_hardness,
-                "edge_continuity_disruption_raw": edge_continuity_disruption_raw,
+                "spatial_permutation_entropy": spatial_permutation_entropy,
             }
         )
-    metrics = _add_normalized_edge_and_combined_scores(
+    metrics = _add_combined_hardness_scores(
         pd.DataFrame(rows),
         weight_adj=weight_adj,
-        weight_edge=weight_edge,
+        weight_entropy=weight_entropy,
         weight_dist=weight_dist,
     )
     return _reset_dataframe_index(
@@ -609,7 +549,7 @@ def run_part3_hardness_analysis(
     image_size: int,
     model_name: str = "resnet18",
     weight_adj: float = 0.5,
-    weight_edge: float = 0.3,
+    weight_entropy: float = 0.3,
     weight_dist: float = 0.2,
     verbose: bool = True,
     show_progress: bool = True,
@@ -633,7 +573,7 @@ def run_part3_hardness_analysis(
         validation_samples=validation_samples,
         image_size=image_size,
         weight_adj=weight_adj,
-        weight_edge=weight_edge,
+        weight_entropy=weight_entropy,
         weight_dist=weight_dist,
         show_progress=show_progress,
     )

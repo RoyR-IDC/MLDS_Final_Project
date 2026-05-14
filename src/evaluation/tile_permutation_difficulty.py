@@ -6,10 +6,7 @@ import math
 from typing import Sequence
 
 import numpy as np
-import torch
-
 from src.preprocessing.tile_permutations import TilePermutation, matrix_to_flat_order
-from src.preprocessing.tile_transforms import reconstruct_from_tiles, split_into_tiles
 
 
 def compute_global_displacement(
@@ -143,31 +140,30 @@ def compute_adjacency_destruction_hardness_from_positions(
 def compute_combined_hardness(
     *,
     adjacency_destruction_hardness: float,
-    edge_continuity_disruption: float,
+    spatial_permutation_entropy: float,
     global_tile_displacement: float,
     weight_adj: float = 0.5,
-    weight_edge: float = 0.3,
+    weight_entropy: float = 0.3,
     weight_dist: float = 0.2,
 ) -> float:
     """Return the weighted Part 3 hardness score from normalized components."""
 
-    _validate_hardness_weights(weight_adj, weight_edge, weight_dist)
+    _validate_hardness_weights(weight_adj, weight_entropy, weight_dist)
     return _weighted_hardness_score(
         adjacency_destruction_hardness=adjacency_destruction_hardness,
-        edge_continuity_disruption=edge_continuity_disruption,
+        spatial_permutation_entropy=spatial_permutation_entropy,
         global_tile_displacement=global_tile_displacement,
         weight_adj=weight_adj,
-        weight_edge=weight_edge,
+        weight_entropy=weight_entropy,
         weight_dist=weight_dist,
     )
 
 
-def compute_edge_continuity_disruption(
-    image: torch.Tensor,
+def compute_spatial_permutation_entropy(
     tile_permutation: TilePermutation | Sequence[int] | None,
     tiles_per_side: int | None,
 ) -> float:
-    """Return raw summed L2 border disruption for one image and permutation."""
+    """Return normalized compass/distance-tier entropy for a tile permutation."""
 
     if tile_permutation is None:
         return 0.0
@@ -179,33 +175,19 @@ def compute_edge_continuity_disruption(
     if tiles_per_side == 1:
         return 0.0
 
-    tiles = split_into_tiles(image.float(), tiles_per_side)
-    indices = torch.as_tensor(tile_permutation_values, dtype=torch.long, device=tiles.device)
-    permuted_image = reconstruct_from_tiles(tiles[indices], tiles_per_side)
-    permuted_tiles = split_into_tiles(permuted_image, tiles_per_side)
-    _, channels, tile_height, tile_width = permuted_tiles.shape
-    tile_grid = permuted_tiles.reshape(
+    source_coordinates, destination_coordinates = _source_destination_coordinates(
+        tile_permutation_values,
         tiles_per_side,
-        tiles_per_side,
-        channels,
-        tile_height,
-        tile_width,
     )
-
-    horizontal_left = tile_grid[:, :-1, :, :, -1]
-    horizontal_right = tile_grid[:, 1:, :, :, 0]
-    vertical_top = tile_grid[:-1, :, :, -1, :]
-    vertical_bottom = tile_grid[1:, :, :, 0, :]
-
-    horizontal = torch.linalg.vector_norm(
-        (horizontal_left - horizontal_right).reshape(tiles_per_side * (tiles_per_side - 1), -1),
-        dim=1,
-    ).sum()
-    vertical = torch.linalg.vector_norm(
-        (vertical_top - vertical_bottom).reshape((tiles_per_side - 1) * tiles_per_side, -1),
-        dim=1,
-    ).sum()
-    return float((horizontal + vertical).item())
+    displacement = destination_coordinates.astype(np.intp) - source_coordinates.astype(np.intp)
+    bins = [_movement_bin(delta, tiles_per_side) for delta in displacement]
+    _, counts = np.unique(np.asarray(bins, dtype=object), return_counts=True)
+    probabilities = counts.astype(float) / float(tile_permutation_values.size)
+    entropy = -float(np.sum(probabilities * np.log(probabilities)))
+    maximum = math.log(tile_permutation_values.size)
+    if maximum == 0.0:
+        return 0.0
+    return _clip_unit(entropy / maximum)
 
 
 # =============================================================================
@@ -307,17 +289,17 @@ def _global_displacement(tile_permutation_values: np.ndarray, tiles_per_side: in
 
 def _weighted_hardness_score(
     adjacency_destruction_hardness: float,
-    edge_continuity_disruption: float,
+    spatial_permutation_entropy: float,
     global_tile_displacement: float,
     weight_adj: float,
-    weight_edge: float,
+    weight_entropy: float,
     weight_dist: float,
 ) -> float:
     """Fuse normalized component scores into one combined hardness score."""
 
     for name, value in {
         "adjacency_destruction_hardness": adjacency_destruction_hardness,
-        "edge_continuity_disruption": edge_continuity_disruption,
+        "spatial_permutation_entropy": spatial_permutation_entropy,
         "global_tile_displacement": global_tile_displacement,
     }.items():
         if not 0.0 <= value <= 1.0:
@@ -325,10 +307,38 @@ def _weighted_hardness_score(
 
     hardness = (
         weight_adj * adjacency_destruction_hardness
-        + weight_edge * edge_continuity_disruption
+        + weight_entropy * spatial_permutation_entropy
         + weight_dist * global_tile_displacement
     )
     return _clip_unit(hardness)
+
+
+def _movement_bin(displacement: np.ndarray, tiles_per_side: int) -> str:
+    """Return the compass direction and distance tier for one tile displacement."""
+
+    row_delta, col_delta = (int(displacement[0]), int(displacement[1]))
+    manhattan = abs(row_delta) + abs(col_delta)
+    if manhattan == 0:
+        return "stationary"
+
+    direction = ""
+    if row_delta < 0:
+        direction += "N"
+    elif row_delta > 0:
+        direction += "S"
+    if col_delta < 0:
+        direction += "W"
+    elif col_delta > 0:
+        direction += "E"
+
+    normalized_distance = manhattan / float(2 * (tiles_per_side - 1))
+    if normalized_distance <= 1.0 / 3.0:
+        tier = "near"
+    elif normalized_distance <= 2.0 / 3.0:
+        tier = "medium"
+    else:
+        tier = "far"
+    return f"{direction}:{tier}"
 
 
 def _validate_tiles_per_side(tiles_per_side: int) -> None:
@@ -376,12 +386,12 @@ def _source_by_position(positions: np.ndarray, tiles_per_side: int) -> np.ndarra
     return source_by_position
 
 
-def _validate_hardness_weights(weight_adj: float, weight_edge: float, weight_dist: float) -> None:
+def _validate_hardness_weights(weight_adj: float, weight_entropy: float, weight_dist: float) -> None:
     """Validate that combined hardness weights form a convex sum."""
 
-    total_weight = weight_adj + weight_edge + weight_dist
+    total_weight = weight_adj + weight_entropy + weight_dist
     if not math.isclose(total_weight, 1.0, rel_tol=1e-9, abs_tol=1e-9):
-        raise ValueError("weight_adj + weight_edge + weight_dist must equal 1")
+        raise ValueError("weight_adj + weight_entropy + weight_dist must equal 1")
 
 
 def _clip_unit(value: float) -> float:

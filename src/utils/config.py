@@ -348,7 +348,7 @@ class Part3ExperimentConfig(CVExperimentConfig):
     config_name: str = "part3_hardness_analysis"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
     weight_adj: float = 0.5
-    weight_edge: float = 0.3
+    weight_entropy: float = 0.3
     weight_dist: float = 0.2
 
     @property

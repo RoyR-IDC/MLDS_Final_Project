@@ -142,7 +142,7 @@ def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
     assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
     assert model_names == ["resnet18"]
     assert dataclass_fields["weight_adj"].default == 0.5
-    assert dataclass_fields["weight_edge"].default == 0.3
+    assert dataclass_fields["weight_entropy"].default == 0.3
     assert dataclass_fields["weight_dist"].default == 0.2
 
 
