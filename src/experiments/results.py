@@ -56,7 +56,7 @@ def build_training_result_row(
 ) -> dict[str, Any]:
     """Convert a structured training result to a CSV row."""
 
-    return build_result_row(
+    row = build_result_row(
         config=config,
         run_id=run_id,
         model_name=model_name,
@@ -65,6 +65,10 @@ def build_training_result_row(
         metrics=result.latest_metrics(),
         ablation_name=ablation_name,
     )
+    for key in ("augmentation_name", "batch_augmentation_name", "curriculum_name", "curriculum_stages"):
+        if key in result.metadata:
+            row[key] = result.metadata[key]
+    return row
 
 
 def _csv_safe_value(value: Any) -> Any:

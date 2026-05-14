@@ -1,0 +1,36 @@
+\begin{thebibliography}{5}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bishop(2006)]{bishop2006pattern}
+Christopher~M. Bishop.
+\newblock \emph{Pattern Recognition and Machine Learning}.
+\newblock Springer, 2006.
+\newblock ISBN 978-0-387-31073-2.
+
+\bibitem[Goodfellow et~al.(2016)Goodfellow, Bengio, and Courville]{goodfellow2016deep}
+Ian Goodfellow, Yoshua Bengio, and Aaron Courville.
+\newblock Deep learning.
+\newblock \emph{MIT Press}, 2016.
+\newblock URL \url{https://www.deeplearningbook.org/}.
+
+\bibitem[He et~al.(2016)He, Zhang, Ren, and Sun]{he2016deep}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock \emph{IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, pages 770--778, 2016.
+\newblock \doi{10.1109/CVPR.2016.90}.
+
+\bibitem[Krizhevsky et~al.(2012)Krizhevsky, Sutskever, and Hinton]{krizhevsky2012imagenet}
+Alex Krizhevsky, Ilya Sutskever, and Geoffrey~E. Hinton.
+\newblock Imagenet classification with deep convolutional neural networks.
+\newblock \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 25:\penalty0 1097--1105, 2012.
+
+\bibitem[Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez, Kaiser, and Polosukhin]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan~N. Gomez, Lukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 30, 2017.
+
+\end{thebibliography}

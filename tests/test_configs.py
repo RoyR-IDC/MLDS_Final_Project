@@ -105,9 +105,12 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     assert tiles_per_side_values == [1, 2, 3, 4]
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
-        "augmentation_only",
-        "finetune_only",
-        "augmentation_finetune",
+        "random_erasing_only",
+        "same_label_cutmix_only",
+        "patch_shuffle_only",
+        "combined_corruptions",
+        "permutation_difficulty_curriculum",
+        "corruption_probability_curriculum",
     ]
 
 
@@ -138,9 +141,9 @@ def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
     assert dataclass_fields["part"].default == "part3"
     assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
     assert model_names == ["resnet18"]
-    assert dataclass_fields["alpha_center"].default == 1.0
-    assert dataclass_fields["weight_center"].default == 0.5
-    assert dataclass_fields["weight_dist"].default == 0.5
+    assert dataclass_fields["weight_adj"].default == 0.5
+    assert dataclass_fields["weight_entropy"].default == 0.3
+    assert dataclass_fields["weight_dist"].default == 0.2
 
 
 def test_part3_config_exposes_single_model_name_property():

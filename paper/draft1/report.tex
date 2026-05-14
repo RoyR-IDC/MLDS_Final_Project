@@ -1,0 +1,294 @@
+\documentclass[12pt,twocolumn]{article}
+
+% Packages
+\usepackage{graphicx}
+\graphicspath{{../template/}{../template/images/}{../../outputs/figures/}}
+\usepackage{sectsty}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage[numbers]{natbib}
+
+% Margins
+\geometry{
+  top=1in,
+  bottom=1in,
+  left=1in,
+  right=1in
+}
+
+% Header & Footer
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{14.5pt}
+\fancyhead[L]{Permuted Dogs versus Cats}
+\fancyhead[R]{\thepage}
+
+% Section Styling
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% Title, Authors, and Institutions
+\title{
+    \Huge \textbf{Final Project Report}\\[1em]
+    \Large \textbf{Permuted Dogs versus Cats}
+}
+\author{%
+  \textbf{Student 1}\\
+  Reichman University\\
+  \texttt{ID: 12345678}%
+  \and
+  \textbf{Student 2}\\
+  Reichman University\\
+  \texttt{ID: 87654321}%
+}
+\date{\today}
+
+\begin{document}
+
+\twocolumn[{
+\centering
+\includegraphics[width=0.4\textwidth]{images/runi_logo.png}\\[1em]
+{\LARGE Reichman University}\\[1em]
+{\large Efi Arazi School of Computer Science}\\[1em]
+{\large M.Sc. Program in Machine Learning and Data Science}\\[1em]
+\vspace{2.5em}
+{\Huge Final Project Report}\\[1.5em]
+{\Large Permuted Dogs versus Cats}\\[1em]
+{\small \textbf{Student 1} \quad \texttt{ID: 123456789} \quad \textbf{Student 2} \quad \texttt{ID: 987654321}}\\[1em]
+{\small \textbf{Advisors:} Shuli Finley (Reichman University) \space --- \space Alon Oring (Reichman University)}\\[1em]
+{\small \today}\\[1em]
+\begin{flushleft}
+\begin{abstract}
+This project studies binary Dogs versus Cats classification after fixed tile-wise permutations are applied to each image. The proposal frames the task as a relaxed image-domain analogue of permuted-puzzle problems with cryptographic motivation: instead of pixel-wise permutations over function graphs, images are divided into coarse grids and their tiles are rearranged before classification. We implement a notebook-first experimental pipeline around the Kaggle Dogs vs Cats dataset, train ResNet-18 baselines on unpermuted and permuted images, evaluate augmentation and curriculum strategies, and define model-agnostic permutation hardness metrics. In the current experiments, the unpermuted ResNet-18 baseline reaches 86.5\% validation accuracy, while 3-by-3 tile permutation performance averages 83.7\%. The best final 3-by-3 ablation is permutation-difficulty curriculum training at 89.4\%, and hardness metrics show negative Pearson correlations with validation accuracy for adjacency destruction, spatial entropy, and combined hardness. These results suggest that tile permutations preserve enough class signal for convolutional networks to classify cats and dogs, while permutation structure still measurably affects difficulty.
+\end{abstract}
+\end{flushleft}
+\vspace{1em}
+}]
+
+\section{Introduction}
+
+Image classification models are typically evaluated on data whose spatial structure is intact. This project asks what happens when that structure is deliberately disrupted before learning. Each input image is split into an $N \times N$ grid, the tiles are permuted by a fixed mapping, and the classifier must still distinguish dogs from cats. The task is motivated by a proposal for an intermediate experiment connected to permuted puzzles and cryptographic hardness \citep{boyle2019permuted}. The image setting relaxes the original cryptographic problem in two ways: it uses natural images rather than graphs of functions, and it applies tile-wise permutations rather than pixel-wise permutations.
+
+The project has three main objectives. First, it measures how tile resolution affects the feasibility of classification after permutation. Second, it asks whether a neural network succeeds by learning or compensating for the permutation, or whether enough class-discriminative signal remains directly visible in the permuted images. Third, it develops ways to rank permutations according to their induced difficulty for a fixed dataset and tile count.
+
+The implementation follows a reproducible, notebook-first workflow. Part 1 trains a ResNet-18 baseline on unpermuted images and 3-by-3 tile permutations. Part 2 tests improvement strategies for the permuted setting, including image augmentations and curricula. Part 3 computes permutation hardness metrics and joins them to validation accuracy so that image-independent permutation properties can be compared against model performance.
+
+\section{Related Works}
+
+The motivating proposal cites permuted puzzles as a source of cryptographic hardness, where fixed permutations can make structured objects difficult to recover or classify \citep{boyle2019permuted}. This project does not attempt to solve the cryptographic problem directly. Instead, it uses the Dogs vs Cats setting as an empirical stepping stone for studying how much semantic information survives structured spatial disruption.
+
+Convolutional neural networks are a natural starting point because they exploit locality and translational structure in images. ResNet architectures are especially relevant because residual connections improve optimization of deep convolutional models \citep{he2016deep}. Since tile permutations partially destroy local adjacency while preserving tile content, ResNet-18 provides a useful baseline for testing whether standard convolutional inductive biases remain helpful.
+
+The ablations also connect to standard regularization and robustness ideas in deep learning \citep{goodfellow2016deep}. Random erasing, patch shuffling, same-label CutMix, and combined augmentations are used to expose the model to local occlusion or spatial disruption. Curriculum learning variants gradually control corruption probability or permutation difficulty, testing whether staged exposure to harder permuted inputs improves validation accuracy.
+
+\section{Data Overview}
+
+The dataset is Kaggle's Dogs vs Cats image dataset, with labels inferred from filenames such as \texttt{cat.123.jpg} and \texttt{dog.456.jpg}. The repository expects labeled training images under \texttt{data/dogs-vs-cats/train}; the unlabeled Kaggle test folder is not used for validation accuracy. The task is binary classification, and the saved experiment outputs report validation accuracy after the configured training runs.
+
+For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same tile permutation is applied across images for a run. The current saved results include the unpermuted case, represented as one tile, and 3-by-3 grids, represented as nine tiles. The original proposal also illustrates 4-tile and 9-tile permutations as target resolutions for this line of experimentation.
+
+\section{Methodology}
+
+The experimental pipeline is organized into three notebooks. Part 1 establishes the ResNet-18 baseline by training on the unpermuted task and on fixed 3-by-3 tile permutations. Part 2 reuses the Part 1 baseline and trains improvement ablations on the same task family. Part 3 computes permutation descriptors and correlates them with the validation accuracy observed for the corresponding runs.
+
+The primary model in the current results is ResNet-18 \citep{he2016deep}. Experiments save raw run outputs, aggregated CSV summaries, and figures under \texttt{outputs/results} and \texttt{outputs/figures}. Aggregation reports mean final validation accuracy, mean best validation accuracy, standard deviation where multiple runs exist, and the number of runs.
+
+\subsection{Improvement Strategies}
+
+Part 2 evaluates six improvement settings against the regular Part 1 baseline: combined augmentations, patch shuffle, random erasing, same-label CutMix, corruption-probability curriculum, and permutation-difficulty curriculum. The augmentation methods perturb training images so the model sees additional spatial or visual variation. The curriculum methods stage training exposure so the model does not see the hardest corruption pattern from the beginning of training.
+
+\subsection{Tile Permutation Hardness Metrics}
+
+We quantify the difficulty induced by a tile permutation using three complementary, model-agnostic axes and a fourth combined score. Let the image be divided into an $N \times N$ grid. For each source tile $i$, let $(r_i, c_i)$ denote its original row and column, and let $(r'_i, c'_i)$ denote its destination after applying the permutation.
+
+\begin{table*}[t]
+  \centering
+  \begin{tabular}{lll}
+    \toprule
+    \textbf{Metric} & \textbf{Dimension} & \textbf{What it captures} \\
+    \midrule
+    Adjacency destruction hardness & Local topology & Are original neighbors still neighbors? \\
+    Global tile displacement & Global geometry & How far did tiles move from their original positions? \\
+    Spatial permutation entropy & Permutation disorder & How diverse or irregular are tile movement patterns? \\
+    Combined hardness score & Aggregated hardness & Weighted summary of the three normalized axes. \\
+    \bottomrule
+  \end{tabular}
+  \caption{Tile permutation hardness metrics used in the analysis.}
+  \label{tab:tile-permutation-hardness-metrics}
+\end{table*}
+
+\textbf{Adjacency destruction hardness.}
+For every original rightward and downward neighboring relation, we test whether the same two source tiles remain adjacent in the same direction after permutation. The number of such canonical adjacency relations is
+\[
+M = 2N(N-1).
+\]
+If $A_{\mathrm{preserved}}$ is the number of preserved directed adjacencies, adjacency destruction is
+\[
+A = 1 - \frac{A_{\mathrm{preserved}}}{M}.
+\]
+A low value means that much of the original local structure is preserved. A high value means that neighboring tile relations were mostly destroyed.
+
+\textbf{Global tile displacement.}
+For each tile, we compute its Manhattan displacement in grid coordinates:
+\[
+\delta_i = |r'_i-r_i| + |c'_i-c_i|.
+\]
+The normalized global displacement is
+\[
+D = \frac{\sum_i \delta_i}{D_{\max}},
+\]
+where $D_{\max}$ is the maximum possible total Manhattan displacement for an $N \times N$ grid. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
+
+\textbf{Spatial permutation entropy.}
+For each tile, we compute
+\[
+\Delta_i = (r'_i-r_i,\ c'_i-c_i)
+\]
+and assign it to a movement bin
+\[
+b_i = (\mathrm{direction}(\Delta_i),\ \mathrm{distanceTier}(\Delta_i)).
+\]
+The direction is one of
+\[
+\{\mathrm{stationary}, N, S, E, W, NE, NW, SE, SW\}.
+\]
+For non-stationary tiles, the normalized Manhattan distance is
+\[
+d_i = \frac{|r'_i-r_i| + |c'_i-c_i|}{2(N-1)}.
+\]
+The distance tier is near when $0 < d_i \leq 1/3$, medium when $1/3 < d_i \leq 2/3$, and far when $2/3 < d_i \leq 1$. Stationary tiles use a single stationary bin. If $p_b$ is the empirical probability of movement bin $b$, the normalized entropy is
+\[
+E = \frac{-\sum_b p_b \log p_b}{\log(N^2)}.
+\]
+A low value means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances, making it more disorderly.
+
+\textbf{Combined hardness score.}
+The final score is a convex combination of the three normalized components:
+\[
+C = w_a A + w_d D + w_e E,
+\]
+with default weights
+\[
+w_a = 0.5,\quad w_e = 0.3,\quad w_d = 0.2.
+\]
+A low combined score represents an easier permutation with preserved structure, small movement, and low movement disorder. A high combined score represents a harder permutation across these complementary axes.
+
+\section{Results}
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Setting} & \textbf{Tiles} & \textbf{Final Acc.} & \textbf{Runs} \\
+    \midrule
+    Unpermuted & 1 & 86.5\% & 1 \\
+    3-by-3 permuted & 9 & 83.7\% & 2 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Part 1 ResNet-18 validation accuracy aggregated from saved experiment outputs.}
+  \label{tab:part1-results}
+\end{table}
+
+Part 1 shows that 3-by-3 tile permutations reduce mean final validation accuracy from 86.5\% to 83.7\%, but do not make the task infeasible. This supports the proposal's hypothesis that the Dogs versus Cats image setting is a useful relaxation: the permutation disrupts spatial layout, yet enough visual class information remains for a standard convolutional model to learn above chance.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{part1_accuracy_vs_tiles.png}
+  \caption{Part 1 validation accuracy as a function of tile count.}
+  \label{fig:part1-accuracy}
+\end{figure}
+
+\begin{table*}[t]
+  \centering
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Ablation} & \textbf{Tiles} & \textbf{Final Acc.} & \textbf{Best Acc.} & \textbf{Runs} \\
+    \midrule
+    Regular Part 1 baseline & 9 & 83.7\% & 83.7\% & 2 \\
+    Combined augmentations & 9 & 81.7\% & 81.7\% & 2 \\
+    Patch shuffle & 9 & 87.5\% & 87.5\% & 2 \\
+    Random erasing & 9 & 83.7\% & 83.7\% & 2 \\
+    Same-label CutMix & 9 & 84.6\% & 84.6\% & 2 \\
+    Corruption-probability curriculum & 9 & 78.8\% & 97.1\% & 2 \\
+    Permutation-difficulty curriculum & 9 & 89.4\% & 93.3\% & 2 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Part 2 3-by-3 ablation results for ResNet-18.}
+  \label{tab:part2-results}
+\end{table*}
+
+Part 2 identifies permutation-difficulty curriculum training as the best final 3-by-3 setting in the saved results, reaching 89.4\% mean final validation accuracy and 93.3\% mean best validation accuracy. Patch shuffle is the strongest non-curriculum ablation at 87.5\%. The corruption-probability curriculum has the highest mean best validation accuracy, 97.1\%, but its final accuracy is lower, suggesting either instability, overfitting after the best epoch, or sensitivity to the short training configuration.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{part2_ablation_comparison.png}
+  \caption{Part 2 comparison of augmentation and curriculum strategies.}
+  \label{fig:part2-ablation}
+\end{figure}
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lrr}
+    \toprule
+    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} \\
+    \midrule
+    Global displacement & -0.04 & 0.50 \\
+    Adjacency destruction & -0.47 & -0.50 \\
+    Spatial entropy & -0.39 & -0.50 \\
+    Combined hardness & -0.38 & -0.50 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Part 3 correlations between ResNet-18 validation accuracy and permutation metrics, computed over three joined records.}
+  \label{tab:part3-correlations}
+\end{table}
+
+Part 3 provides an initial ranking lens for permutations. Adjacency destruction, spatial entropy, and combined hardness all have negative Pearson correlations with validation accuracy in the current joined data, matching the intuition that destroying local structure and increasing disorder make classification harder. The sample size is small, so these values should be interpreted as exploratory rather than conclusive.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{part3_metrics_vs_accuracy.png}
+  \caption{Part 3 metric-versus-accuracy plots for the configured hardness metrics.}
+  \label{fig:part3-metrics}
+\end{figure}
+
+\section{Discussion}
+
+The proposal asks whether a neural network can classify post-permutation images and whether performance depends on tile resolution and permutation choice. The current results answer the first question affirmatively for 3-by-3 tile permutations: the ResNet-18 baseline loses accuracy relative to unpermuted images, but the drop is modest in the saved run configuration. This suggests that the model may rely on local texture, color, object parts, and class-specific visual cues that survive tile reordering.
+
+The ablation results indicate that training strategy matters. Patch shuffle and permutation-difficulty curriculum improve over the regular 3-by-3 baseline, which is consistent with the idea that exposure to spatial disruption can make the model more robust to permuted inputs. The gap between best and final accuracy for the corruption-probability curriculum is an important warning: a method can discover a strong checkpoint while still finishing poorly, so best-checkpoint reporting and final-epoch reporting should both remain in the evaluation.
+
+The hardness metrics address the proposal's third objective: ranking permutations with the same tile count. The current evidence is directionally sensible but underpowered. With only three joined records, a single run can strongly affect the measured correlations. A stronger conclusion will require more tile resolutions, more random permutations per resolution, repeated seeds, and possibly separate analysis for each model family.
+
+\section{Conclusion and Future Work}
+
+This project implements a reproducible Dogs versus Cats testbed for studying fixed tile-wise image permutations. The work translates the proposal's motivation into three concrete outputs: baseline classification under permutation, improvement ablations for the permuted setting, and permutation hardness metrics that can be joined to validation accuracy. The current results show that 3-by-3 permutations do not destroy classifiability, that curriculum and spatial-disruption augmentation can improve performance, and that model-agnostic hardness metrics provide a promising way to rank permutations.
+
+Future work should expand the experiment matrix beyond the current saved runs. The next steps are to evaluate additional tile resolutions such as 2-by-2 and larger grids, sample more permutations per resolution, repeat experiments across seeds, compare more architectures, and test whether a model trained on one permutation transfers to another. These extensions would better separate memorization of a fixed permutation from direct use of class cues in permuted images, which is one of the central questions posed by the original project proposal.
+
+\clearpage
+\onecolumn
+\begin{thebibliography}{9}
+
+\bibitem[Boyle et~al.(2019)]{boyle2019permuted}
+E.~Boyle, J.~Holmgren, and M.~Weiss.
+\newblock Permuted puzzles and cryptographic hardness.
+\newblock In \emph{Theory of Cryptography}, pages 465--493, 2019.
+
+\bibitem[Goodfellow et~al.(2016)]{goodfellow2016deep}
+I.~Goodfellow, Y.~Bengio, and A.~Courville.
+\newblock \emph{Deep Learning}.
+\newblock MIT Press, 2016.
+
+\bibitem[He et~al.(2016)]{he2016deep}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition}, pages 770--778, 2016.
+
+\end{thebibliography}
+
+\end{document}

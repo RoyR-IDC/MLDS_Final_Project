@@ -20,12 +20,24 @@ def build_dataset(
     tile_permutation: Optional[TilePermutation] = None,
     train: bool = False,
     standard_augmentation: bool = False,
+    image_augmentation: str | None = None,
+    tile_permutation_probability: float = 1.0,
 ) -> Dataset[tuple[torch.Tensor, int]]:
     """Build a Dogs/Cats image dataset with an optional tile permutation."""
 
     tile_image_size = make_tile_compatible_image_size(image_size, tiles_per_side)
-    transform = build_transforms(image_size=tile_image_size, train=train, standard_augmentation=standard_augmentation)
-    return DogsCatsDataset(samples, transform=transform, tile_permutation=tile_permutation)
+    transform = build_transforms(
+        image_size=tile_image_size,
+        train=train,
+        standard_augmentation=standard_augmentation,
+        image_augmentation=image_augmentation,
+    )
+    return DogsCatsDataset(
+        samples,
+        transform=transform,
+        tile_permutation=tile_permutation,
+        tile_permutation_probability=tile_permutation_probability,
+    )
 
 
 def build_dataloaders(
@@ -37,6 +49,8 @@ def build_dataloaders(
     batch_size: int = 32,
     num_workers: int = 2,
     standard_augmentation: bool = False,
+    image_augmentation: str | None = None,
+    tile_permutation_probability: float = 1.0,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build training and validation dataloaders."""
 
@@ -47,6 +61,8 @@ def build_dataloaders(
         tile_permutation=tile_permutation,
         train=True,
         standard_augmentation=standard_augmentation,
+        image_augmentation=image_augmentation,
+        tile_permutation_probability=tile_permutation_probability,
     )
     val_dataset = build_dataset(
         val_samples,

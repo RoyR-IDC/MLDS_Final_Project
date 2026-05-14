@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 import pytest
 
 from src.evaluation.experiment_results import (
@@ -49,6 +50,16 @@ class ArrayKeyRow(Mapping):
 
     def items(self):
         return iter(self._items)
+
+
+def _validation_samples(tmp_path):
+    first = np.arange(4 * 4 * 3, dtype=np.uint8).reshape(4, 4, 3)
+    second = np.flipud(first)
+    first_path = tmp_path / "cat.0.jpg"
+    second_path = tmp_path / "dog.0.jpg"
+    Image.fromarray(first).save(first_path)
+    Image.fromarray(second).save(second_path)
+    return [(str(first_path), 0), (str(second_path), 1)]
 
 
 def test_save_rows_handles_array_like_keys_and_values(tmp_path):
@@ -254,6 +265,8 @@ def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_
         tiles_per_side_values=[1],
         num_tile_permutations=0,
         seed=42,
+        validation_samples=_validation_samples(tmp_path),
+        image_size=4,
     )
     model_results = load_part1_model_results(str(tmp_path / "part1_raw_results.csv"), "resnet18")
 
@@ -261,10 +274,12 @@ def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_
     assert set(
         [
             "global_tile_displacement",
-            "center_weighted_displacement",
+            "adjacency_destruction_hardness",
+            "spatial_permutation_entropy",
             "combined_hardness_score",
         ]
     ).issubset(metrics.columns)
+    assert "edge_continuity_disruption_raw" not in metrics.columns
     assert model_results["model_name"].tolist() == ["resnet18"]
 
 def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
@@ -285,6 +300,8 @@ def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
         tiles_per_side_values=[1, 2],
         num_tile_permutations=1,
         seed=42,
+        validation_samples=[],
+        image_size=4,
     )
 
     assert pd.isna(metrics.loc[0, "tiles_per_side"])
@@ -312,14 +329,43 @@ def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
         tiles_per_side_values=[2],
         num_tile_permutations=1,
         seed=42,
+        validation_samples=_validation_samples(tmp_path),
+        image_size=4,
     )
 
     metric_columns = [
         "global_tile_displacement",
-        "center_weighted_displacement",
+        "adjacency_destruction_hardness",
+        "spatial_permutation_entropy",
         "combined_hardness_score",
     ]
     assert metrics.loc[0, metric_columns].gt(0.0).any()
+    assert 0.0 <= metrics.loc[0, "spatial_permutation_entropy"] <= 1.0
+
+
+def test_part3_spatial_permutation_entropy_has_no_raw_edge_column(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
+
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[2],
+        num_tile_permutations=1,
+        seed=42,
+        validation_samples=_validation_samples(tmp_path),
+        image_size=4,
+    )
+
+    assert "edge_continuity_disruption_raw" not in metrics.columns
+    assert "spatial_permutation_entropy" in metrics.columns
 
 
 def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(tmp_path):
@@ -354,6 +400,8 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
             tiles_per_side_values=[2],
             num_tile_permutations=1,
             seed=42,
+            validation_samples=_validation_samples(tmp_path),
+            image_size=4,
             model_name="resnet18",
             verbose=False,
             show_progress=False,
@@ -366,13 +414,15 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
             {
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.10,
-                "center_weighted_displacement": 0.20,
+                "adjacency_destruction_hardness": 0.30,
+                "spatial_permutation_entropy": 0.20,
                 "combined_hardness_score": 0.25,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
-                "center_weighted_displacement": 0.70,
+                "adjacency_destruction_hardness": 0.90,
+                "spatial_permutation_entropy": 0.70,
                 "combined_hardness_score": 0.70,
             },
         ]
@@ -391,13 +441,15 @@ def test_part3_correlations_are_nan_for_constant_accuracy():
             {
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.00,
-                "center_weighted_displacement": 0.00,
+                "adjacency_destruction_hardness": 0.00,
+                "spatial_permutation_entropy": 0.00,
                 "combined_hardness_score": 0.00,
             },
             {
                 "best_val_accuracy": 0.50,
                 "global_tile_displacement": 0.50,
-                "center_weighted_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.60,
+                "spatial_permutation_entropy": 0.40,
                 "combined_hardness_score": 0.45,
             },
         ]
@@ -415,19 +467,22 @@ def test_part3_correlations_are_finite_for_non_constant_accuracy():
             {
                 "best_val_accuracy": 0.80,
                 "global_tile_displacement": 0.00,
-                "center_weighted_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.00,
+                "spatial_permutation_entropy": 0.10,
                 "combined_hardness_score": 0.15,
             },
             {
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.50,
-                "center_weighted_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.60,
+                "spatial_permutation_entropy": 0.40,
                 "combined_hardness_score": 0.45,
             },
             {
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.90,
-                "center_weighted_displacement": 0.80,
+                "adjacency_destruction_hardness": 1.00,
+                "spatial_permutation_entropy": 0.80,
                 "combined_hardness_score": 0.80,
             },
         ]

@@ -5,18 +5,20 @@ from __future__ import annotations
 import json
 import os
 import random
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Sequence, cast
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import pandas as pd
 import torch
 from torch._C import device as TorchDevice
 from tqdm.auto import tqdm
 
 from src.evaluation.tile_permutation_difficulty import (
-    compute_center_weighted_displacement,
+    compute_adjacency_destruction_hardness,
     compute_combined_hardness,
     compute_global_displacement,
+    compute_spatial_permutation_entropy,
 )
 from src.experiments.results import (
     aggregate_accuracy,
@@ -43,6 +45,30 @@ __all__ = [
     "save_aggregated_accuracy",
     "save_rows",
 ]
+
+
+def _read_csv_dataframe(path: str) -> pd.DataFrame:
+    """Read a CSV as a DataFrame with a narrowed static type."""
+
+    return cast(pd.DataFrame, pd.read_csv(path))
+
+
+def _as_axes(axis: object) -> Axes:
+    """Narrow matplotlib's broad ``subplots`` return type for single-axis plots."""
+
+    return cast(Axes, axis)
+
+
+def _sorted_dataframe(frame: pd.DataFrame, by: Sequence[str] | str, *, na_position: str = "last") -> pd.DataFrame:
+    """Return a sorted DataFrame with a narrowed static type."""
+
+    return cast(pd.DataFrame, frame.sort_values(by, na_position=na_position))
+
+
+def _reset_dataframe_index(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return a DataFrame with a reset index and a narrowed static type."""
+
+    return cast(pd.DataFrame, frame.reset_index(drop=True))
 
 
 def get_device(config: CVExperimentConfig) -> TorchDevice:
@@ -121,11 +147,12 @@ def load_part1_model_baseline_raw_rows(
     if not os.path.exists(raw_path):
         return []
 
-    part1_raw = pd.read_csv(raw_path)
+    part1_raw = _read_csv_dataframe(raw_path)
     if "model_name" not in part1_raw.columns:
         return []
 
-    baseline = part1_raw[part1_raw["model_name"] == model_name].copy()
+    part1_raw_any = cast(Any, part1_raw)
+    baseline = cast(pd.DataFrame, part1_raw_any[part1_raw_any["model_name"] == model_name].copy())
     if baseline.empty:
         return []
 
@@ -134,7 +161,7 @@ def load_part1_model_baseline_raw_rows(
     baseline["ablation_name"] = ablation_name
     if "run_id" not in baseline.columns:
         baseline["run_id"] = "part1_regular_training"
-    return baseline.to_dict("records")
+    return cast(list[dict[str, Any]], cast(Any, baseline).to_dict("records"))
 
 
 def load_part1_model_baseline_aggregated(
@@ -151,11 +178,12 @@ def load_part1_model_baseline_aggregated(
         print(f"Part 1 results were not found. Run Part 1 first to include the regular {model_name} baseline.")
         return pd.DataFrame()
 
-    part1_results = pd.read_csv(source_path)
+    part1_results = _read_csv_dataframe(source_path)
     if "model_name" not in part1_results.columns:
         return pd.DataFrame()
 
-    baseline = part1_results[part1_results["model_name"] == model_name].copy()
+    part1_results_any = cast(Any, part1_results)
+    baseline = cast(pd.DataFrame, part1_results_any[part1_results_any["model_name"] == model_name].copy())
     if baseline.empty:
         print(f"Part 1 results exist, but no rows were found for {model_name}.")
         return pd.DataFrame()
@@ -166,10 +194,10 @@ def load_part1_model_baseline_aggregated(
                 "Part 1 aggregated results use an unsupported schema. "
                 "Rerun Part 1 to regenerate aggregate columns with explicit final_epoch/best_epoch names."
             )
-        baseline = aggregate_accuracy(
-            baseline,
+        baseline = cast(pd.DataFrame, aggregate_accuracy(
+            cast(pd.DataFrame, baseline),
             group_columns=["model_name", "tiles_per_side", "num_tiles"],
-        )
+        ))
 
     baseline["ablation_name"] = ablation_name
     baseline["config_name"] = config.config_name
@@ -186,13 +214,14 @@ def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_col
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, axis = plt.subplots(figsize=(8, 5))
+    ax = _as_axes(axis)
     for model_name, group in aggregated.groupby(model_column):
-        group = group.sort_values("num_tiles")
+        group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
         ax.errorbar(
             group["num_tiles"],
             group["mean_best_epoch_val_accuracy"],
-            yerr=group["std_best_epoch_val_accuracy"].fillna(0.0),
+            yerr=cast(Any, group)["std_best_epoch_val_accuracy"].fillna(0.0),
             marker="o",
             label=str(model_name),
         )
@@ -215,13 +244,16 @@ def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, axis = plt.subplots(figsize=(8, 5))
+    ax = _as_axes(axis)
     for tiles_per_side, group in aggregated.groupby("tiles_per_side"):
-        sorted_group = group.sort_values("ablation_name")
-        ax.plot(
+        sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "ablation_name")
+        ax.errorbar(
             sorted_group["ablation_name"],
             sorted_group["mean_best_epoch_val_accuracy"],
-            marker="o",
+            yerr=cast(Any, sorted_group)["std_best_epoch_val_accuracy"].fillna(0.0),
+            fmt="o",
+            linestyle="None",
             label=f"{tiles_per_side}x{tiles_per_side}",
         )
     ax.set_xlabel("Ablation")
@@ -256,7 +288,7 @@ def load_or_build_part1_tile_permutations(
     """Load saved Part 1 tile-permutation metadata, or recreate it deterministically."""
 
     if os.path.exists(tile_permutation_csv):
-        return pd.read_csv(tile_permutation_csv)
+        return _read_csv_dataframe(tile_permutation_csv)
 
     rows = [
         {
@@ -288,14 +320,45 @@ def _executable_part1_tile_permutations(tile_permutations: pd.DataFrame) -> pd.D
     """Return tile-permutation rows that correspond to actual Part 1 executions."""
 
     executable = tile_permutations.copy()
-    return executable.sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
+    return _reset_dataframe_index(
+        _sorted_dataframe(executable, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
 
 
 PART3_METRIC_COLUMNS = [
     "global_tile_displacement",
-    "center_weighted_displacement",
+    "adjacency_destruction_hardness",
+    "spatial_permutation_entropy",
     "combined_hardness_score",
 ]
+
+
+def _add_combined_hardness_scores(
+    metrics: pd.DataFrame,
+    *,
+    weight_adj: float,
+    weight_entropy: float,
+    weight_dist: float,
+) -> pd.DataFrame:
+    """Add final combined hardness from normalized component scores."""
+
+    metrics = metrics.copy()
+    if metrics.empty:
+        metrics["combined_hardness_score"] = []
+        return metrics
+
+    metrics["combined_hardness_score"] = [
+        compute_combined_hardness(
+            adjacency_destruction_hardness=float(row["adjacency_destruction_hardness"]),
+            spatial_permutation_entropy=float(row["spatial_permutation_entropy"]),
+            global_tile_displacement=float(row["global_tile_displacement"]),
+            weight_adj=weight_adj,
+            weight_entropy=weight_entropy,
+            weight_dist=weight_dist,
+        )
+        for _, row in metrics.iterrows()
+    ]
+    return metrics
 
 
 def compute_part3_tile_permutation_metrics(
@@ -304,9 +367,11 @@ def compute_part3_tile_permutation_metrics(
     tiles_per_side_values: Sequence[int],
     num_tile_permutations: int,
     seed: int,
-    alpha_center: float = 1.0,
-    weight_center: float = 0.5,
-    weight_dist: float = 0.5,
+    validation_samples: Sequence[Sample],
+    image_size: int,
+    weight_adj: float = 0.5,
+    weight_entropy: float = 0.3,
+    weight_dist: float = 0.2,
     show_progress: bool = False,
 ) -> pd.DataFrame:
     """Compute Part 3 hardness metrics for reusable Part 1 tile permutations."""
@@ -328,41 +393,48 @@ def compute_part3_tile_permutation_metrics(
             unit="tile permutation",
         )
     for _, row in iterator:
-        raw_tile_permutation = row["tile_permutation"]
-        if raw_tile_permutation is None or (isinstance(raw_tile_permutation, float) and pd.isna(raw_tile_permutation)):
+        raw_tile_permutation = cast(Any, row["tile_permutation"])
+        if raw_tile_permutation is None or (
+            isinstance(raw_tile_permutation, float) and bool(pd.isna(raw_tile_permutation))
+        ):
             serialized_tile_permutation = None
         elif isinstance(raw_tile_permutation, str):
             serialized_tile_permutation = json.loads(raw_tile_permutation)
         else:
             serialized_tile_permutation = raw_tile_permutation
-        tiles_per_side = None if pd.isna(row["tiles_per_side"]) else int(row["tiles_per_side"])
+        raw_tiles_per_side = cast(Any, row["tiles_per_side"])
+        tiles_per_side = None if bool(pd.isna(raw_tiles_per_side)) else int(raw_tiles_per_side)
         tile_permutation = tile_permutation_from_jsonable(serialized_tile_permutation, tiles_per_side)
         num_tiles = 1 if tiles_per_side is None else tiles_per_side * tiles_per_side
         global_tile_displacement = compute_global_displacement(tile_permutation, tiles_per_side)
-        center_weighted_displacement = compute_center_weighted_displacement(
+        adjacency_destruction_hardness = compute_adjacency_destruction_hardness(
             tile_permutation,
             tiles_per_side,
-            alpha_center,
         )
-        combined_hardness_score = compute_combined_hardness(
-            tile_permutation=tile_permutation,
-            tiles_per_side=tiles_per_side,
-            alpha_center=alpha_center,
-            weight_center=weight_center,
-            weight_dist=weight_dist,
+        spatial_permutation_entropy = compute_spatial_permutation_entropy(
+            tile_permutation,
+            tiles_per_side,
         )
         rows.append(
             {
                 "tiles_per_side": tiles_per_side,
                 "num_tiles": num_tiles,
-                "tile_permutation_id": int(row["tile_permutation_id"]),
-                "tile_permutation_seed": row.get("tile_permutation_seed"),
+                "tile_permutation_id": int(cast(Any, row["tile_permutation_id"])),
+                "tile_permutation_seed": cast(Any, row.get("tile_permutation_seed")),
                 "global_tile_displacement": global_tile_displacement,
-                "center_weighted_displacement": center_weighted_displacement,
-                "combined_hardness_score": combined_hardness_score,
+                "adjacency_destruction_hardness": adjacency_destruction_hardness,
+                "spatial_permutation_entropy": spatial_permutation_entropy,
             }
         )
-    return pd.DataFrame(rows).sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
+    metrics = _add_combined_hardness_scores(
+        pd.DataFrame(rows),
+        weight_adj=weight_adj,
+        weight_entropy=weight_entropy,
+        weight_dist=weight_dist,
+    )
+    return _reset_dataframe_index(
+        _sorted_dataframe(metrics, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
 
 
 def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
@@ -371,12 +443,16 @@ def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
     if metrics.empty:
         return
 
-    invalid = metrics[
-        (metrics["tiles_per_side"].notna())
-        & (metrics["tiles_per_side"].astype(float) > 1)
-        & (metrics["tile_permutation_id"].astype(int) > 0)
-        & (metrics[PART3_METRIC_COLUMNS].fillna(0.0).eq(0.0).all(axis=1))
-    ]
+    metrics_any = cast(Any, metrics)
+    invalid = cast(
+        pd.DataFrame,
+        metrics_any[
+            (metrics_any["tiles_per_side"].notna())
+            & (metrics_any["tiles_per_side"].astype(float) > 1)
+            & (metrics_any["tile_permutation_id"].astype(int) > 0)
+            & (metrics_any[PART3_METRIC_COLUMNS].fillna(0.0).eq(0.0).all(axis=1))
+        ],
+    )
     if invalid.empty:
         return
 
@@ -391,11 +467,12 @@ def load_part1_model_results(part1_results_csv: str, model_name: str) -> pd.Data
     """Load Part 1 raw results filtered to one trained model."""
 
     model_name = validate_model_name(model_name)
-    raw_results = pd.read_csv(part1_results_csv)
+    raw_results = _read_csv_dataframe(part1_results_csv)
     if "model_name" not in raw_results.columns:
         raise ValueError("Part 1 results must contain a model_name column")
 
-    model_results = raw_results[raw_results["model_name"] == model_name].copy()
+    raw_results_any = cast(Any, raw_results)
+    model_results = cast(pd.DataFrame, raw_results_any[raw_results_any["model_name"] == model_name].copy())
     if model_results.empty:
         raise ValueError(f"No Part 1 rows found for model_name='{model_name}'")
     return model_results
@@ -406,13 +483,14 @@ def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "r
 
     rows: list[dict[str, Any]] = []
     for metric in PART3_METRIC_COLUMNS:
-        frame = joined.dropna(subset=[metric, "best_val_accuracy"])
-        if len(frame) < 2 or frame[metric].nunique() < 2 or frame["best_val_accuracy"].nunique() < 2:
+        frame = cast(pd.DataFrame, joined.dropna(subset=[metric, "best_val_accuracy"]))
+        frame_any = cast(Any, frame)
+        if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
             pearson = float("nan")
             spearman = float("nan")
         else:
-            pearson = float(frame[metric].corr(frame["best_val_accuracy"], method="pearson"))
-            spearman = float(frame[metric].corr(frame["best_val_accuracy"], method="spearman"))
+            pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
+            spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
         rows.append(
             {
                 "group": group_name,
@@ -429,7 +507,8 @@ def plot_part3_metrics_vs_accuracy(joined: pd.DataFrame, figures_dir: str) -> No
     """Save one combined Part 3 hardness metric-vs-accuracy scatter plot."""
 
     ensure_dir(figures_dir)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, axis = plt.subplots(figsize=(8, 5))
+    ax = _as_axes(axis)
     for metric in PART3_METRIC_COLUMNS:
         ax.scatter(
             joined[metric],
@@ -451,9 +530,9 @@ def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
     """Load saved Part 3 metric, joined, and correlation tables."""
 
     return {
-        "metrics": pd.read_csv(os.path.join(results_dir, "tile_permutation_metrics.csv")),
-        "joined": pd.read_csv(os.path.join(results_dir, "metric_accuracy_joined.csv")),
-        "correlations": pd.read_csv(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
+        "metrics": _read_csv_dataframe(os.path.join(results_dir, "tile_permutation_metrics.csv")),
+        "joined": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_joined.csv")),
+        "correlations": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
     }
 
 
@@ -466,10 +545,12 @@ def run_part3_hardness_analysis(
     tiles_per_side_values: Sequence[int],
     num_tile_permutations: int,
     seed: int,
+    validation_samples: Sequence[Sample],
+    image_size: int,
     model_name: str = "resnet18",
-    alpha_center: float = 1.0,
-    weight_center: float = 0.5,
-    weight_dist: float = 0.5,
+    weight_adj: float = 0.5,
+    weight_entropy: float = 0.3,
+    weight_dist: float = 0.2,
     verbose: bool = True,
     show_progress: bool = True,
 ) -> Dict[str, pd.DataFrame]:
@@ -489,8 +570,10 @@ def run_part3_hardness_analysis(
         tiles_per_side_values=tiles_per_side_values,
         num_tile_permutations=num_tile_permutations,
         seed=seed,
-        alpha_center=alpha_center,
-        weight_center=weight_center,
+        validation_samples=validation_samples,
+        image_size=image_size,
+        weight_adj=weight_adj,
+        weight_entropy=weight_entropy,
         weight_dist=weight_dist,
         show_progress=show_progress,
     )
@@ -502,7 +585,9 @@ def run_part3_hardness_analysis(
     raw_results = load_part1_model_results(part1_results_csv, model_name)
     log(f"Joining hardness metrics with {model_name} accuracy...")
     joined = raw_results.merge(metrics, on=["tiles_per_side", "num_tiles", "tile_permutation_id"], how="left")
-    joined = joined.sort_values(["tiles_per_side", "tile_permutation_id"], na_position="first").reset_index(drop=True)
+    joined = _reset_dataframe_index(
+        _sorted_dataframe(joined, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
     log("Saving joined metric-accuracy table...")
     save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
 

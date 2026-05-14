@@ -260,7 +260,7 @@ class CVExperimentConfig:
         self.model_names = ["resnet18"]
         self.tiles_per_side_values = [1, 3]
         self.num_tile_permutations = 2
-        self.epochs = 3
+        self.epochs = 1
         self.plot_samples = True
 
     def _validate_config_model_names(self) -> None:
@@ -281,22 +281,36 @@ class Part2ExperimentConfig(CVExperimentConfig):
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {
-                "name": "augmentation_only",
+                "name": "augmentation_combined_augmentations",
                 "use_pretrained": True,
-                "use_standard_augmentation": True,
-                "freeze_backbone": False,
+                "augmentation": "combined_augmentations",
             },
             {
-                "name": "finetune_only",
+                "name": "augmentation_patch_shuffle",
                 "use_pretrained": True,
-                "use_standard_augmentation": False,
-                "freeze_backbone": False,
+                "augmentation": "patch_shuffle",
             },
             {
-                "name": "augmentation_finetune",
+                "name": "augmentation_random_erasing",
                 "use_pretrained": True,
-                "use_standard_augmentation": True,
-                "freeze_backbone": False,
+                "augmentation": "random_erasing",
+            },
+            {
+                "name": "augmentation_same_label_cutmix",
+                "use_pretrained": True,
+                "augmentation": "same_label_cutmix",
+            },
+            {
+                "name": "curriculum_corruption_probability",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "corruption_probability",
+            },
+            {
+                "name": "curriculum_permutation_difficulty",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "permutation_difficulty",
             },
         ]
     )
@@ -322,6 +336,9 @@ class Part2ExperimentConfig(CVExperimentConfig):
             )
         return model_names
 
+    def __post_init__(self) -> None:
+        return super().__post_init__()
+
 
 @dataclass
 class Part3ExperimentConfig(CVExperimentConfig):
@@ -330,9 +347,9 @@ class Part3ExperimentConfig(CVExperimentConfig):
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
-    alpha_center: float = 1.0
-    weight_center: float = 0.5
-    weight_dist: float = 0.5
+    weight_adj: float = 0.5
+    weight_entropy: float = 0.3
+    weight_dist: float = 0.2
 
     @property
     def model_name(self) -> str:
