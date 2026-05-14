@@ -171,7 +171,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
 
 - src/evaluation/permutation_difficulty.py
   - compute_global_displacement
-  - compute_center_weighted_displacement
+  - compute_edge_continuity_disruption
   - compute_combined_hardness
 
 - src/utils/reproducibility.py

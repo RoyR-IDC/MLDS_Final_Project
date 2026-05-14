@@ -21,10 +21,14 @@ from matplotlib.axes import Axes
 
 from src.evaluation.tile_permutation_difficulty import (
     compute_adjacency_destruction_hardness,
-    compute_center_weighted_displacement,
-    compute_combined_hardness,
     compute_global_displacement,
 )
+from src.evaluation.experiment_results import (
+    _add_normalized_edge_and_combined_scores,
+    _load_raw_rgb_validation_tensors,
+    _mean_edge_continuity_disruption,
+)
+from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import (
     generate_tile_permutations,
     tile_permutation_from_jsonable,
@@ -129,12 +133,20 @@ def _get_tile_permutation_for_row(
     return tile_permutations[permutation_idx - 1]
 
 
-def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
+def compute_metrics_for_summary(
+    summary_csv: str,
+    out_dir: str,
+    validation_samples: list[Sample],
+    image_size: int,
+    num_tile_permutations: int = 5,
+):
     """Attach tile-permutation metrics to each row in summary CSV and save augmented CSV.
 
     Args:
         summary_csv: Path to runner summary CSV.
         out_dir: Directory to save augmented CSV and JSON stats.
+        validation_samples: Validation samples used to compute edge continuity.
+        image_size: Base image size before tile-compatible resizing.
         num_tile_permutations: Number of tile permutations used by the runner.
 
     Returns:
@@ -143,6 +155,7 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_permuta
     os.makedirs(out_dir, exist_ok=True)
     summary = _read_csv_dataframe(summary_csv)
     metric_rows = []
+    validation_image_cache = {}
     for _, row in summary.iterrows():
         raw_tiles_per_side = cast(Any, row.get('tiles_per_side'))
         tiles_per_side = None if bool(pd.isna(raw_tiles_per_side)) else int(raw_tiles_per_side)
@@ -156,26 +169,35 @@ def compute_metrics_for_summary(summary_csv: str, out_dir: str, num_tile_permuta
                 int(cast(Any, row['tile_permutation_id'])),
                 n_tile_permutations=num_tile_permutations,
             )
+        edge_validation_images = []
+        if tile_permutation is not None and tiles_per_side is not None and tiles_per_side > 1:
+            if tiles_per_side not in validation_image_cache:
+                validation_image_cache[tiles_per_side] = _load_raw_rgb_validation_tensors(
+                    validation_samples,
+                    image_size,
+                    tiles_per_side,
+                )
+            edge_validation_images = validation_image_cache[tiles_per_side]
         metric_rows.append(
             {
                 'global_tile_displacement': compute_global_displacement(tile_permutation, tiles_per_side),
-                'center_weighted_displacement': compute_center_weighted_displacement(
-                    tile_permutation,
-                    tiles_per_side,
-                    alpha_center=1.0,
-                ),
                 'adjacency_destruction_hardness': compute_adjacency_destruction_hardness(
                     tile_permutation,
                     tiles_per_side,
                 ),
-                'combined_hardness_score': compute_combined_hardness(
+                'edge_continuity_disruption_raw': _mean_edge_continuity_disruption(
+                    edge_validation_images,
                     tile_permutation,
                     tiles_per_side,
-                    alpha_center=1.0,
                 ),
             }
         )
-    metric_table = pd.DataFrame(metric_rows)
+    metric_table = _add_normalized_edge_and_combined_scores(
+        pd.DataFrame(metric_rows),
+        weight_adj=0.5,
+        weight_edge=0.3,
+        weight_dist=0.2,
+    )
     output_table = cast(pd.DataFrame, pd.concat([summary.reset_index(drop=True), metric_table], axis=1))
     aug_path = os.path.join(out_dir, 'summary_with_metrics.csv')
     output_table.to_csv(aug_path, index=False)
@@ -197,8 +219,8 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     summary = _read_csv_dataframe(summary_with_metrics_csv)
     metrics = [
         'global_tile_displacement',
-        'center_weighted_displacement',
         'adjacency_destruction_hardness',
+        'edge_continuity_disruption',
         'combined_hardness_score',
     ]
     stats = {}
@@ -246,7 +268,13 @@ def plot_metric_vs_accuracy(summary_with_metrics_csv: str, out_dir: str):
     return stats
 
 
-def main(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
+def main(
+    summary_csv: str,
+    out_dir: str,
+    validation_samples: list[Sample],
+    image_size: int,
+    num_tile_permutations: int = 5,
+):
     """Run all summary plotting steps.
 
     Args:
@@ -261,7 +289,13 @@ def main(summary_csv: str, out_dir: str, num_tile_permutations: int = 5):
     agg_out = os.path.join(out_dir, 'plots')
     os.makedirs(agg_out, exist_ok=True)
     plot_accuracy_vs_tiles(summary_csv, agg_out)
-    augmented_summary = compute_metrics_for_summary(summary_csv, agg_out, num_tile_permutations=num_tile_permutations)
+    augmented_summary = compute_metrics_for_summary(
+        summary_csv,
+        agg_out,
+        validation_samples=validation_samples,
+        image_size=image_size,
+        num_tile_permutations=num_tile_permutations,
+    )
     stats = plot_metric_vs_accuracy(os.path.join(agg_out, 'summary_with_metrics.csv'), agg_out)
     del augmented_summary
     correlation_stats = stats
@@ -273,6 +307,13 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--summary', type=str, required=True)
     p.add_argument('--out', type=str, required=True)
+    p.add_argument('--validation_samples_csv', type=str, required=True)
+    p.add_argument('--image_size', type=int, default=224)
     p.add_argument('--num_tile_permutations', type=int, default=5)
     args = p.parse_args()
-    main(args.summary, args.out, args.num_tile_permutations)
+    validation_frame = _read_csv_dataframe(args.validation_samples_csv)
+    validation_samples = [
+        (str(row['path']), int(row['label']))
+        for _, row in validation_frame.iterrows()
+    ]
+    main(args.summary, args.out, validation_samples, args.image_size, args.num_tile_permutations)

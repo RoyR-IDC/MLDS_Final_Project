@@ -1,12 +1,12 @@
-import math
-
 import pytest
+
+torch = pytest.importorskip("torch")
 
 from src.evaluation.tile_permutation_difficulty import (
     compute_adjacency_destruction_hardness,
     compute_adjacency_destruction_hardness_from_positions,
-    compute_center_weighted_displacement,
     compute_combined_hardness,
+    compute_edge_continuity_disruption,
     compute_global_displacement,
 )
 from src.preprocessing.tile_permutations import identity_tile_permutation
@@ -18,35 +18,65 @@ def test_global_tile_displacement():
     assert compute_global_displacement(tile_permutation, 2) == 1.0
 
 
-def test_center_weighted_displacement():
-    alpha_center = 1.0
-    center_weight = math.exp(-alpha_center * 0.0)
-    corner_weight = math.exp(-alpha_center * math.sqrt(2.0))
-    assert center_weight > corner_weight
+def test_edge_continuity_disruption_baseline_and_1x1_are_zero():
+    image = torch.zeros(3, 4, 4)
 
-    center_swap = [[(row, col) for col in range(5)] for row in range(5)]
-    center_swap[2][2], center_swap[2][3] = center_swap[2][3], center_swap[2][2]
-    outer_swap = [[(row, col) for col in range(5)] for row in range(5)]
-    outer_swap[0][0], outer_swap[0][1] = outer_swap[0][1], outer_swap[0][0]
+    assert compute_edge_continuity_disruption(image, None, None) == 0.0
+    assert compute_edge_continuity_disruption(image, [0], 1) == 0.0
 
-    center_score = compute_center_weighted_displacement(center_swap, 5, alpha_center)
-    outer_score = compute_center_weighted_displacement(outer_swap, 5, alpha_center)
 
-    assert center_score > outer_score
-    assert 0.0 <= center_score <= 1.0
-    assert 0.0 <= outer_score <= 1.0
+def test_edge_continuity_disruption_uses_touching_horizontal_and_vertical_borders():
+    image = torch.tensor(
+        [
+            [
+                [1.0, 2.0, 10.0, 11.0],
+                [3.0, 4.0, 12.0, 13.0],
+                [20.0, 21.0, 30.0, 31.0],
+                [22.0, 23.0, 32.0, 33.0],
+            ]
+        ]
+    )
+
+    expected = (
+        torch.linalg.vector_norm(torch.tensor([2.0 - 10.0, 4.0 - 12.0]))
+        + torch.linalg.vector_norm(torch.tensor([21.0 - 30.0, 23.0 - 32.0]))
+        + torch.linalg.vector_norm(torch.tensor([3.0 - 20.0, 4.0 - 21.0]))
+        + torch.linalg.vector_norm(torch.tensor([12.0 - 30.0, 13.0 - 31.0]))
+    )
+
+    assert compute_edge_continuity_disruption(image, identity_tile_permutation(2), 2) == pytest.approx(
+        float(expected)
+    )
+
+
+def test_edge_continuity_disruption_is_lower_for_smooth_identity_than_scrambled_permutation():
+    row_gradient = torch.arange(8, dtype=torch.float32).reshape(1, 1, 8).expand(3, 8, 8)
+    identity_score = compute_edge_continuity_disruption(row_gradient, identity_tile_permutation(2), 2)
+    scrambled_score = compute_edge_continuity_disruption(row_gradient, [3, 2, 1, 0], 2)
+
+    assert identity_score < scrambled_score
 
 
 def test_combined_hardness_score():
-    tile_permutation = [[(1, 1), (1, 0)], [(0, 1), (0, 0)]]
-    expected = 0.5 * compute_global_displacement(tile_permutation, 2) + 0.5 * compute_center_weighted_displacement(
-        tile_permutation,
-        2,
-        alpha_center=1.0,
-    )
-    assert compute_combined_hardness(tile_permutation, 2, alpha_center=1.0) == pytest.approx(expected)
+    expected = 0.5 * 0.6 + 0.3 * 0.4 + 0.2 * 0.8
+    assert compute_combined_hardness(
+        adjacency_destruction_hardness=0.6,
+        edge_continuity_disruption=0.4,
+        global_tile_displacement=0.8,
+    ) == pytest.approx(expected)
     with pytest.raises(ValueError):
-        compute_combined_hardness([0, 1, 2, 3], 2, alpha_center=1.0, weight_center=0.4)
+        compute_combined_hardness(
+            adjacency_destruction_hardness=0.6,
+            edge_continuity_disruption=0.4,
+            global_tile_displacement=0.8,
+            weight_adj=0.4,
+        )
+    with pytest.raises(ValueError):
+        compute_combined_hardness(
+            adjacency_destruction_hardness=1.2,
+            edge_continuity_disruption=0.4,
+            global_tile_displacement=0.8,
+        )
 
 
 def test_adjacency_destruction_hardness_baseline_and_identity():
