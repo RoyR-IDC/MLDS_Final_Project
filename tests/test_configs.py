@@ -2,6 +2,8 @@ from dataclasses import fields
 from pathlib import Path
 
 from src.utils.config import (
+    COLAB_BATCH_SIZE,
+    COLAB_NUM_WORKERS,
     CVExperimentConfig,
     PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES,
     PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES,
@@ -194,6 +196,19 @@ def test_local_testing_defaults_use_larger_part1_signal():
     assert config.num_tile_permutations == 2
     assert config.epochs == 1
     assert config.plot_samples is True
+
+
+def test_colab_runtime_defaults_enable_t4_speed_settings():
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.batch_size = 16
+    config.num_workers = 0
+    config.use_amp = False
+
+    CVExperimentConfig.update_configs_for_colab_runtime(config)
+
+    assert config.batch_size == COLAB_BATCH_SIZE
+    assert config.num_workers == COLAB_NUM_WORKERS
+    assert config.use_amp is True
 
 
 def test_part3_local_testing_keeps_hardness_notebook_tile_scope():

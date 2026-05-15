@@ -8,42 +8,21 @@ from typing import Any, Dict, Literal, Mapping
 import os
 
 from src.models.registry import validate_model_name, validate_model_names
+from src.utils.colab import (
+    DEFAULT_COLAB_DRIVE_ROOT,
+    find_project_root,
+    is_google_colab_runtime,
+    mount_colab_drive_if_available,
+)
 from src.utils.io import load_yaml
 
 
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
 DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
-DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
 PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 2, 4, 6, 8, 10, 12]
 PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES = [1, 4]
-
-
-def _path_looks_like_project_root(path: Path) -> bool:
-    """Return whether ``path`` looks like this repository root."""
-
-    return (path / "src").is_dir() and ((path / "requirements.txt").exists() or (path / ".git").exists())
-
-
-def find_project_root(start: str | os.PathLike[str] | None = None) -> str:
-    """Find the repository root from the current notebook/script location."""
-
-    current = Path(start or os.getcwd()).resolve()
-    candidates = [current, *current.parents]
-    for candidate in candidates:
-        if _path_looks_like_project_root(candidate):
-            return str(candidate)
-    return str(current)
-
-
-def is_google_colab_runtime() -> bool:
-    """Return True when code is executing inside a Google Colab runtime."""
-
-    try:
-        import google.colab  # type: ignore  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
+COLAB_BATCH_SIZE = 64
+COLAB_NUM_WORKERS = 2
 
 
 def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
@@ -187,6 +166,7 @@ class CVExperimentConfig:
             print("Running on Google Colab, adjusting configs...")
             self._mount_colab_drive_if_available()
             self._update_root_for_colab()
+            self.update_configs_for_colab_runtime()
         else:
             self._update_root_for_local_runtime()
             self.update_configs_for_local_testing()
@@ -216,12 +196,7 @@ class CVExperimentConfig:
     def _mount_colab_drive_if_available(self) -> None:
         """Mount Google Drive in Colab when the Drive API is available."""
 
-        try:
-            from google.colab import drive  # type: ignore
-
-            drive.mount("/content/drive")
-        except Exception as exc:
-            print(f"Google Drive was not mounted automatically: {exc}")
+        mount_colab_drive_if_available()
 
     def _update_root_for_colab(self) -> None:
         """Resolve the project root for either Drive-backed or cloned Colab runs."""
@@ -264,6 +239,13 @@ class CVExperimentConfig:
         self.num_tile_permutations = 2
         self.epochs = 1
         self.plot_samples = True
+
+    def update_configs_for_colab_runtime(self) -> None:
+        """Tune default runtime settings for Colab GPU sessions."""
+
+        self.batch_size = max(int(self.batch_size), COLAB_BATCH_SIZE)
+        self.num_workers = max(int(self.num_workers), COLAB_NUM_WORKERS)
+        self.use_amp = True
 
     def _validate_config_model_names(self) -> None:
         """Validate and canonicalize the models requested by this config."""
