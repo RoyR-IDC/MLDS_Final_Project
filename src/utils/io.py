@@ -5,10 +5,12 @@ from __future__ import annotations
 import csv
 import json
 import os
-from typing import Any, Iterable, Mapping, Union
+from typing import Any, Iterable, Mapping, TYPE_CHECKING, Union
 
-import pandas as pd
 import yaml
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def ensure_dir(path: str) -> str:
@@ -33,8 +35,10 @@ def save_json(data: Mapping[str, Any], path: str) -> None:
         json.dump(data, handle, indent=2)
 
 
-def save_csv(data: Union[pd.DataFrame, Iterable[Any]], path: str) -> None:
+def save_csv(data: Union["pd.DataFrame", Iterable[Any]], path: str) -> None:
     """Save rows or a DataFrame to CSV."""
+
+    import pandas as pd
 
     ensure_dir(os.path.dirname(path) or ".")
     if isinstance(data, pd.DataFrame):
