@@ -14,6 +14,8 @@ from src.utils.io import load_yaml
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
 DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
 DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
+PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 2, 4, 6, 8, 10, 12]
+PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES = [1, 4]
 
 
 def _path_looks_like_project_root(path: Path) -> bool:
@@ -160,7 +162,7 @@ class CVExperimentConfig:
     pretrained: bool = True
 
     # Tile permutation experiment configuration
-    tiles_per_side_values: list[int] = field(default_factory=lambda: [1, 3, 4])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     num_tile_permutations: int = 5
 
     # Training configuration
@@ -258,7 +260,7 @@ class CVExperimentConfig:
         self.sample_data = True
         self.sample_limit = 256
         self.model_names = ["resnet18"]
-        self.tiles_per_side_values = [1, 3]
+        self.tiles_per_side_values = PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES.copy()
         self.num_tile_permutations = 2
         self.epochs = 1
         self.plot_samples = True
@@ -276,7 +278,7 @@ class Part2ExperimentConfig(CVExperimentConfig):
     part: str = "part2"
     config_name: str = "part2_improvement"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
-    tiles_per_side_values: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     num_tile_permutations: int = 3
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
@@ -347,9 +349,16 @@ class Part3ExperimentConfig(CVExperimentConfig):
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: [1, 3, 4])
     weight_adj: float = 0.5
     weight_entropy: float = 0.3
     weight_dist: float = 0.2
+
+    def update_configs_for_local_testing(self) -> None:
+        """Keep Part 3 local smoke runs aligned with the hardness notebook scope."""
+
+        super().update_configs_for_local_testing()
+        self.tiles_per_side_values = [1, 3]
 
     @property
     def model_name(self) -> str:

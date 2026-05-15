@@ -3,6 +3,8 @@ from pathlib import Path
 
 from src.utils.config import (
     CVExperimentConfig,
+    PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES,
+    PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES,
     Part2ExperimentConfig,
     Part3ExperimentConfig,
     find_project_root,
@@ -102,15 +104,15 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     assert dataclass_fields["part"].default == "part2"
     assert dataclass_fields["config_name"].default == "part2_improvement"
     assert model_names == ["resnet18"]
-    assert tiles_per_side_values == [1, 2, 3, 4]
+    assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
-        "random_erasing_only",
-        "same_label_cutmix_only",
-        "patch_shuffle_only",
-        "combined_corruptions",
-        "permutation_difficulty_curriculum",
-        "corruption_probability_curriculum",
+        "augmentation_combined_augmentations",
+        "augmentation_patch_shuffle",
+        "augmentation_random_erasing",
+        "augmentation_same_label_cutmix",
+        "curriculum_corruption_probability",
+        "curriculum_permutation_difficulty",
     ]
 
 
@@ -188,10 +190,18 @@ def test_local_testing_defaults_use_larger_part1_signal():
 
     assert config.sample_data is True
     assert config.sample_limit == 256
-    assert config.tiles_per_side_values == [1, 3]
+    assert config.tiles_per_side_values == PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES
     assert config.num_tile_permutations == 2
-    assert config.epochs == 3
+    assert config.epochs == 1
     assert config.plot_samples is True
+
+
+def test_part3_local_testing_keeps_hardness_notebook_tile_scope():
+    config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
+
+    Part3ExperimentConfig.update_configs_for_local_testing(config)
+
+    assert config.tiles_per_side_values == [1, 3]
 
 
 def test_find_project_root_walks_up_from_notebook_directory(tmp_path):
