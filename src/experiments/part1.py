@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import importlib
 from time import perf_counter
 from typing import Any, Optional, Sequence
@@ -20,6 +19,7 @@ if not hasattr(_training_runs, "checkpoints_enabled"):
 
 from src.experiments.training_runs import (
     build_pending_training_result_row,
+    build_experiment_run_id,
     build_training_run_spec,
     checkpoint_dir_path,
     checkpoints_enabled,
@@ -226,7 +226,7 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
         seed=config.seed,
         include_baseline=True,
     )
-    run_id = datetime.now(timezone.utc).strftime("part1_%Y%m%d_%H%M%S")
+    run_id = build_experiment_run_id(config)
     output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
 
     print(f"Raw results path: {output_paths['raw_results']}")

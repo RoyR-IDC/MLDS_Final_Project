@@ -24,6 +24,12 @@ class CheckpointConfig:
     last_path: Optional[str] = None
     save_best: bool = True
     save_last: bool = True
+    resume: bool = True
+    resume_path: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.resume_path is None:
+            self.resume_path = self.last_path
 
 
 @dataclass
@@ -83,6 +89,9 @@ class TrainingResult:
     best_val_accuracy: Optional[float] = None
     best_checkpoint_path: Optional[str] = None
     last_checkpoint_path: Optional[str] = None
+    resumed_from_checkpoint: Optional[str] = None
+    resumed_from_epoch: Optional[int] = None
+    skipped_from_checkpoint: Optional[str] = None
     training_duration_seconds: Optional[float] = None
     error_message: Optional[str] = None
 
@@ -104,6 +113,9 @@ class TrainingResult:
             "best_val_accuracy": self.best_val_accuracy,
             "best_checkpoint_path": self.best_checkpoint_path,
             "last_checkpoint_path": self.last_checkpoint_path,
+            "resumed_from_checkpoint": self.resumed_from_checkpoint,
+            "resumed_from_epoch": self.resumed_from_epoch,
+            "skipped_from_checkpoint": self.skipped_from_checkpoint,
             "training_duration_seconds": self.training_duration_seconds,
             "error_message": self.error_message,
         }

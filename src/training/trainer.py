@@ -11,7 +11,12 @@ from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from src.training.checkpoints import save_checkpoint
+from src.training.checkpoints import (
+    checkpoint_to_completed_result,
+    load_checkpoint_if_available,
+    save_checkpoint,
+    validate_checkpoint_metadata,
+)
 from src.training.curriculum import TrainingStage
 from src.training.metrics import AverageMeter
 from src.training.optimizers import build_optimizer
@@ -42,15 +47,49 @@ class ModelTrainer:
         """Train the configured model and return a structured result."""
 
         result = TrainingResult.pending(model_name=self.spec.model_name, metadata=self.spec.metadata)
-        result.mark_running()
-        self._notify(on_progress, result)
-        best_val_accuracy = 0.0
         start_time = perf_counter()
 
         try:
             stages = self._training_stages()
+            planned_total_epochs = sum(stage.epochs for stage in stages)
+            resume_checkpoint = self._load_resume_checkpoint(planned_total_epochs)
+            start_epoch = int(resume_checkpoint.get("epoch", 0)) if resume_checkpoint else 0
+            best_val_accuracy = self._checkpoint_best_val_accuracy(resume_checkpoint)
+
+            if resume_checkpoint and start_epoch >= planned_total_epochs:
+                result = checkpoint_to_completed_result(
+                    checkpoint=resume_checkpoint,
+                    model_name=self.spec.model_name,
+                    metadata=self.spec.metadata,
+                    best_checkpoint_path=self.spec.checkpoint_config.best_path,
+                    last_checkpoint_path=self.spec.checkpoint_config.last_path,
+                    skipped_from_checkpoint=self.spec.checkpoint_config.resume_path or "",
+                    duration_seconds=perf_counter() - start_time,
+                )
+                print(
+                    f"Checkpoint complete; skipping step at epoch "
+                    f"{start_epoch}/{planned_total_epochs}: {self.spec.checkpoint_config.resume_path}"
+                )
+                self._notify(on_progress, result)
+                return result
+
+            if resume_checkpoint:
+                self._restore_training_state(resume_checkpoint)
+                result.resumed_from_checkpoint = self.spec.checkpoint_config.resume_path
+                result.resumed_from_epoch = start_epoch
+                result.best_checkpoint_path = self.spec.checkpoint_config.best_path
+                result.last_checkpoint_path = self.spec.checkpoint_config.last_path
+                self._apply_checkpoint_metrics(result, resume_checkpoint)
+                print(
+                    f"Resuming from epoch {start_epoch}/{planned_total_epochs}: "
+                    f"{self.spec.checkpoint_config.resume_path}"
+                )
+
+            result.mark_running()
+            self._notify(on_progress, result)
             with tqdm(
-                total=sum(stage.epochs for stage in stages),
+                total=planned_total_epochs,
+                initial=start_epoch,
                 desc=self.spec.progress_desc,
                 unit="epoch",
                 leave=self.spec.progress_leave,
@@ -59,6 +98,8 @@ class ModelTrainer:
                 for stage in stages:
                     for _ in range(stage.epochs):
                         epoch += 1
+                        if epoch <= start_epoch:
+                            continue
                         train_metrics = self.train_one_epoch(stage.train_loader)
                         val_metrics = self.evaluate()
                         best_val_accuracy = max(best_val_accuracy, val_metrics["val_accuracy"])
@@ -71,7 +112,7 @@ class ModelTrainer:
                             best_val_accuracy=best_val_accuracy,
                         )
                         result.update_from_epoch(epoch_result)
-                        self._save_epoch_checkpoints(result, epoch_result)
+                        self._save_epoch_checkpoints(result, epoch_result, planned_total_epochs)
                         self._notify(on_progress, result)
                         progress.set_postfix(
                             stage=stage.name,
@@ -135,7 +176,12 @@ class ModelTrainer:
         prefix = "train" if training else "val"
         return {f"{prefix}_loss": loss_meter.average, f"{prefix}_accuracy": correct / max(1, total)}
 
-    def _save_epoch_checkpoints(self, result: TrainingResult, epoch_result: EpochResult) -> None:
+    def _save_epoch_checkpoints(
+        self,
+        result: TrainingResult,
+        epoch_result: EpochResult,
+        planned_total_epochs: int,
+    ) -> None:
         checkpoint_config = self.spec.checkpoint_config
         metrics: dict[str, Any] = {
             "train_loss": epoch_result.train_loss,
@@ -150,9 +196,11 @@ class ModelTrainer:
                 path=checkpoint_config.best_path,
                 model=self.spec.model,
                 optimizer=self.optimizer,
+                scaler=self.scaler,
                 epoch=epoch_result.epoch,
                 metrics=metrics,
                 metadata=self.spec.metadata,
+                planned_total_epochs=planned_total_epochs,
             )
             result.best_checkpoint_path = checkpoint_config.best_path
         if checkpoint_config.save_last and checkpoint_config.last_path:
@@ -160,9 +208,11 @@ class ModelTrainer:
                 path=checkpoint_config.last_path,
                 model=self.spec.model,
                 optimizer=self.optimizer,
+                scaler=self.scaler,
                 epoch=epoch_result.epoch,
                 metrics=metrics,
                 metadata=self.spec.metadata,
+                planned_total_epochs=planned_total_epochs,
             )
             result.last_checkpoint_path = checkpoint_config.last_path
 
@@ -175,3 +225,54 @@ class ModelTrainer:
         if self.spec.curriculum_schedule is not None:
             return list(self.spec.curriculum_schedule.stages)
         return [TrainingStage(name="standard", epochs=self.spec.config.epochs, train_loader=self.spec.train_loader)]
+
+    def _load_resume_checkpoint(self, planned_total_epochs: int) -> dict[str, Any] | None:
+        checkpoint_config = self.spec.checkpoint_config
+        if not checkpoint_config.resume or not checkpoint_config.resume_path:
+            return None
+        checkpoint = load_checkpoint_if_available(checkpoint_config.resume_path, map_location=self.spec.device)
+        if checkpoint is None:
+            return None
+        if validate_checkpoint_metadata(
+            checkpoint,
+            expected_metadata=self.spec.metadata,
+            planned_total_epochs=planned_total_epochs,
+        ):
+            return checkpoint
+        print(f"Ignoring checkpoint with mismatched metadata: {checkpoint_config.resume_path}")
+        return None
+
+    def _restore_training_state(self, checkpoint: dict[str, Any]) -> None:
+        self.spec.model.load_state_dict(checkpoint["model_state"])
+        optimizer_state = checkpoint.get("optimizer_state")
+        if optimizer_state is not None:
+            self.optimizer.load_state_dict(optimizer_state)
+        scaler_state = checkpoint.get("scaler_state")
+        if scaler_state is not None:
+            self.scaler.load_state_dict(scaler_state)
+
+    @staticmethod
+    def _checkpoint_best_val_accuracy(checkpoint: dict[str, Any] | None) -> float:
+        if checkpoint is None:
+            return 0.0
+        metrics = checkpoint.get("metrics") or {}
+        return float(metrics.get("best_val_accuracy", metrics.get("val_accuracy", 0.0)) or 0.0)
+
+    @staticmethod
+    def _apply_checkpoint_metrics(result: TrainingResult, checkpoint: dict[str, Any]) -> None:
+        metrics = checkpoint.get("metrics") or {}
+        epoch = int(checkpoint.get("epoch", 0))
+        if epoch <= 0:
+            return
+        result.update_from_epoch(
+            EpochResult(
+                epoch=epoch,
+                train_loss=float(metrics.get("train_loss", 0.0)),
+                train_accuracy=float(metrics.get("train_accuracy", 0.0)),
+                val_loss=float(metrics.get("val_loss", 0.0)),
+                val_accuracy=float(metrics.get("val_accuracy", 0.0)),
+                best_val_accuracy=float(
+                    metrics.get("best_val_accuracy", metrics.get("val_accuracy", 0.0)) or 0.0
+                ),
+            )
+        )
