@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 
 from src.experiments import part1, part2, training_runs
 from src.experiments.part1 import get_executable_tile_permutation_records, train_model_on_tile_permutation_records
@@ -10,7 +13,9 @@ from src.experiments.part2 import (
     train_part2_ablation_experiments,
 )
 from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
-from src.training.run import TrainingResult
+from src.training.checkpoints import load_checkpoint, save_checkpoint
+from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
+from src.training.trainer import ModelTrainer
 
 
 def test_executable_tile_permutation_records_returns_records():
@@ -83,7 +88,130 @@ def test_checkpoint_config_enabled_on_colab(tmp_path):
     assert checkpoint_config.save_last is True
     assert checkpoint_config.best_path.endswith("resnet18__tiles_2__perm_3__best.pt")
     assert checkpoint_config.last_path.endswith("resnet18__tiles_2__perm_3__last.pt")
+    assert checkpoint_config.resume is True
+    assert checkpoint_config.resume_path == checkpoint_config.last_path
     assert (tmp_path / "outputs" / "checkpoints" / "part1" / "run").is_dir()
+
+
+def test_colab_run_id_is_stable_for_same_config():
+    config = SimpleNamespace(
+        part="part1",
+        config_name="part1_default",
+        seed=42,
+        using_google_colab=True,
+    )
+
+    assert training_runs.build_experiment_run_id(config) == "part1_part1_default_seed_42"
+
+
+def _resume_test_spec(tmp_path, *, epochs: int, checkpoint_epoch: int) -> tuple[TrainingRunSpec, str, dict]:
+    metadata = {
+        "part": "part1",
+        "config_name": "test_config",
+        "run_id": "part1_test_config_seed_42",
+        "model_name": "linear",
+        "ablation_name": None,
+        "tiles_per_side": 2,
+        "tile_permutation_id": 3,
+        "tile_permutation_seed": 99,
+        "seed": 42,
+        "optimizer_name": "sgd",
+        "learning_rate": 0.01,
+        "weight_decay": 0.0,
+        "use_amp": False,
+    }
+    checkpoint_path = str(tmp_path / "linear__tiles_2__perm_3__last.pt")
+    checkpoint_model = nn.Linear(2, 2)
+    save_checkpoint(
+        path=checkpoint_path,
+        model=checkpoint_model,
+        optimizer=None,
+        epoch=checkpoint_epoch,
+        metrics={
+            "train_loss": 0.4,
+            "train_accuracy": 0.8,
+            "val_loss": 0.5,
+            "val_accuracy": 0.75,
+            "best_val_accuracy": 0.75,
+        },
+        metadata=metadata,
+        planned_total_epochs=epochs,
+    )
+
+    features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]])
+    labels = torch.tensor([0, 1, 0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="linear",
+        model=nn.Linear(2, 2),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=epochs, optimizer_name="sgd", learning_rate=0.01),
+        checkpoint_config=CheckpointConfig(
+            best_path=str(tmp_path / "linear__tiles_2__perm_3__best.pt"),
+            last_path=checkpoint_path,
+        ),
+        metadata=metadata,
+        progress_leave=False,
+    )
+    return spec, checkpoint_path, metadata
+
+
+def test_model_trainer_resumes_partial_last_checkpoint(tmp_path):
+    spec, checkpoint_path, _ = _resume_test_spec(tmp_path, epochs=2, checkpoint_epoch=1)
+
+    result = ModelTrainer(spec).fit()
+
+    assert result.status == "completed"
+    assert result.resumed_from_checkpoint == checkpoint_path
+    assert result.resumed_from_epoch == 1
+    assert [epoch_result.epoch for epoch_result in result.epoch_history] == [1, 2]
+    resumed_checkpoint = load_checkpoint(checkpoint_path, map_location="cpu")
+    assert resumed_checkpoint["epoch"] == 2
+
+
+def test_model_trainer_skips_complete_last_checkpoint(monkeypatch, tmp_path):
+    spec, checkpoint_path, _ = _resume_test_spec(tmp_path, epochs=2, checkpoint_epoch=2)
+
+    def fail_if_training_starts(*args, **kwargs):
+        raise AssertionError("complete checkpoints should skip training")
+
+    monkeypatch.setattr(ModelTrainer, "train_one_epoch", fail_if_training_starts)
+
+    result = ModelTrainer(spec).fit()
+
+    assert result.status == "completed"
+    assert result.skipped_from_checkpoint == checkpoint_path
+    assert result.val_accuracy == 0.75
+    assert result.last_checkpoint_path == checkpoint_path
+
+
+def test_model_trainer_ignores_mismatched_resume_checkpoint(tmp_path):
+    spec, checkpoint_path, metadata = _resume_test_spec(tmp_path, epochs=1, checkpoint_epoch=1)
+    mismatched_metadata = {**metadata, "tile_permutation_id": 999}
+    save_checkpoint(
+        path=checkpoint_path,
+        model=nn.Linear(2, 2),
+        optimizer=None,
+        epoch=1,
+        metrics={
+            "train_loss": 0.4,
+            "train_accuracy": 0.8,
+            "val_loss": 0.5,
+            "val_accuracy": 0.75,
+            "best_val_accuracy": 0.75,
+        },
+        metadata=mismatched_metadata,
+        planned_total_epochs=1,
+    )
+
+    result = ModelTrainer(spec).fit()
+
+    assert result.status == "completed"
+    assert result.resumed_from_checkpoint is None
+    assert result.skipped_from_checkpoint is None
 
 
 def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypatch, tmp_path):
@@ -312,7 +440,7 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
         raw_results_output_path=str(raw_results_path),
     )
 
-    assert progress_descriptions == ["resnet18 same_label_cutmix_only 2x2 permutation 0"]
+    assert progress_descriptions == ["resnet18 [same_label_cutmix_only] 2x2 permutation #0. epochs progress"]
     assert "freeze_backbone" not in spec_kwargs[0]["overrides"]
     assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "same_label_cutmix"
     assert rows[0]["run_status"] == "completed"

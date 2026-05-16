@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC, Sequence
+from datetime import datetime, timezone
 import os
 from typing import Any, Mapping, Optional
 
@@ -71,6 +72,18 @@ def clean_checkpoint_name_part(value: Any) -> str:
     """Return a value safe to use inside a checkpoint filename."""
 
     return str(value).replace(os.sep, "_").replace(" ", "_").replace(":", "_")
+
+
+def build_experiment_run_id(config: CVExperimentConfig) -> str:
+    """Return a stable Colab run id and timestamped local run id."""
+
+    if checkpoints_enabled(config):
+        part = clean_checkpoint_name_part(getattr(config, "part", "experiment"))
+        config_name = clean_checkpoint_name_part(getattr(config, "config_name", part))
+        seed = clean_checkpoint_name_part(getattr(config, "seed", 0))
+        return f"{part}_{config_name}_seed_{seed}"
+    part = clean_checkpoint_name_part(getattr(config, "part", "experiment"))
+    return datetime.now(timezone.utc).strftime(f"{part}_%Y%m%d_%H%M%S")
 
 
 def checkpoint_dir_path(*, config: CVExperimentConfig, run_id: str) -> str:
@@ -151,6 +164,12 @@ def build_training_metadata(
         "tile_permutation_id": record.tile_permutation_id,
         "tile_permutation_seed": record.tile_permutation_seed,
         "seed": seed,
+        "optimizer_name": getattr(config, "optimizer", "adamw"),
+        "learning_rate": float(getattr(config, "learning_rate", 0.0003)),
+        "weight_decay": float(getattr(config, "weight_decay", 0.0)),
+        "use_amp": bool(getattr(config, "use_amp", False)),
+        "pretrained": bool(getattr(config, "pretrained", False)),
+        "freeze_backbone": bool(getattr(config, "freeze_backbone", False)),
     }
     metadata.update(dict(metadata_overrides or {}))
     return metadata
@@ -176,14 +195,22 @@ def build_training_run_spec(
     """Build the shared OOP training specification for one run."""
 
     run_options = dict(overrides or {})
+    training_config = build_training_config(config)
+    pretrained = bool(run_options.get("pretrained", getattr(config, "pretrained", False)))
+    freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False)))
     print(f"Building model '{model_name}'...")
     model = get_model(
         model_name,
         num_classes=int(getattr(config, "num_classes", 2)),
-        pretrained=bool(run_options.get("pretrained", getattr(config, "pretrained", False))),
+        pretrained=pretrained,
         device=device,
-        freeze_backbone=bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False))),
+        freeze_backbone=freeze_backbone,
     )
+    resolved_metadata_overrides = {
+        "pretrained": pretrained,
+        "freeze_backbone": freeze_backbone,
+        **dict(metadata_overrides or {}),
+    }
     return TrainingRunSpec(
         model_name=model_name,
         model=model,
@@ -191,7 +218,7 @@ def build_training_run_spec(
         val_loader=val_loader,
         criterion=nn.CrossEntropyLoss(),
         device=device,
-        config=build_training_config(config),
+        config=training_config,
         checkpoint_config=build_checkpoint_config(
             config=config,
             run_id=run_id,
@@ -206,7 +233,7 @@ def build_training_run_spec(
             record=record,
             seed=seed,
             ablation_name=ablation_name,
-            metadata_overrides=metadata_overrides,
+            metadata_overrides=resolved_metadata_overrides,
         ),
         progress_desc=progress_desc or f"{model_name} epochs",
         batch_augmentation=batch_augmentation,

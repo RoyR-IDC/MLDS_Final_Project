@@ -1,0 +1,226 @@
+"""Google Colab setup helpers that avoid binary package churn."""
+
+from __future__ import annotations
+
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+import os
+import re
+import subprocess
+import sys
+from typing import Iterable
+
+
+DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
+
+COLAB_PREINSTALLED_REQUIREMENT_PREFIXES = (
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "torch",
+    "torchvision",
+)
+
+COLAB_SMOKE_CHECK_IMPORTS = {
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "scipy": "scipy",
+    "scikit-learn": "sklearn",
+    "torch": "torch",
+    "torchvision": "torchvision",
+    "timm": "timm",
+    "pyyaml": "yaml",
+}
+
+_REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
+
+
+def _path_looks_like_project_root(path: Path) -> bool:
+    """Return whether ``path`` looks like this repository root."""
+
+    return (path / "src").is_dir() and ((path / "requirements.txt").exists() or (path / ".git").exists())
+
+
+def is_google_colab_runtime() -> bool:
+    """Return True when code is executing inside Google Colab."""
+
+    try:
+        import google.colab  # type: ignore  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def mount_colab_drive_if_available() -> None:
+    """Mount Google Drive in Colab when the Drive API is available."""
+
+    if not is_google_colab_runtime():
+        return
+    try:
+        from google.colab import drive  # type: ignore
+
+        drive.mount("/content/drive")
+    except Exception as exc:
+        print(f"Google Drive was not mounted automatically: {exc}")
+
+
+def find_project_root(start: str | os.PathLike[str] | None = None) -> str:
+    """Find the repository root from the current notebook/script location."""
+
+    drive_root = Path(DEFAULT_COLAB_DRIVE_ROOT)
+    if start is None and drive_root.exists() and _path_looks_like_project_root(drive_root):
+        return str(drive_root)
+
+    current = Path(start or os.getcwd()).resolve()
+    candidates = [current, *current.parents]
+    for candidate in candidates:
+        if _path_looks_like_project_root(candidate):
+            return str(candidate)
+    return str(current)
+
+
+def prepare_project_imports(project_root: str | Path | None = None) -> Path:
+    """Resolve the project root, add it to ``sys.path``, and make it the cwd."""
+
+    if project_root is None:
+        root = Path(find_project_root()).resolve()
+    else:
+        root = Path(project_root).resolve()
+        if not _path_looks_like_project_root(root):
+            root = Path(find_project_root(root)).resolve()
+
+    root_text = str(root)
+    if root_text not in sys.path:
+        sys.path.insert(0, root_text)
+    os.chdir(root)
+    return root
+
+
+def requirement_package_name(line: str) -> str | None:
+    """Return the normalized package name from one requirements line."""
+
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or stripped.startswith("-"):
+        return None
+    match = _REQUIREMENT_NAME_RE.match(stripped)
+    if match is None:
+        return None
+    return match.group(1).lower().replace("_", "-")
+
+
+def filter_colab_requirements_lines(
+    lines: Iterable[str],
+    *,
+    skip_packages: Iterable[str] = COLAB_PREINSTALLED_REQUIREMENT_PREFIXES,
+) -> list[str]:
+    """Return requirements lines that are safe to install into a live Colab kernel."""
+
+    skip = {package.lower().replace("_", "-") for package in skip_packages}
+    filtered: list[str] = []
+    for line in lines:
+        package_name = requirement_package_name(line)
+        if package_name is None:
+            continue
+        if package_name in skip:
+            continue
+        filtered.append(line)
+    return filtered
+
+
+def write_filtered_colab_requirements(
+    project_root: str | Path,
+    output_path: str | Path = "/tmp/mlds_colab_requirements.txt",
+) -> Path:
+    """Write a Colab-safe requirements file and return its path."""
+
+    project_root = Path(project_root)
+    filtered_requirements = Path(output_path)
+    requirements_path = project_root / "requirements.txt"
+    filtered_lines = filter_colab_requirements_lines(requirements_path.read_text().splitlines())
+    filtered_requirements.write_text("\n".join(filtered_lines) + "\n")
+    return filtered_requirements
+
+
+def install_project_requirements_for_colab(project_root: str | Path) -> None:
+    """Install lightweight project requirements without replacing Colab binary wheels."""
+
+    if not is_google_colab_runtime():
+        return
+
+    filtered_requirements = write_filtered_colab_requirements(project_root)
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(filtered_requirements)])
+
+
+def bootstrap_notebook_runtime(
+    project_root: str | Path | None = None,
+    *,
+    install_requirements: bool = True,
+    print_diagnostics: bool = True,
+) -> Path:
+    """Prepare imports, install Colab-safe deps, and print runtime diagnostics."""
+
+    if is_google_colab_runtime():
+        mount_colab_drive_if_available()
+    root = prepare_project_imports(project_root)
+    if install_requirements:
+        install_project_requirements_for_colab(root)
+    if print_diagnostics:
+        print_colab_runtime_diagnostics()
+        print(f"Project root: {root}")
+    return root
+
+
+def smoke_check_colab_packages(*, strict: bool = True) -> dict[str, str]:
+    """Import key packages and return their installed versions."""
+
+    versions: dict[str, str] = {}
+    for package_name, import_name in COLAB_SMOKE_CHECK_IMPORTS.items():
+        try:
+            import_module(import_name)
+        except ImportError:
+            if strict:
+                raise
+            versions[package_name] = "missing"
+            continue
+        try:
+            versions[package_name] = version(package_name)
+        except PackageNotFoundError:
+            versions[package_name] = "installed"
+    return versions
+
+
+def print_colab_runtime_diagnostics(selected_device: object | None = None) -> None:
+    """Print concise Colab package and CUDA diagnostics."""
+
+    import torch
+
+    versions = smoke_check_colab_packages(strict=is_google_colab_runtime())
+    print(f"Python: {sys.version.split()[0]}")
+    print("Package versions:")
+    for package_name, package_version in versions.items():
+        print(f"  {package_name}: {package_version}")
+    print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"CUDA device: {torch.cuda.get_device_name(0)}")
+    if selected_device is not None:
+        print(f"Selected device: {selected_device}")
+
+
+def warn_if_colab_runtime_without_cuda(selected_device: object) -> None:
+    """Print a clear warning when a Colab run is not using CUDA."""
+
+    if not is_google_colab_runtime():
+        return
+
+    import torch
+
+    device_type = getattr(selected_device, "type", str(selected_device).split(":", maxsplit=1)[0])
+    if device_type != "cuda" or not torch.cuda.is_available():
+        print(
+            "WARNING: This Colab runtime is not using CUDA. "
+            "Choose Runtime > Change runtime type > T4 GPU, reconnect, and rerun setup."
+        )
