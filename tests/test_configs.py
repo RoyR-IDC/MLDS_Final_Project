@@ -223,7 +223,11 @@ def test_find_project_root_walks_up_from_notebook_directory(tmp_path):
     project_root = tmp_path / "MLDS_Final_Project"
     notebook_dir = project_root / "src" / "notebooks"
     notebook_dir.mkdir(parents=True)
-    (project_root / "requirements.txt").write_text("pytest\n")
+    (project_root / "src" / "utils").mkdir(parents=True)
+    (project_root / "src" / "evaluation").mkdir(parents=True)
+    (project_root / "src" / "__init__.py").write_text("")
+    (project_root / "src" / "utils" / "notebook_setup.py").write_text("")
+    (project_root / "src" / "evaluation" / "experiment_results.py").write_text("")
 
     assert find_project_root(notebook_dir) == str(project_root)
 

@@ -269,6 +269,62 @@ def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):
     assert all(bar.kwargs["leave"] is False for bar in batch_bars)
 
 
+def test_model_trainer_validates_expected_image_shape():
+    features = torch.rand(2, 3, 7, 8)
+    labels = torch.tensor([0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="flatten_linear",
+        model=nn.Sequential(nn.Flatten(), nn.Linear(3 * 7 * 8, 2)),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
+        checkpoint_config=CheckpointConfig(save_best=False, save_last=False),
+        expected_input_size=8,
+        progress_leave=False,
+    )
+
+    try:
+        ModelTrainer(spec).fit()
+    except ValueError as exc:
+        assert "Expected image tensors with shape" in str(exc)
+    else:
+        raise AssertionError("Expected invalid image shape to raise")
+
+
+def test_model_trainer_profiles_train_and_validation_phases():
+    features = torch.rand(4, 3, 8, 8)
+    labels = torch.tensor([0, 1, 0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="flatten_linear",
+        model=nn.Sequential(nn.Flatten(), nn.Linear(3 * 8 * 8, 2)),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(
+            epochs=1,
+            optimizer_name="sgd",
+            learning_rate=0.01,
+            profile_performance=True,
+        ),
+        checkpoint_config=CheckpointConfig(save_best=False, save_last=False),
+        metadata={"run_id": "run", "tile_permutation_id": 0},
+        expected_input_size=8,
+        progress_leave=False,
+    )
+
+    result = ModelTrainer(spec).fit()
+
+    assert [row["phase"] for row in result.profile_rows] == ["train", "val"]
+    assert all(row["total_batches"] == len(loader) for row in result.profile_rows)
+    assert all(row["measured_batches"] == len(loader) for row in result.profile_rows)
+    assert all(row["total_seconds"] >= row["compute_seconds"] for row in result.profile_rows)
+
+
 def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypatch, tmp_path):
     config = SimpleNamespace(
         part="part1",
@@ -423,6 +479,72 @@ def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch
     saved = pd.read_csv(raw_results_path).sort_values("tile_permutation_id")
     assert saved["run_status"].tolist() == ["completed", "failed"]
     assert saved["error_message"].tolist()[1] == "simulated crash"
+
+
+def test_train_model_and_save_progress_writes_profile_rows(monkeypatch, tmp_path):
+    config = SimpleNamespace(part="part1", config_name="test_config")
+    record = TilePermutationRecord(
+        tiles_per_side=2,
+        tile_permutation_id=0,
+        tile_permutation_seed=99,
+        tile_permutation=identity_tile_permutation(2),
+    )
+    rows = [
+        training_runs.build_pending_training_result_row(
+            config=config,
+            run_id="run",
+            model_name="resnet18",
+            record=record,
+            seed=42,
+        )
+    ]
+    profile_path = tmp_path / "profile.csv"
+    spec = SimpleNamespace(
+        model_name="resnet18",
+        config=SimpleNamespace(profile_performance=True),
+        profile_output_path=str(profile_path),
+    )
+
+    class FakeTrainer:
+        def __init__(self, spec):
+            self.spec = spec
+
+        def fit(self, on_progress):
+            result = TrainingResult.pending(model_name=self.spec.model_name, metadata={})
+            result.profile_rows = [
+                {
+                    "run_id": "run",
+                    "model_name": self.spec.model_name,
+                    "phase": "train",
+                    "total_seconds": 1.25,
+                }
+            ]
+            result.mark_completed(1.25)
+            on_progress(result)
+            return result
+
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
+
+    training_runs.train_model_and_save_progress(
+        spec=spec,
+        config=config,
+        run_id="run",
+        record=record,
+        seed=42,
+        rows=rows,
+        row_index=0,
+        raw_results_output_path=None,
+    )
+
+    saved = pd.read_csv(profile_path)
+    assert saved[["run_id", "model_name", "phase", "total_seconds"]].to_dict("records") == [
+        {
+            "run_id": "run",
+            "model_name": "resnet18",
+            "phase": "train",
+            "total_seconds": 1.25,
+        }
+    ]
 
 
 def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tmp_path):

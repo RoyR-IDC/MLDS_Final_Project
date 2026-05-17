@@ -6,6 +6,7 @@ pytest.importorskip("torchvision")
 from PIL import Image
 
 from src.preprocessing.dataloaders import build_dataloaders
+import src.preprocessing.dataloaders as dataloaders_module
 from src.preprocessing.image_transforms import make_tile_compatible_image_size
 from src.preprocessing.tile_permutations import identity_tile_permutation
 
@@ -38,3 +39,53 @@ def test_grid_three_dataloader_adjusts_image_size(tmp_path):
 
     assert images.shape == (2, 3, 225, 225)
     assert targets.shape == (2,)
+
+
+def test_dataloader_uses_cuda_loader_options_when_workers_enabled(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    samples = []
+    for index in range(4):
+        label_name = "cat" if index % 2 == 0 else "dog"
+        path = data_dir / f"{label_name}.{index}.jpg"
+        _make_image(path, (index * 20 % 255, index * 30 % 255, index * 40 % 255))
+        samples.append((str(path), 0 if label_name == "cat" else 1))
+    monkeypatch.setattr(dataloaders_module.torch.cuda, "is_available", lambda: True)
+
+    train_loader, _ = build_dataloaders(
+        samples[:2],
+        samples[2:],
+        image_size=224,
+        batch_size=2,
+        num_workers=2,
+    )
+
+    assert train_loader.pin_memory is True
+    assert train_loader.num_workers == 2
+    assert train_loader.persistent_workers is True
+    assert train_loader.prefetch_factor == 2
+
+
+def test_dataloader_omits_worker_only_options_when_workers_disabled(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    samples = []
+    for index in range(4):
+        label_name = "cat" if index % 2 == 0 else "dog"
+        path = data_dir / f"{label_name}.{index}.jpg"
+        _make_image(path, (index * 20 % 255, index * 30 % 255, index * 40 % 255))
+        samples.append((str(path), 0 if label_name == "cat" else 1))
+    monkeypatch.setattr(dataloaders_module.torch.cuda, "is_available", lambda: False)
+
+    train_loader, _ = build_dataloaders(
+        samples[:2],
+        samples[2:],
+        image_size=224,
+        batch_size=2,
+        num_workers=0,
+    )
+
+    assert train_loader.pin_memory is False
+    assert train_loader.num_workers == 0
+    assert train_loader.persistent_workers is False
+    assert train_loader.prefetch_factor is None

@@ -10,6 +10,7 @@ from src.utils.colab import (
     mount_colab_drive_if_available,
     prepare_project_imports,
     requirement_package_name,
+    stage_colab_data_to_local_disk,
 )
 
 
@@ -158,3 +159,50 @@ def test_colab_mount_passes_force_remount(monkeypatch):
     mount_colab_drive_if_available(force_remount=True)
 
     assert mount_calls == [("/content/drive", True)]
+
+
+def test_stage_colab_data_copies_drive_images_to_local_disk(tmp_path, monkeypatch):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    source.mkdir(parents=True)
+    (source / "cat.0.jpg").write_bytes(b"cat")
+    (source / "dog.1.jpg").write_bytes(b"dog")
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        using_google_colab=True,
+    )
+
+    assert staged == str(destination)
+    assert sorted(path.name for path in destination.iterdir()) == ["cat.0.jpg", "dog.1.jpg"]
+
+
+def test_stage_colab_data_reuses_existing_local_copy(tmp_path, monkeypatch):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    source.mkdir(parents=True)
+    destination.mkdir(parents=True)
+    for filename in ("cat.0.jpg", "dog.1.jpg"):
+        (source / filename).write_bytes(b"source")
+        (destination / filename).write_bytes(b"local")
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        using_google_colab=True,
+    )
+
+    assert staged == str(destination)
+    assert (destination / "cat.0.jpg").read_bytes() == b"local"
+
+
+def test_stage_colab_data_leaves_non_colab_path_unchanged(tmp_path):
+    source = tmp_path / "train"
+    source.mkdir()
+
+    staged = stage_colab_data_to_local_disk(source, using_google_colab=False)
+
+    assert staged == str(source)

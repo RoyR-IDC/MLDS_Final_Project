@@ -57,6 +57,7 @@ from src.preprocessing.augmentations import (
     SameLabelCutMix,
 )
 from src.preprocessing.dataloaders import build_dataloaders
+from src.preprocessing.image_transforms import make_tile_compatible_image_size
 from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import (
     TilePermutation,
@@ -84,6 +85,23 @@ def _ablation_curriculum_name(ablation: Mapping[str, Any]) -> str | None:
 
 def _patch_shuffle_tiles(record: TilePermutationRecord) -> int:
     return int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES)
+
+
+def _expected_part2_input_size(
+    *,
+    config: CVExperimentConfig,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+) -> int:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    curriculum_name = _ablation_curriculum_name(ablation)
+    if augmentation_name in {"patch_shuffle", "combined_augmentations"}:
+        tiles_per_side = _patch_shuffle_tiles(record)
+    elif curriculum_name == "corruption_probability":
+        tiles_per_side = max(int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES), PATCH_SHUFFLE_DEFAULT_TILES)
+    else:
+        tiles_per_side = int(record.tiles_per_side or 1)
+    return make_tile_compatible_image_size(config.image_size, tiles_per_side)
 
 
 def _stage_epochs(total_epochs: int, num_stages: int) -> list[int]:
@@ -346,6 +364,11 @@ def build_part2_training_run_spec(
         progress_desc=progress_desc,
         batch_augmentation=batch_augmentation,
         curriculum_schedule=curriculum_schedule,
+        expected_input_size=_expected_part2_input_size(
+            config=config,
+            ablation=ablation,
+            record=record,
+        ),
         metadata_overrides=_part2_metadata_overrides(
             ablation=ablation,
             batch_augmentation=batch_augmentation,
