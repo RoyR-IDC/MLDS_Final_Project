@@ -46,11 +46,50 @@ _REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
 def _path_looks_like_project_root(path: Path) -> bool:
     """Return whether ``path`` looks like this repository root."""
 
-    return (
-        (path / "src" / "__init__.py").is_file()
-        and (path / "src" / "utils" / "notebook_setup.py").is_file()
-        and (path / "src" / "evaluation" / "experiment_results.py").is_file()
-    )
+    try:
+        return (
+            (path / "src" / "__init__.py").is_file()
+            and (path / "src" / "utils" / "notebook_setup.py").is_file()
+            and (path / "src" / "evaluation" / "experiment_results.py").is_file()
+        )
+    except OSError:
+        return False
+
+
+def _safe_resolve(path: str | os.PathLike[str]) -> Path | None:
+    """Resolve a path, returning None when a Colab Drive mount is disconnected."""
+
+    try:
+        return Path(path).resolve()
+    except OSError:
+        return None
+
+
+def _safe_cwd() -> Path:
+    """Return the current directory, falling back when cwd is a broken mount."""
+
+    try:
+        return Path.cwd().resolve()
+    except OSError:
+        return Path("/content") if Path("/content").exists() else Path.home()
+
+
+def _safe_glob(path: Path, pattern: str) -> list[Path]:
+    """Glob a path without letting disconnected mounts break notebook setup."""
+
+    try:
+        return list(path.glob(pattern))
+    except OSError:
+        return []
+
+
+def _safe_exists(path: Path) -> bool:
+    """Check path existence without failing on disconnected mounts."""
+
+    try:
+        return path.exists()
+    except OSError:
+        return False
 
 
 def _module_file(module_name: str) -> Path | None:
@@ -89,18 +128,22 @@ def _remove_stale_src_modules(project_root: Path) -> None:
 def _candidate_project_roots(start: str | os.PathLike[str] | None = None) -> list[Path]:
     """Return likely project roots without doing an expensive full Drive walk."""
 
-    current = Path(start or os.getcwd()).resolve()
-    candidates = [current, *current.parents]
+    current = _safe_resolve(start) if start is not None else _safe_cwd()
+    candidates = [current, *current.parents] if current is not None else []
     candidates.extend(Path(root) for root in COMMON_COLAB_PROJECT_ROOTS)
 
     drive_root = Path("/content/drive/MyDrive")
-    if drive_root.exists():
-        candidates.extend(drive_root.glob("MLDS_Final_Project"))
-        candidates.extend(drive_root.glob("*/MLDS_Final_Project"))
+    if _safe_exists(drive_root):
+        candidates.extend(_safe_glob(drive_root, "MLDS_Final_Project"))
+        candidates.extend(_safe_glob(drive_root, "*/MLDS_Final_Project"))
 
     unique_candidates: list[Path] = []
     seen: set[Path] = set()
     for candidate in candidates:
+        resolved_candidate = _safe_resolve(candidate)
+        if resolved_candidate is None:
+            continue
+        candidate = resolved_candidate
         if candidate in seen:
             continue
         unique_candidates.append(candidate)
@@ -138,7 +181,8 @@ def find_project_root(start: str | os.PathLike[str] | None = None) -> str:
     for candidate in _candidate_project_roots(start):
         if _path_looks_like_project_root(candidate):
             return str(candidate)
-    return str(Path(start or os.getcwd()).resolve())
+    fallback = _safe_resolve(start) if start is not None else _safe_cwd()
+    return str(fallback)
 
 
 def prepare_project_imports(project_root: str | Path | None = None) -> Path:
@@ -147,7 +191,9 @@ def prepare_project_imports(project_root: str | Path | None = None) -> Path:
     if project_root is None:
         root = Path(find_project_root()).resolve()
     else:
-        root = Path(project_root).resolve()
+        root = _safe_resolve(project_root)
+        if root is None:
+            root = Path(find_project_root(project_root)).resolve()
         if not _path_looks_like_project_root(root):
             root = Path(find_project_root(root)).resolve()
     if not _path_looks_like_project_root(root):

@@ -68,6 +68,15 @@ def test_colab_find_project_root_checks_nearby_drive_style_locations(tmp_path, m
     assert find_project_root(tmp_path / "unrelated") == str(project_root)
 
 
+def test_colab_find_project_root_survives_disconnected_cwd(tmp_path, monkeypatch):
+    project_root = tmp_path / "MLDS_Final_Project"
+    write_minimal_project(project_root)
+    monkeypatch.setattr(colab, "COMMON_COLAB_PROJECT_ROOTS", (str(project_root),))
+    monkeypatch.setattr(colab.Path, "cwd", classmethod(lambda cls: (_ for _ in ()).throw(OSError(107, "Transport endpoint is not connected"))))
+
+    assert find_project_root() == str(project_root)
+
+
 def test_prepare_project_imports_adds_root_once_and_changes_cwd(tmp_path, monkeypatch):
     project_root = tmp_path / "MLDS_Final_Project"
     notebook_dir = project_root / "src" / "notebooks"

@@ -28,6 +28,10 @@ def test_part_notebooks_bootstrap_full_project_before_src_imports():
         assert "src/__init__.py" in setup_source
         assert "src/utils/notebook_setup.py" in setup_source
         assert "src/evaluation/experiment_results.py" in setup_source
+        assert "force_remount=True" in setup_source
+        assert "def _safe_cwd()" in setup_source
+        assert "def _safe_exists(path)" in setup_source
+        assert "except OSError:" in setup_source
         assert "_clear_stale_src_modules(_PROJECT_ROOT)" in setup_source
         assert "importlib.invalidate_caches()" in setup_source
 
