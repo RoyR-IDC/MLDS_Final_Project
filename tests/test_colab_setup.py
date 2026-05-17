@@ -1,5 +1,6 @@
 import sys
 
+import src.utils.colab as colab
 from src.utils.colab import (
     COLAB_PREINSTALLED_REQUIREMENT_PREFIXES,
     filter_colab_requirements_lines,
@@ -47,6 +48,16 @@ def test_colab_find_project_root_walks_up_from_notebook_directory(tmp_path):
     (project_root / "requirements.txt").write_text("pytest\n")
 
     assert find_project_root(notebook_dir) == str(project_root)
+
+
+def test_colab_find_project_root_checks_nearby_drive_style_locations(tmp_path, monkeypatch):
+    project_root = tmp_path / "Colab Notebooks" / "MLDS_Final_Project"
+    (project_root / "src").mkdir(parents=True)
+    (project_root / "requirements.txt").write_text("pytest\n")
+    monkeypatch.setattr(colab, "COMMON_COLAB_PROJECT_ROOTS", (str(project_root),))
+    monkeypatch.chdir(tmp_path)
+
+    assert find_project_root(tmp_path / "unrelated") == str(project_root)
 
 
 def test_prepare_project_imports_adds_root_once_and_changes_cwd(tmp_path, monkeypatch):

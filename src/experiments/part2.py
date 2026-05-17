@@ -20,7 +20,21 @@ from src.evaluation.experiment_results import (
 from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
 import src.experiments.training_runs as _training_runs
 
-if not hasattr(_training_runs, "checkpoints_enabled"):
+_REQUIRED_TRAINING_RUN_SYMBOLS = {
+    "build_pending_training_result_row",
+    "build_experiment_run_id",
+    "build_training_run_spec",
+    "checkpoint_dir_path",
+    "checkpoints_enabled",
+    "format_dataloader_summary",
+    "format_elapsed_time",
+    "format_stage_dataloader_summary",
+    "format_stage_summary",
+    "train_model_and_save_progress",
+    "training_result_row_key",
+}
+
+if not _REQUIRED_TRAINING_RUN_SYMBOLS.issubset(vars(_training_runs)):
     importlib.reload(_training_runs)
 
 from src.experiments.training_runs import (

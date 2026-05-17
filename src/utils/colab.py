@@ -13,6 +13,11 @@ from typing import Iterable
 
 
 DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
+COMMON_COLAB_PROJECT_ROOTS = (
+    DEFAULT_COLAB_DRIVE_ROOT,
+    "/content/MLDS_Final_Project",
+    "/content/drive/MyDrive/Colab Notebooks/MLDS_Final_Project",
+)
 
 COLAB_PREINSTALLED_REQUIREMENT_PREFIXES = (
     "matplotlib",
@@ -44,6 +49,28 @@ def _path_looks_like_project_root(path: Path) -> bool:
     return (path / "src").is_dir() and ((path / "requirements.txt").exists() or (path / ".git").exists())
 
 
+def _candidate_project_roots(start: str | os.PathLike[str] | None = None) -> list[Path]:
+    """Return likely project roots without doing an expensive full Drive walk."""
+
+    current = Path(start or os.getcwd()).resolve()
+    candidates = [current, *current.parents]
+    candidates.extend(Path(root) for root in COMMON_COLAB_PROJECT_ROOTS)
+
+    drive_root = Path("/content/drive/MyDrive")
+    if drive_root.exists():
+        candidates.extend(drive_root.glob("MLDS_Final_Project"))
+        candidates.extend(drive_root.glob("*/MLDS_Final_Project"))
+
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        unique_candidates.append(candidate)
+        seen.add(candidate)
+    return unique_candidates
+
+
 def is_google_colab_runtime() -> bool:
     """Return True when code is executing inside Google Colab."""
 
@@ -71,16 +98,10 @@ def mount_colab_drive_if_available() -> None:
 def find_project_root(start: str | os.PathLike[str] | None = None) -> str:
     """Find the repository root from the current notebook/script location."""
 
-    drive_root = Path(DEFAULT_COLAB_DRIVE_ROOT)
-    if start is None and drive_root.exists() and _path_looks_like_project_root(drive_root):
-        return str(drive_root)
-
-    current = Path(start or os.getcwd()).resolve()
-    candidates = [current, *current.parents]
-    for candidate in candidates:
+    for candidate in _candidate_project_roots(start):
         if _path_looks_like_project_root(candidate):
             return str(candidate)
-    return str(current)
+    return str(Path(start or os.getcwd()).resolve())
 
 
 def prepare_project_imports(project_root: str | Path | None = None) -> Path:
