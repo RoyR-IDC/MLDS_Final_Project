@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 from src.experiments.results import build_result_row, build_training_result_row, save_run_rows
 from src.models.factory import get_model
 from src.preprocessing.augmentations import BatchAugmentation
+from src.preprocessing.image_transforms import make_tile_compatible_image_size
 from src.preprocessing.tile_permutations import TilePermutationRecord
 from src.training.curriculum import CurriculumSchedule
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
@@ -139,6 +140,8 @@ def build_training_config(config: CVExperimentConfig) -> TrainingConfig:
         learning_rate=float(getattr(config, "learning_rate", 0.0003)),
         weight_decay=float(getattr(config, "weight_decay", 0.0)),
         use_amp=bool(getattr(config, "use_amp", False)),
+        profile_performance=bool(getattr(config, "profile_performance", False)),
+        profile_warmup_batches=int(getattr(config, "profile_warmup_batches", 0)),
     )
 
 
@@ -191,6 +194,7 @@ def build_training_run_spec(
     batch_augmentation: BatchAugmentation | None = None,
     curriculum_schedule: CurriculumSchedule | None = None,
     metadata_overrides: Optional[Mapping[str, Any]] = None,
+    expected_input_size: int | None = None,
 ) -> TrainingRunSpec:
     """Build the shared OOP training specification for one run."""
 
@@ -211,6 +215,10 @@ def build_training_run_spec(
         "freeze_backbone": freeze_backbone,
         **dict(metadata_overrides or {}),
     }
+    resolved_expected_input_size = expected_input_size or make_tile_compatible_image_size(
+        int(getattr(config, "image_size", 224)),
+        int(record.tiles_per_side or 1),
+    )
     return TrainingRunSpec(
         model_name=model_name,
         model=model,
@@ -238,7 +246,16 @@ def build_training_run_spec(
         progress_desc=progress_desc or f"{model_name} epochs",
         batch_augmentation=batch_augmentation,
         curriculum_schedule=curriculum_schedule,
+        expected_input_size=resolved_expected_input_size,
+        profile_output_path=profile_output_path(config),
     )
+
+
+def profile_output_path(config: CVExperimentConfig) -> str:
+    """Return the profiling CSV path for an experiment config."""
+
+    profile_dir = getattr(config, "profile_output_dir", None) or getattr(config, "results_dir", "outputs/results")
+    return os.path.join(str(profile_dir), f"{getattr(config, 'part', 'experiment')}_profile_metrics.csv")
 
 
 def build_pending_training_result_row(
@@ -312,6 +329,19 @@ def train_model_and_save_progress(
             save_run_rows(
                 rows=rows,
                 output_path=raw_results_output_path,
+                run_id=run_id,
+                model_name=spec.model_name,
+            )
+        spec_config = getattr(spec, "config", None)
+        if (
+            spec_config is not None
+            and getattr(spec_config, "profile_performance", False)
+            and getattr(spec, "profile_output_path", None)
+            and result.profile_rows
+        ):
+            save_run_rows(
+                rows=result.profile_rows,
+                output_path=spec.profile_output_path,
                 run_id=run_id,
                 model_name=spec.model_name,
             )

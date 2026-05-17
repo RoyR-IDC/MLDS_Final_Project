@@ -76,6 +76,7 @@ def build_dataloaders(
     dataloader_options = {"num_workers": num_workers, "pin_memory": pin_memory}
     if num_workers > 0:
         dataloader_options["persistent_workers"] = True
+        dataloader_options["prefetch_factor"] = 2
     return (
         DataLoader(train_dataset, batch_size=batch_size, shuffle=True, **dataloader_options),
         DataLoader(val_dataset, batch_size=batch_size, shuffle=False, **dataloader_options),

@@ -41,6 +41,8 @@ class TrainingConfig:
     learning_rate: float
     weight_decay: float = 0.0
     use_amp: bool = False
+    profile_performance: bool = False
+    profile_warmup_batches: int = 0
 
 
 @dataclass
@@ -72,6 +74,8 @@ class TrainingRunSpec:
     progress_leave: bool = True
     batch_augmentation: Optional[BatchAugmentation] = None
     curriculum_schedule: Optional[CurriculumSchedule] = None
+    expected_input_size: Optional[int] = None
+    profile_output_path: Optional[str] = None
 
 
 @dataclass
@@ -94,6 +98,7 @@ class TrainingResult:
     skipped_from_checkpoint: Optional[str] = None
     training_duration_seconds: Optional[float] = None
     error_message: Optional[str] = None
+    profile_rows: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def pending(cls, *, model_name: str, metadata: Mapping[str, Any]) -> "TrainingResult":

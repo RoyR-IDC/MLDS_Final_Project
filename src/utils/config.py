@@ -9,6 +9,7 @@ import os
 
 from src.models.registry import validate_model_name, validate_model_names
 from src.utils.colab import (
+    DEFAULT_COLAB_LOCAL_DATA_DIR,
     DEFAULT_COLAB_DRIVE_ROOT,
     find_project_root,
     is_google_colab_runtime,
@@ -22,7 +23,7 @@ DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
 PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 2, 4, 6, 8, 10, 12]
 PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES = [1, 4]
 COLAB_BATCH_SIZE = 64
-COLAB_NUM_WORKERS = 2
+COLAB_NUM_WORKERS = 4
 
 
 def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
@@ -158,6 +159,11 @@ class CVExperimentConfig:
     # environment configuration
     using_google_colab: bool = False
     plot_samples: bool = False
+    stage_colab_data_to_local_disk: bool = True
+    colab_local_data_dir: str = DEFAULT_COLAB_LOCAL_DATA_DIR
+    profile_performance: bool = False
+    profile_warmup_batches: int = 0
+    profile_output_dir: str = ""
 
     def __post_init__(self) -> None:
         self._validate_config_model_names()
@@ -229,6 +235,7 @@ class CVExperimentConfig:
         self.outputs_dir = self._resolve_project_path(self.outputs_dir, "outputs")
         self.results_dir = self._resolve_project_path(self.results_dir, os.path.join("outputs", "results"))
         self.figures_dir = self._resolve_project_path(self.figures_dir, os.path.join("outputs", "figures"))
+        self.profile_output_dir = self._resolve_project_path(self.profile_output_dir, self.results_dir)
 
     def update_configs_for_local_testing(self) -> None:
         """Update configs for local testing."""

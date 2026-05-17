@@ -20,6 +20,7 @@ from src.training.checkpoints import (
 from src.training.curriculum import TrainingStage
 from src.training.metrics import AverageMeter
 from src.training.optimizers import build_optimizer
+from src.training.profiling import PhaseProfiler, timed_seconds
 from src.training.run import EpochResult, TrainingResult, TrainingRunSpec
 
 
@@ -42,6 +43,9 @@ class ModelTrainer:
         amp_enabled = spec.config.use_amp and spec.device.type == "cuda"
         self.scaler = GradScaler("cuda", enabled=amp_enabled)
         self.amp_enabled = amp_enabled
+        self._profile_rows: list[dict[str, Any]] = []
+        self._validated_input_batch = False
+        self._log_runtime_summary()
 
     def fit(self, on_progress: Optional[ProgressCallback] = None) -> TrainingResult:
         """Train the configured model and return a structured result."""
@@ -111,8 +115,10 @@ class ModelTrainer:
                             train_metrics = self.train_one_epoch(
                                 stage.train_loader,
                                 batch_progress=batch_progress,
+                                epoch=epoch,
+                                stage_name=stage.name,
                             )
-                        val_metrics = self.evaluate()
+                        val_metrics = self.evaluate(epoch=epoch, stage_name=stage.name)
                         best_val_accuracy = max(best_val_accuracy, val_metrics["val_accuracy"])
                         epoch_result = EpochResult(
                             epoch=epoch,
@@ -123,6 +129,7 @@ class ModelTrainer:
                             best_val_accuracy=best_val_accuracy,
                         )
                         result.update_from_epoch(epoch_result)
+                        result.profile_rows = list(self._profile_rows)
                         self._save_epoch_checkpoints(result, epoch_result, planned_total_epochs)
                         self._notify(on_progress, result)
                         progress.set_postfix(
@@ -140,6 +147,7 @@ class ModelTrainer:
             raise
 
         result.mark_completed(perf_counter() - start_time)
+        result.profile_rows = list(self._profile_rows)
         self._notify(on_progress, result)
         return result
 
@@ -148,6 +156,8 @@ class ModelTrainer:
         dataloader: Optional[DataLoader] = None,
         *,
         batch_progress: Any | None = None,
+        epoch: int | None = None,
+        stage_name: str | None = None,
     ) -> dict[str, float]:
         """Train the model for one epoch."""
 
@@ -156,14 +166,27 @@ class ModelTrainer:
             dataloader or self.spec.train_loader,
             training=True,
             batch_progress=batch_progress,
+            epoch=epoch,
+            stage_name=stage_name,
         )
 
-    def evaluate(self, dataloader: Optional[DataLoader] = None) -> dict[str, float]:
+    def evaluate(
+        self,
+        dataloader: Optional[DataLoader] = None,
+        *,
+        epoch: int | None = None,
+        stage_name: str | None = None,
+    ) -> dict[str, float]:
         """Evaluate the model on a dataloader."""
 
         self.spec.model.eval()
-        with torch.no_grad():
-            return self._run_batches(dataloader or self.spec.val_loader, training=False)
+        with torch.inference_mode():
+            return self._run_batches(
+                dataloader or self.spec.val_loader,
+                training=False,
+                epoch=epoch,
+                stage_name=stage_name,
+            )
 
     def _run_batches(
         self,
@@ -171,28 +194,53 @@ class ModelTrainer:
         *,
         training: bool,
         batch_progress: Any | None = None,
+        epoch: int | None = None,
+        stage_name: str | None = None,
     ) -> dict[str, float]:
         loss_meter = AverageMeter()
         correct = 0
         total = 0
+        phase = "train" if training else "val"
+        profiler = PhaseProfiler(
+            enabled=self.spec.config.profile_performance,
+            device=self.spec.device,
+            phase=phase,
+            epoch=epoch,
+            warmup_batches=max(0, int(self.spec.config.profile_warmup_batches)),
+        )
+        profiler.start()
 
-        for images, targets in dataloader:
-            images = images.to(self.spec.device, non_blocking=True)
-            targets = targets.to(self.spec.device, non_blocking=True)
+        iterator = iter(dataloader)
+        while True:
+            with timed_seconds() as data_timer:
+                try:
+                    images, targets = next(iterator)
+                except StopIteration:
+                    break
+            profiler.count_batch()
+            profiler.add_data_loading(data_timer.elapsed_seconds)
+
+            with timed_seconds(self.spec.device) as transfer_timer:
+                images = images.to(self.spec.device, non_blocking=True)
+                targets = targets.to(self.spec.device, non_blocking=True)
+            profiler.add_transfer(transfer_timer.elapsed_seconds)
+            self._validate_runtime_batch(images)
 
             if training:
                 if self.spec.batch_augmentation is not None:
                     images, targets = self.spec.batch_augmentation(images, targets)
                 self.optimizer.zero_grad(set_to_none=True)
 
-            with autocast("cuda", enabled=self.amp_enabled and training):
-                logits = self.spec.model(images)
-                loss = self.spec.criterion(logits, targets)
+            with timed_seconds(self.spec.device) as compute_timer:
+                with autocast("cuda", enabled=self.amp_enabled and training):
+                    logits = self.spec.model(images)
+                    loss = self.spec.criterion(logits, targets)
 
-            if training:
-                self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                if training:
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+            profiler.add_compute(compute_timer.elapsed_seconds)
 
             batch_size = targets.numel()
             loss_meter.update(float(loss.item()), batch_size)
@@ -201,8 +249,76 @@ class ModelTrainer:
             if training and batch_progress is not None:
                 batch_progress.update(1)
 
-        prefix = "train" if training else "val"
-        return {f"{prefix}_loss": loss_meter.average, f"{prefix}_accuracy": correct / max(1, total)}
+        profiler.finish()
+        self._append_profile_row(profiler, stage_name=stage_name)
+        return {f"{phase}_loss": loss_meter.average, f"{phase}_accuracy": correct / max(1, total)}
+
+    def _log_runtime_summary(self) -> None:
+        model_device = self._model_device()
+        cuda_name = (
+            torch.cuda.get_device_name(self.spec.device)
+            if self.spec.device.type == "cuda" and torch.cuda.is_available()
+            else None
+        )
+        total_params = sum(parameter.numel() for parameter in self.spec.model.parameters())
+        trainable_params = sum(
+            parameter.numel()
+            for parameter in self.spec.model.parameters()
+            if parameter.requires_grad
+        )
+        optimizer_params = sum(
+            parameter.numel()
+            for group in self.optimizer.param_groups
+            for parameter in group["params"]
+        )
+        print(
+            f"Runtime: selected_device={self.spec.device}, model_device={model_device}, "
+            f"use_amp={self.spec.config.use_amp}, amp_enabled={self.amp_enabled}, cuda_device={cuda_name}"
+        )
+        print(
+            f"Model summary: model={self.spec.model_name}, total_params={total_params:,}, "
+            f"trainable_params={trainable_params:,}, optimizer_params={optimizer_params:,}, "
+            f"freeze_backbone={bool(self.spec.metadata.get('freeze_backbone', False))}"
+        )
+        if self.spec.device.type == "cuda" and model_device.type != "cuda":
+            raise RuntimeError(f"CUDA was selected, but model is on {model_device}.")
+
+    def _model_device(self) -> torch.device:
+        try:
+            return next(self.spec.model.parameters()).device
+        except StopIteration:
+            return self.spec.device
+
+    def _validate_runtime_batch(self, images: torch.Tensor) -> None:
+        if self._validated_input_batch:
+            return
+        self._validated_input_batch = True
+        print(f"First batch: tensor_device={images.device}, tensor_shape={tuple(images.shape)}")
+        if self.spec.device.type == "cuda" and images.device.type != "cuda":
+            raise RuntimeError(f"CUDA was selected, but input batch is on {images.device}.")
+        if self.spec.expected_input_size is None and images.ndim != 4:
+            return
+        if images.ndim != 4 or images.shape[1] != 3:
+            raise ValueError(f"Expected image batch shape [N, 3, H, W], got {tuple(images.shape)}.")
+        if self.spec.expected_input_size is not None:
+            expected_shape = (3, int(self.spec.expected_input_size), int(self.spec.expected_input_size))
+            actual_shape = tuple(int(value) for value in images.shape[1:])
+            if actual_shape != expected_shape:
+                raise ValueError(
+                    f"Expected image tensors with shape [N, {expected_shape[0]}, {expected_shape[1]}, "
+                    f"{expected_shape[2]}], got {tuple(images.shape)}."
+                )
+
+    def _append_profile_row(self, profiler: PhaseProfiler, *, stage_name: str | None) -> None:
+        row = profiler.summary_row(
+            {
+                "model_name": self.spec.model_name,
+                "stage": stage_name,
+                **self.spec.metadata,
+            }
+        )
+        if row is not None:
+            self._profile_rows.append(row)
 
     def _save_epoch_checkpoints(
         self,

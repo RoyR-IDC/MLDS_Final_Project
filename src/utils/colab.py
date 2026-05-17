@@ -7,12 +7,14 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import os
 import re
+import shutil
 import subprocess
 import sys
 from typing import Iterable
 
 
 DEFAULT_COLAB_DRIVE_ROOT = "/content/drive/MyDrive/MLDS_Final_Project"
+DEFAULT_COLAB_LOCAL_DATA_DIR = "/content/MLDS_Final_Project/data/dogs-vs-cats/train"
 COMMON_COLAB_PROJECT_ROOTS = (
     DEFAULT_COLAB_DRIVE_ROOT,
     "/content/MLDS_Final_Project",
@@ -341,3 +343,61 @@ def warn_if_colab_runtime_without_cuda(selected_device: object) -> None:
             "WARNING: This Colab runtime is not using CUDA. "
             "Choose Runtime > Change runtime type > T4 GPU, reconnect, and rerun setup."
         )
+
+
+def _is_labeled_image_path(path: Path) -> bool:
+    suffix = path.suffix.lower()
+    name = path.name.lower()
+    return suffix in {".jpg", ".jpeg", ".png"} and ("cat" in name or "dog" in name)
+
+
+def _count_labeled_images(path: Path) -> int:
+    try:
+        if not path.is_dir():
+            return 0
+        return sum(1 for item in path.iterdir() if item.is_file() and _is_labeled_image_path(item))
+    except OSError:
+        return 0
+
+
+def path_is_under_colab_drive(path: str | Path) -> bool:
+    """Return whether a path points at a Google Drive mount in Colab."""
+
+    resolved = _safe_resolve(path) or Path(path)
+    return str(resolved).startswith("/content/drive/")
+
+
+def stage_colab_data_to_local_disk(
+    data_dir: str | Path,
+    *,
+    local_data_dir: str | Path = DEFAULT_COLAB_LOCAL_DATA_DIR,
+    enabled: bool = True,
+    using_google_colab: bool | None = None,
+) -> str:
+    """Copy Drive-backed image data to local Colab disk and return the active data dir."""
+
+    if not enabled:
+        return str(data_dir)
+    in_colab = is_google_colab_runtime() if using_google_colab is None else using_google_colab
+    if not in_colab or not path_is_under_colab_drive(data_dir):
+        return str(data_dir)
+
+    source = Path(data_dir)
+    destination = Path(local_data_dir)
+    source_count = _count_labeled_images(source)
+    destination_count = _count_labeled_images(destination)
+    if source_count > 0 and destination_count >= source_count:
+        print(f"Using staged local Colab dataset: {destination}")
+        return str(destination)
+
+    if source_count == 0:
+        return str(data_dir)
+
+    destination.mkdir(parents=True, exist_ok=True)
+    print(f"Staging {source_count} image files from Google Drive to local Colab disk: {destination}")
+    for item in source.iterdir():
+        if item.is_file() and _is_labeled_image_path(item):
+            target = destination / item.name
+            if not target.exists() or target.stat().st_size != item.stat().st_size:
+                shutil.copy2(item, target)
+    return str(destination)
