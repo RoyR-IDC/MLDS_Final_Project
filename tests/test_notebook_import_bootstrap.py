@@ -21,7 +21,7 @@ def test_part_notebooks_bootstrap_full_project_before_src_imports():
         setup_index = next(
             index
             for index, source in enumerate(cells)
-            if "ROOT = notebook_setup.bootstrap_notebook(_PROJECT_ROOT)" in source
+            if "ROOT = _colab_bootstrap.bootstrap_notebook_runtime(_PROJECT_ROOT" in source
         )
         setup_source = cells[setup_index]
 
@@ -32,8 +32,10 @@ def test_part_notebooks_bootstrap_full_project_before_src_imports():
         assert "def _safe_cwd()" in setup_source
         assert "def _safe_exists(path)" in setup_source
         assert "except OSError:" in setup_source
-        assert "_clear_stale_src_modules(_PROJECT_ROOT)" in setup_source
-        assert "importlib.invalidate_caches()" in setup_source
+        assert "spec_from_file_location('_mlds_colab_bootstrap'" in setup_source
+        assert "bootstrap_notebook_runtime(_PROJECT_ROOT" in setup_source
+        assert "notebook_setup = importlib.import_module('src.utils.notebook_setup')" in setup_source
+        assert "ROOT = notebook_setup.bootstrap_notebook(_PROJECT_ROOT)" not in setup_source
 
         earlier_sources = "\n".join(cells[:setup_index])
         assert "import src." not in earlier_sources

@@ -162,7 +162,7 @@ def is_google_colab_runtime() -> bool:
         return False
 
 
-def mount_colab_drive_if_available() -> None:
+def mount_colab_drive_if_available(*, force_remount: bool = False) -> None:
     """Mount Google Drive in Colab when the Drive API is available."""
 
     if not is_google_colab_runtime():
@@ -170,7 +170,7 @@ def mount_colab_drive_if_available() -> None:
     try:
         from google.colab import drive  # type: ignore
 
-        drive.mount("/content/drive")
+        drive.mount("/content/drive", force_remount=force_remount)
     except Exception as exc:
         print(f"Google Drive was not mounted automatically: {exc}")
 
@@ -273,11 +273,12 @@ def bootstrap_notebook_runtime(
     *,
     install_requirements: bool = True,
     print_diagnostics: bool = True,
+    force_remount: bool = False,
 ) -> Path:
     """Prepare imports, install Colab-safe deps, and print runtime diagnostics."""
 
     if is_google_colab_runtime():
-        mount_colab_drive_if_available()
+        mount_colab_drive_if_available(force_remount=force_remount)
     root = prepare_project_imports(project_root)
     if install_requirements:
         install_project_requirements_for_colab(root)

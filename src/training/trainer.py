@@ -92,6 +92,7 @@ class ModelTrainer:
                 initial=start_epoch,
                 desc=self.spec.progress_desc,
                 unit="epoch",
+                position=0,
                 leave=self.spec.progress_leave,
             ) as progress:
                 epoch = 0
@@ -100,7 +101,17 @@ class ModelTrainer:
                         epoch += 1
                         if epoch <= start_epoch:
                             continue
-                        train_metrics = self.train_one_epoch(stage.train_loader)
+                        with tqdm(
+                            total=len(stage.train_loader),
+                            desc=f"{self.spec.progress_desc} epoch {epoch} batches",
+                            unit="batch",
+                            position=1,
+                            leave=False,
+                        ) as batch_progress:
+                            train_metrics = self.train_one_epoch(
+                                stage.train_loader,
+                                batch_progress=batch_progress,
+                            )
                         val_metrics = self.evaluate()
                         best_val_accuracy = max(best_val_accuracy, val_metrics["val_accuracy"])
                         epoch_result = EpochResult(
@@ -132,11 +143,20 @@ class ModelTrainer:
         self._notify(on_progress, result)
         return result
 
-    def train_one_epoch(self, dataloader: Optional[DataLoader] = None) -> dict[str, float]:
+    def train_one_epoch(
+        self,
+        dataloader: Optional[DataLoader] = None,
+        *,
+        batch_progress: Any | None = None,
+    ) -> dict[str, float]:
         """Train the model for one epoch."""
 
         self.spec.model.train()
-        return self._run_batches(dataloader or self.spec.train_loader, training=True)
+        return self._run_batches(
+            dataloader or self.spec.train_loader,
+            training=True,
+            batch_progress=batch_progress,
+        )
 
     def evaluate(self, dataloader: Optional[DataLoader] = None) -> dict[str, float]:
         """Evaluate the model on a dataloader."""
@@ -145,7 +165,13 @@ class ModelTrainer:
         with torch.no_grad():
             return self._run_batches(dataloader or self.spec.val_loader, training=False)
 
-    def _run_batches(self, dataloader: DataLoader, *, training: bool) -> dict[str, float]:
+    def _run_batches(
+        self,
+        dataloader: DataLoader,
+        *,
+        training: bool,
+        batch_progress: Any | None = None,
+    ) -> dict[str, float]:
         loss_meter = AverageMeter()
         correct = 0
         total = 0
@@ -172,6 +198,8 @@ class ModelTrainer:
             loss_meter.update(float(loss.item()), batch_size)
             correct += int((logits.argmax(dim=1) == targets).sum().item())
             total += batch_size
+            if training and batch_progress is not None:
+                batch_progress.update(1)
 
         prefix = "train" if training else "val"
         return {f"{prefix}_loss": loss_meter.average, f"{prefix}_accuracy": correct / max(1, total)}

@@ -1,11 +1,13 @@
 import sys
 from types import ModuleType
+from types import SimpleNamespace
 
 import src.utils.colab as colab
 from src.utils.colab import (
     COLAB_PREINSTALLED_REQUIREMENT_PREFIXES,
     filter_colab_requirements_lines,
     find_project_root,
+    mount_colab_drive_if_available,
     prepare_project_imports,
     requirement_package_name,
 )
@@ -115,6 +117,17 @@ def test_prepare_project_imports_removes_stale_src_modules(tmp_path, monkeypatch
     assert "src.evaluation" not in sys.modules
 
 
+def test_prepare_project_imports_invalidates_import_caches(tmp_path, monkeypatch):
+    project_root = tmp_path / "MLDS_Final_Project"
+    write_minimal_project(project_root)
+    calls = []
+    monkeypatch.setattr(colab, "invalidate_caches", lambda: calls.append(True))
+
+    prepare_project_imports(project_root)
+
+    assert calls == [True]
+
+
 def test_prepare_project_imports_rejects_partial_project_copy(tmp_path):
     partial_root = tmp_path / "MLDS_Final_Project"
     (partial_root / "src" / "utils").mkdir(parents=True)
@@ -127,3 +140,21 @@ def test_prepare_project_imports_rejects_partial_project_copy(tmp_path):
         assert "src/evaluation/experiment_results.py" in str(exc)
     else:
         raise AssertionError("prepare_project_imports should reject a partial project copy")
+
+
+def test_colab_mount_passes_force_remount(monkeypatch):
+    mount_calls = []
+
+    google_module = ModuleType("google")
+    colab_module = ModuleType("google.colab")
+    google_module.__path__ = []
+    google_module.colab = colab_module
+    colab_module.drive = SimpleNamespace(
+        mount=lambda path, force_remount=False: mount_calls.append((path, force_remount))
+    )
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.colab", colab_module)
+
+    mount_colab_drive_if_available(force_remount=True)
+
+    assert mount_calls == [("/content/drive", True)]

@@ -6,6 +6,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.experiments import part1, part2, training_runs
+import src.training.trainer as trainer_module
 from src.experiments.part1 import get_executable_tile_permutation_records, train_model_on_tile_permutation_records
 from src.experiments.part2 import (
     CORRUPTION_PROBABILITY_SCHEDULE,
@@ -212,6 +213,60 @@ def test_model_trainer_ignores_mismatched_resume_checkpoint(tmp_path):
     assert result.status == "completed"
     assert result.resumed_from_checkpoint is None
     assert result.skipped_from_checkpoint is None
+
+
+def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):
+    features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]])
+    labels = torch.tensor([0, 1, 0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="linear",
+        model=nn.Linear(2, 2),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=2, optimizer_name="sgd", learning_rate=0.01),
+        checkpoint_config=CheckpointConfig(save_best=False, save_last=False),
+        progress_desc="linear test epochs",
+        progress_leave=False,
+    )
+    progress_bars = []
+
+    class FakeTqdm:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            self.updated = 0
+            self.postfixes = []
+            progress_bars.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def update(self, amount=1):
+            self.updated += amount
+
+        def set_postfix(self, **kwargs):
+            self.postfixes.append(kwargs)
+
+    monkeypatch.setattr(trainer_module, "tqdm", FakeTqdm)
+
+    result = ModelTrainer(spec).fit()
+
+    assert result.status == "completed"
+    epoch_bars = [bar for bar in progress_bars if bar.kwargs["unit"] == "epoch"]
+    batch_bars = [bar for bar in progress_bars if bar.kwargs["unit"] == "batch"]
+    assert len(epoch_bars) == 1
+    assert epoch_bars[0].updated == 2
+    assert len(batch_bars) == 2
+    assert [bar.kwargs["total"] for bar in batch_bars] == [len(loader), len(loader)]
+    assert [bar.updated for bar in batch_bars] == [len(loader), len(loader)]
+    assert all(bar.kwargs["position"] == 1 for bar in batch_bars)
+    assert all(bar.kwargs["leave"] is False for bar in batch_bars)
 
 
 def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypatch, tmp_path):
