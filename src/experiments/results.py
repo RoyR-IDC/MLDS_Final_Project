@@ -65,7 +65,20 @@ def build_training_result_row(
         metrics=result.latest_metrics(),
         ablation_name=ablation_name,
     )
-    for key in ("augmentation_name", "batch_augmentation_name", "curriculum_name", "curriculum_stages"):
+    for key in (
+        "augmentation_name",
+        "batch_augmentation_name",
+        "curriculum_name",
+        "curriculum_stages",
+        "loss_name",
+        "focal_gamma",
+        "focal_alpha",
+        "global_tile_displacement",
+        "adjacency_destruction_hardness",
+        "spatial_permutation_entropy",
+        "combined_hardness_score",
+        "hardness_level",
+    ):
         if key in result.metadata:
             row[key] = result.metadata[key]
     return row

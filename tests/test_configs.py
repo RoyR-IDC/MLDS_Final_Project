@@ -109,13 +109,16 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
-        "augmentation_combined_augmentations",
         "augmentation_patch_shuffle",
         "augmentation_random_erasing",
         "augmentation_same_label_cutmix",
+        "loss_focal_loss",
         "curriculum_corruption_probability",
         "curriculum_permutation_difficulty",
     ]
+    assert ablations[3]["loss"] == "focal_loss"
+    assert ablations[3]["focal_gamma"] == 2.0
+    assert ablations[3]["focal_alpha"] == 1.0
 
 
 def test_part2_config_exposes_single_model_name_property():

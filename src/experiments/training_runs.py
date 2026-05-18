@@ -195,6 +195,7 @@ def build_training_run_spec(
     curriculum_schedule: CurriculumSchedule | None = None,
     metadata_overrides: Optional[Mapping[str, Any]] = None,
     expected_input_size: int | None = None,
+    criterion: nn.Module | None = None,
 ) -> TrainingRunSpec:
     """Build the shared OOP training specification for one run."""
 
@@ -224,7 +225,7 @@ def build_training_run_spec(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
-        criterion=nn.CrossEntropyLoss(),
+        criterion=criterion if criterion is not None else nn.CrossEntropyLoss(),
         device=device,
         config=training_config,
         checkpoint_config=build_checkpoint_config(

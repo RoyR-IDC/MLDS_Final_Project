@@ -35,7 +35,6 @@ from src.preprocessing.tile_permutations import (
     tile_permutation_to_jsonable,
 )
 from src.utils.config import CVExperimentConfig
-from src.utils.colab import stage_colab_data_to_local_disk
 from src.utils.io import ensure_dir, save_csv
 
 
@@ -113,6 +112,27 @@ def _build_balanced_sample_subset(samples: list[Sample], limit: int, seed: int) 
     return balanced
 
 
+def _maybe_stage_colab_data_dir(config: CVExperimentConfig) -> str:
+    """Stage Drive-backed Colab data only when the active runtime is Colab."""
+
+    data_dir = str(config.data_dir)
+    if not bool(getattr(config, "using_google_colab", False)):
+        return data_dir
+
+    from src.utils.colab import stage_colab_data_to_local_disk
+
+    return stage_colab_data_to_local_disk(
+        data_dir,
+        local_data_dir=getattr(
+            config,
+            "colab_local_data_dir",
+            "/content/MLDS_Final_Project/data/dogs-vs-cats/train",
+        ),
+        enabled=bool(getattr(config, "stage_colab_data_to_local_disk", True)),
+        using_google_colab=True,
+    )
+
+
 def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list[Sample], list[Sample], list[Sample]]:
     """Discover and split configured Dogs vs Cats samples.
 
@@ -124,16 +144,7 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list
         Tuple of train, validation, and test sample lists.
     """
 
-    config.data_dir = stage_colab_data_to_local_disk(
-        config.data_dir,
-        local_data_dir=getattr(
-            config,
-            "colab_local_data_dir",
-            "/content/MLDS_Final_Project/data/dogs-vs-cats/train",
-        ),
-        enabled=bool(getattr(config, "stage_colab_data_to_local_disk", True)),
-        using_google_colab=bool(getattr(config, "using_google_colab", False)),
-    )
+    config.data_dir = _maybe_stage_colab_data_dir(config)
     samples = discover_samples(config.data_dir)
     if config.sample_data and config.sample_limit is not None:
         samples = _build_balanced_sample_subset(samples, config.sample_limit, seed)

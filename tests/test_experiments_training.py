@@ -15,6 +15,7 @@ from src.experiments.part2 import (
 )
 from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
 from src.training.checkpoints import load_checkpoint, save_checkpoint
+from src.training.losses import FocalLoss
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
 
@@ -620,8 +621,99 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     assert progress_descriptions == ["resnet18 [same_label_cutmix_only] 2x2 permutation #0. epochs progress"]
     assert "freeze_backbone" not in spec_kwargs[0]["overrides"]
     assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "same_label_cutmix"
+    assert spec_kwargs[0]["metadata_overrides"]["loss_name"] == "cross_entropy"
+    assert spec_kwargs[0]["metadata_overrides"]["hardness_level"] == "baseline"
     assert rows[0]["run_status"] == "completed"
     assert rows[0]["ablation_name"] == "same_label_cutmix_only"
+
+
+def test_part2_focal_loss_ablation_builds_focal_criterion_and_metadata(monkeypatch, tmp_path):
+    config = SimpleNamespace(
+        part="part2",
+        config_name="part2_improvement",
+        model_name="resnet18",
+        model_names=["resnet18"],
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        seed=42,
+        pretrained=True,
+        epochs=1,
+        outputs_dir=str(tmp_path / "outputs"),
+    )
+    records = [
+        TilePermutationRecord(
+            tiles_per_side=3,
+            tile_permutation_id=1,
+            tile_permutation_seed=42,
+            tile_permutation=random_tile_permutation(3, seed=42),
+        )
+    ]
+    ablations = [
+        {
+            "name": "loss_focal_loss",
+            "use_pretrained": True,
+            "augmentation": "none",
+            "loss": "focal_loss",
+            "focal_gamma": 2.0,
+            "focal_alpha": 1.0,
+        }
+    ]
+    spec_kwargs = []
+
+    class FakeLoader:
+        dataset = [None]
+
+        def __len__(self):
+            return 1
+
+    class FakeTrainer:
+        def __init__(self, spec):
+            self.spec = spec
+
+        def fit(self, on_progress):
+            result = TrainingResult.pending(model_name=self.spec.model_name, metadata=self.spec.metadata)
+            result.best_val_accuracy = 0.75
+            result.mark_completed(2.5)
+            on_progress(result)
+            return result
+
+    def fake_build_training_run_spec(**kwargs):
+        spec_kwargs.append(kwargs)
+        metadata = {
+            "ablation_name": kwargs["ablation_name"],
+            **kwargs["metadata_overrides"],
+        }
+        return SimpleNamespace(model_name=kwargs["model_name"], metadata=metadata)
+
+    monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
+    monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
+
+    rows = train_part2_ablation_experiments(
+        config=config,
+        ablations=ablations,
+        train_samples=[("cat.jpg", 0)],
+        validation_samples=[("dog.jpg", 1)],
+        tile_permutation_records=records,
+        device="cpu",
+        run_id="part2_run",
+    )
+
+    criterion = spec_kwargs[0]["criterion"]
+    metadata = spec_kwargs[0]["metadata_overrides"]
+    assert isinstance(criterion, FocalLoss)
+    assert criterion.gamma == 2.0
+    assert criterion.alpha == 1.0
+    assert metadata["loss_name"] == "focal_loss"
+    assert metadata["focal_gamma"] == 2.0
+    assert metadata["focal_alpha"] == 1.0
+    assert 0.0 <= metadata["combined_hardness_score"] <= 1.0
+    assert metadata["hardness_level"] in {"low", "medium", "high"}
+    assert rows[0]["loss_name"] == "focal_loss"
+    assert rows[0]["focal_gamma"] == 2.0
+    assert rows[0]["focal_alpha"] == 1.0
+    assert rows[0]["hardness_level"] in {"low", "medium", "high"}
 
 
 def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):

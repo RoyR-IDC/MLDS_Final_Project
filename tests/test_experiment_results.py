@@ -19,6 +19,7 @@ from src.evaluation.experiment_results import (
     load_part1_model_baseline_raw_rows,
     load_part1_model_results,
     part3_output_paths,
+    plot_ablation_results,
     plot_accuracy_vs_tiles,
     plot_part3_metrics_vs_accuracy,
     run_part3_hardness_analysis,
@@ -139,6 +140,38 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     plot_accuracy_vs_tiles(aggregated, str(output_path))
 
     assert output_path.exists()
+
+
+def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_errorbar(self, *args, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fake_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "ablation_name": "loss_focal_loss",
+                "tiles_per_side": 1,
+                "mean_best_epoch_val_accuracy": 0.80,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
+
+    assert calls
+    assert calls[0]["fmt"] == "o"
+    assert calls[0]["linestyle"] == "None"
 
 
 def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):

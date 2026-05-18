@@ -272,11 +272,6 @@ class Part2ExperimentConfig(CVExperimentConfig):
     ablations: list[dict[str, Any]] = field(
         default_factory=lambda: [
             {
-                "name": "augmentation_combined_augmentations",
-                "use_pretrained": True,
-                "augmentation": "combined_augmentations",
-            },
-            {
                 "name": "augmentation_patch_shuffle",
                 "use_pretrained": True,
                 "augmentation": "patch_shuffle",
@@ -290,6 +285,14 @@ class Part2ExperimentConfig(CVExperimentConfig):
                 "name": "augmentation_same_label_cutmix",
                 "use_pretrained": True,
                 "augmentation": "same_label_cutmix",
+            },
+            {
+                "name": "loss_focal_loss",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "loss": "focal_loss",
+                "focal_gamma": 2.0,
+                "focal_alpha": 1.0,
             },
             {
                 "name": "curriculum_corruption_probability",
