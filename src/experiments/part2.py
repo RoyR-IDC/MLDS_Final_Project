@@ -7,9 +7,16 @@ from time import perf_counter
 from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
+from torch import nn
 from torch.utils.data import DataLoader
 from torch._C import device as TorchDevice
 
+from src.evaluation.tile_permutation_difficulty import (
+    compute_adjacency_destruction_hardness,
+    compute_combined_hardness,
+    compute_global_displacement,
+    compute_spatial_permutation_entropy,
+)
 from src.evaluation.experiment_results import (
     get_device,
     load_experiment_samples,
@@ -66,6 +73,7 @@ from src.preprocessing.tile_permutations import (
     random_tile_permutation,
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
+from src.training.losses import FocalLoss
 from src.training.run import TrainingRunSpec
 from src.utils.config import CVExperimentConfig
 
@@ -81,6 +89,66 @@ def _ablation_augmentation_name(ablation: Mapping[str, Any]) -> str:
 def _ablation_curriculum_name(ablation: Mapping[str, Any]) -> str | None:
     curriculum = ablation.get("curriculum")
     return None if curriculum in (None, "", "none") else str(curriculum)
+
+
+def _ablation_loss_name(ablation: Mapping[str, Any]) -> str:
+    return str(ablation.get("loss", "cross_entropy"))
+
+
+def _ablation_focal_gamma(ablation: Mapping[str, Any]) -> float | None:
+    if _ablation_loss_name(ablation) != "focal_loss":
+        return None
+    return float(ablation.get("focal_gamma", 2.0))
+
+
+def _ablation_focal_alpha(ablation: Mapping[str, Any]) -> float | None:
+    if _ablation_loss_name(ablation) != "focal_loss":
+        return None
+    return float(ablation.get("focal_alpha", 1.0))
+
+
+def build_ablation_criterion(ablation: Mapping[str, Any]) -> nn.Module | None:
+    """Build an optional criterion override for one Part 2 ablation."""
+
+    loss_name = _ablation_loss_name(ablation)
+    if loss_name == "cross_entropy":
+        return None
+    if loss_name == "focal_loss":
+        return FocalLoss(
+            gamma=float(ablation.get("focal_gamma", 2.0)),
+            alpha=float(ablation.get("focal_alpha", 1.0)),
+        )
+    raise ValueError(f"Unsupported loss: {loss_name}")
+
+
+def _hardness_level(score: float, *, is_baseline: bool) -> str:
+    if is_baseline:
+        return "baseline"
+    if score < 1.0 / 3.0:
+        return "low"
+    if score < 2.0 / 3.0:
+        return "medium"
+    return "high"
+
+
+def _part2_hardness_metadata(record: TilePermutationRecord) -> dict[str, Any]:
+    tiles_per_side = record.tiles_per_side
+    global_displacement = compute_global_displacement(record.tile_permutation, tiles_per_side)
+    adjacency_hardness = compute_adjacency_destruction_hardness(record.tile_permutation, tiles_per_side)
+    spatial_entropy = compute_spatial_permutation_entropy(record.tile_permutation, tiles_per_side)
+    combined_hardness = compute_combined_hardness(
+        adjacency_destruction_hardness=adjacency_hardness,
+        spatial_permutation_entropy=spatial_entropy,
+        global_tile_displacement=global_displacement,
+    )
+    is_baseline = tiles_per_side is None or record.tile_permutation is None or combined_hardness == 0.0
+    return {
+        "global_tile_displacement": global_displacement,
+        "adjacency_destruction_hardness": adjacency_hardness,
+        "spatial_permutation_entropy": spatial_entropy,
+        "combined_hardness_score": combined_hardness,
+        "hardness_level": _hardness_level(combined_hardness, is_baseline=is_baseline),
+    }
 
 
 def _patch_shuffle_tiles(record: TilePermutationRecord) -> int:
@@ -317,6 +385,7 @@ def initialize_ablation_result_rows(
 def _part2_metadata_overrides(
     *,
     ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
     batch_augmentation: BatchAugmentation | None,
     curriculum_schedule: CurriculumSchedule | None,
 ) -> dict[str, Any]:
@@ -325,6 +394,10 @@ def _part2_metadata_overrides(
         "batch_augmentation_name": getattr(batch_augmentation, "name", None),
         "curriculum_name": _ablation_curriculum_name(ablation),
         "curriculum_stages": curriculum_schedule.stage_names if curriculum_schedule is not None else None,
+        "loss_name": _ablation_loss_name(ablation),
+        "focal_gamma": _ablation_focal_gamma(ablation),
+        "focal_alpha": _ablation_focal_alpha(ablation),
+        **_part2_hardness_metadata(record),
     }
 
 
@@ -371,9 +444,11 @@ def build_part2_training_run_spec(
         ),
         metadata_overrides=_part2_metadata_overrides(
             ablation=ablation,
+            record=record,
             batch_augmentation=batch_augmentation,
             curriculum_schedule=curriculum_schedule,
         ),
+        criterion=build_ablation_criterion(ablation),
     )
 
 
