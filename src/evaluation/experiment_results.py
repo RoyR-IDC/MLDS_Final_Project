@@ -133,6 +133,13 @@ def _maybe_stage_colab_data_dir(config: CVExperimentConfig) -> str:
     )
 
 
+def stage_configured_colab_data_dir(config: CVExperimentConfig) -> str:
+    """Apply the configured Colab data-staging policy and update ``config.data_dir``."""
+
+    config.data_dir = _maybe_stage_colab_data_dir(config)
+    return str(config.data_dir)
+
+
 def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list[Sample], list[Sample], list[Sample]]:
     """Discover and split configured Dogs vs Cats samples.
 
@@ -144,7 +151,7 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list
         Tuple of train, validation, and test sample lists.
     """
 
-    config.data_dir = _maybe_stage_colab_data_dir(config)
+    stage_configured_colab_data_dir(config)
     samples = discover_samples(config.data_dir)
     if config.sample_data and config.sample_limit is not None:
         samples = _build_balanced_sample_subset(samples, config.sample_limit, seed)

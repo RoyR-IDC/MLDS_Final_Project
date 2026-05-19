@@ -102,6 +102,8 @@ def setup_part2_config() -> SimpleNamespace:
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,
                 "use_amp": config.use_amp,
+                "stage_colab_data_to_local_disk": config.stage_colab_data_to_local_disk,
+                "colab_local_data_dir": config.colab_local_data_dir,
                 "device": str(device),
             }
         ]
@@ -133,6 +135,8 @@ def setup_part3_config() -> SimpleNamespace:
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,
                 "use_amp": config.use_amp,
+                "stage_colab_data_to_local_disk": config.stage_colab_data_to_local_disk,
+                "colab_local_data_dir": config.colab_local_data_dir,
                 "weight_adj": config.weight_adj,
                 "weight_entropy": config.weight_entropy,
                 "weight_dist": config.weight_dist,

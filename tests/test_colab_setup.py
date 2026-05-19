@@ -199,6 +199,25 @@ def test_stage_colab_data_reuses_existing_local_copy(tmp_path, monkeypatch):
     assert (destination / "cat.0.jpg").read_bytes() == b"local"
 
 
+def test_stage_colab_data_can_skip_local_copy_when_disabled(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    source.mkdir(parents=True)
+    (source / "cat.0.jpg").write_bytes(b"cat")
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        enabled=False,
+        using_google_colab=True,
+    )
+
+    assert staged == str(source)
+    assert not destination.exists()
+    assert "staging disabled" in capsys.readouterr().out
+
+
 def test_stage_colab_data_leaves_non_colab_path_unchanged(tmp_path):
     source = tmp_path / "train"
     source.mkdir()

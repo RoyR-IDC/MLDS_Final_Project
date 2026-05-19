@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from time import perf_counter
 from typing import Iterable
 
 
@@ -376,21 +377,27 @@ def stage_colab_data_to_local_disk(
 ) -> str:
     """Copy Drive-backed image data to local Colab disk and return the active data dir."""
 
-    if not enabled:
-        return str(data_dir)
     in_colab = is_google_colab_runtime() if using_google_colab is None else using_google_colab
+    if not enabled:
+        if in_colab and path_is_under_colab_drive(data_dir):
+            print(f"Colab local data staging disabled; reading dataset from Google Drive: {data_dir}")
+        return str(data_dir)
     if not in_colab or not path_is_under_colab_drive(data_dir):
         return str(data_dir)
 
+    start_time = perf_counter()
     source = Path(data_dir)
     destination = Path(local_data_dir)
     source_count = _count_labeled_images(source)
     destination_count = _count_labeled_images(destination)
     if source_count > 0 and destination_count >= source_count:
-        print(f"Using staged local Colab dataset: {destination}")
+        elapsed_seconds = perf_counter() - start_time
+        print(f"Using staged local Colab dataset: {destination} ({elapsed_seconds:.2f}s staging check)")
         return str(destination)
 
     if source_count == 0:
+        elapsed_seconds = perf_counter() - start_time
+        print(f"No labeled images found to stage from Google Drive: {source} ({elapsed_seconds:.2f}s)")
         return str(data_dir)
 
     destination.mkdir(parents=True, exist_ok=True)
@@ -400,4 +407,6 @@ def stage_colab_data_to_local_disk(
             target = destination / item.name
             if not target.exists() or target.stat().st_size != item.stat().st_size:
                 shutil.copy2(item, target)
+    elapsed_seconds = perf_counter() - start_time
+    print(f"Finished staging Colab dataset in {elapsed_seconds:.2f}s: {destination}")
     return str(destination)
