@@ -33,7 +33,7 @@ def get_model(
     num_classes: int = 2,
     pretrained: bool = False,
     device: Optional[TorchDevice] = None,
-    freeze_backbone: bool = False,
+    freeze_backbone: bool = True,
 ) -> nn.Module:
     """Create one of the three supported lightweight image classifiers.
 
@@ -42,7 +42,9 @@ def get_model(
         num_classes: Number of output classes.
         pretrained: Whether to use ImageNet pretrained weights.
         device: Optional device to move the model to.
-        freeze_backbone: Whether to freeze feature extractor parameters.
+        freeze_backbone: Whether to freeze feature extractor parameters. Defaults
+            to ``True`` so experiment runs train only the classifier head unless
+            explicitly opted out.
 
     Returns:
         A PyTorch model.

@@ -20,6 +20,18 @@ def test_model_factory_exposes_expected_timm_pretrained_model_ids():
     }
 
 
+def test_model_factory_freezes_backbone_by_default_for_resnet18():
+    model = get_model("resnet18", num_classes=2, pretrained=False)
+
+    trainable_names = {
+        name
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+
+    assert trainable_names == {"fc.weight", "fc.bias"}
+
+
 def test_model_factory_rejects_removed_models():
     with pytest.raises(ValueError, match="Unsupported model"):
         get_model("unsupported_model", num_classes=2, pretrained=False)

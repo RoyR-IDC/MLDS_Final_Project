@@ -66,6 +66,8 @@ def build_training_result_row(
         ablation_name=ablation_name,
     )
     for key in (
+        "pretrained",
+        "freeze_backbone",
         "augmentation_name",
         "batch_augmentation_name",
         "curriculum_name",

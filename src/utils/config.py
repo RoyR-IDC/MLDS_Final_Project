@@ -140,6 +140,7 @@ class CVExperimentConfig:
         default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_small"]
     )
     pretrained: bool = True
+    freeze_backbone: bool = True
 
     # Tile permutation experiment configuration
     tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())

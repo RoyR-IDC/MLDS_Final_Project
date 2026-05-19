@@ -419,6 +419,7 @@ def build_part2_training_run_spec(
         seed=config.seed,
         overrides={
             "pretrained": bool(ablation.get("use_pretrained", True)),
+            "freeze_backbone": bool(ablation.get("freeze_backbone", getattr(config, "freeze_backbone", True))),
         },
         ablation_name=str(ablation["name"]),
         progress_desc=progress_desc,

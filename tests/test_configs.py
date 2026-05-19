@@ -186,6 +186,7 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
 
     assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_small"]
     assert dataclass_fields["pretrained"].default is True
+    assert dataclass_fields["freeze_backbone"].default is True
 
 
 def test_local_testing_defaults_use_larger_part1_signal():

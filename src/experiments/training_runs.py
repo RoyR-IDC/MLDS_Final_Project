@@ -172,7 +172,7 @@ def build_training_metadata(
         "weight_decay": float(getattr(config, "weight_decay", 0.0)),
         "use_amp": bool(getattr(config, "use_amp", False)),
         "pretrained": bool(getattr(config, "pretrained", False)),
-        "freeze_backbone": bool(getattr(config, "freeze_backbone", False)),
+        "freeze_backbone": bool(getattr(config, "freeze_backbone", True)),
     }
     metadata.update(dict(metadata_overrides or {}))
     return metadata
@@ -202,7 +202,7 @@ def build_training_run_spec(
     run_options = dict(overrides or {})
     training_config = build_training_config(config)
     pretrained = bool(run_options.get("pretrained", getattr(config, "pretrained", False)))
-    freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", False)))
+    freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", True)))
     print(f"Building model '{model_name}'...")
     model = get_model(
         model_name,

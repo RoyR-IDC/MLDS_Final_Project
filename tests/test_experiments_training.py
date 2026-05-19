@@ -619,7 +619,7 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     )
 
     assert progress_descriptions == ["resnet18 [same_label_cutmix_only] 2x2 permutation #0. epochs progress"]
-    assert "freeze_backbone" not in spec_kwargs[0]["overrides"]
+    assert spec_kwargs[0]["overrides"]["freeze_backbone"] is True
     assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "same_label_cutmix"
     assert spec_kwargs[0]["metadata_overrides"]["loss_name"] == "cross_entropy"
     assert spec_kwargs[0]["metadata_overrides"]["hardness_level"] == "baseline"
