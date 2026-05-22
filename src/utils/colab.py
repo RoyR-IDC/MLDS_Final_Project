@@ -5,11 +5,13 @@ from __future__ import annotations
 from importlib import import_module, invalidate_caches
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from pathlib import PurePosixPath
 import os
 import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from time import perf_counter
 from typing import Iterable
 
@@ -361,6 +363,70 @@ def _count_labeled_images(path: Path) -> int:
         return 0
 
 
+def colab_data_zip_path(data_dir: str | Path) -> Path:
+    """Return the expected ZIP path for a Dogs vs Cats train directory."""
+
+    return Path(f"{data_dir}.zip")
+
+
+def _format_file_size(size_bytes: int) -> str:
+    """Return a compact human-readable file size."""
+
+    units = ("B", "KiB", "MiB", "GiB")
+    value = float(size_bytes)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size_bytes} B"
+
+
+def _zip_labeled_image_members(zip_path: Path) -> list[zipfile.ZipInfo]:
+    """Return safe labeled image members from a flat dataset ZIP."""
+
+    members: list[zipfile.ZipInfo] = []
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                member_path = PurePosixPath(member.filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    continue
+                member_name = member_path.name
+                if not member_name or member_name != member.filename:
+                    continue
+                if _is_labeled_image_path(Path(member_name)):
+                    members.append(member)
+    except (OSError, zipfile.BadZipFile):
+        return []
+    return members
+
+
+def _extract_labeled_images_from_zip(zip_path: Path, destination: Path) -> int:
+    """Extract safe labeled image members from ``zip_path`` into ``destination``."""
+
+    extracted_count = 0
+    destination.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+            member_path = PurePosixPath(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                continue
+            member_name = member_path.name
+            if not member_name or member_name != member.filename:
+                continue
+            if not _is_labeled_image_path(Path(member_name)):
+                continue
+            with archive.open(member) as source_file:
+                with (destination / member_name).open("wb") as destination_file:
+                    shutil.copyfileobj(source_file, destination_file)
+            extracted_count += 1
+    return extracted_count
+
+
 def path_is_under_colab_drive(path: str | Path) -> bool:
     """Return whether a path points at a Google Drive mount in Colab."""
 
@@ -375,7 +441,7 @@ def stage_colab_data_to_local_disk(
     enabled: bool = True,
     using_google_colab: bool | None = None,
 ) -> str:
-    """Copy Drive-backed image data to local Colab disk and return the active data dir."""
+    """Copy a Drive-backed dataset ZIP to local Colab disk and extract it."""
 
     in_colab = is_google_colab_runtime() if using_google_colab is None else using_google_colab
     if not enabled:
@@ -388,25 +454,76 @@ def stage_colab_data_to_local_disk(
     start_time = perf_counter()
     source = Path(data_dir)
     destination = Path(local_data_dir)
+    source_zip = colab_data_zip_path(source)
+    local_zip = colab_data_zip_path(destination)
     source_count = _count_labeled_images(source)
     destination_count = _count_labeled_images(destination)
-    if source_count > 0 and destination_count >= source_count:
+    zip_members = _zip_labeled_image_members(source_zip)
+    zip_count = len(zip_members)
+    expected_count = source_count or zip_count
+
+    print("Starting Colab dataset staging.")
+    print(f"  Source data directory: {source}")
+    print(f"  Expected source ZIP: {source_zip}")
+    print(f"  Local ZIP destination: {local_zip}")
+    print(f"  Local extraction directory: {destination}")
+    print(f"  Source directory labeled images: {source_count}")
+    print(f"  Source ZIP labeled images: {zip_count}")
+    print(f"  Existing local labeled images: {destination_count}")
+
+    if expected_count > 0 and destination_count >= expected_count:
         elapsed_seconds = perf_counter() - start_time
-        print(f"Using staged local Colab dataset: {destination} ({elapsed_seconds:.2f}s staging check)")
+        print(
+            "Using existing staged local Colab dataset: "
+            f"{destination} ({destination_count} images, {elapsed_seconds:.2f}s staging check)"
+        )
         return str(destination)
 
-    if source_count == 0:
+    if not source_zip.exists():
         elapsed_seconds = perf_counter() - start_time
-        print(f"No labeled images found to stage from Google Drive: {source} ({elapsed_seconds:.2f}s)")
+        print(
+            "Colab dataset ZIP was not found; leaving data on Google Drive instead of "
+            f"copying {source_count} individual files. Expected ZIP: {source_zip} "
+            f"({elapsed_seconds:.2f}s)"
+        )
         return str(data_dir)
 
-    destination.mkdir(parents=True, exist_ok=True)
-    print(f"Staging {source_count} image files from Google Drive to local Colab disk: {destination}")
-    for item in source.iterdir():
-        if item.is_file() and _is_labeled_image_path(item):
-            target = destination / item.name
-            if not target.exists() or target.stat().st_size != item.stat().st_size:
-                shutil.copy2(item, target)
+    if zip_count == 0:
+        elapsed_seconds = perf_counter() - start_time
+        print(
+            "Colab dataset ZIP exists but contains no flat labeled cat/dog image files: "
+            f"{source_zip} ({elapsed_seconds:.2f}s)"
+        )
+        return str(data_dir)
+
+    local_zip.parent.mkdir(parents=True, exist_ok=True)
+    source_zip_size = source_zip.stat().st_size
+    copy_start_time = perf_counter()
+    if local_zip.exists() and local_zip.stat().st_size == source_zip_size:
+        print(
+            "Local dataset ZIP already matches source size; reusing it: "
+            f"{local_zip} ({_format_file_size(source_zip_size)})"
+        )
+    else:
+        print(
+            "Copying dataset ZIP from Google Drive to local Colab disk: "
+            f"{source_zip} -> {local_zip} ({_format_file_size(source_zip_size)})"
+        )
+        shutil.copy2(source_zip, local_zip)
+        copy_elapsed_seconds = perf_counter() - copy_start_time
+        print(f"Finished copying dataset ZIP in {copy_elapsed_seconds:.2f}s.")
+
+    extract_start_time = perf_counter()
+    print(f"Extracting {zip_count} labeled images from {local_zip} into {destination}.")
+    extracted_count = _extract_labeled_images_from_zip(local_zip, destination)
+    extract_elapsed_seconds = perf_counter() - extract_start_time
+    final_count = _count_labeled_images(destination)
+    print(
+        "Finished extracting Colab dataset: "
+        f"{extracted_count} files extracted in {extract_elapsed_seconds:.2f}s; "
+        f"{final_count} labeled images now available locally."
+    )
+
     elapsed_seconds = perf_counter() - start_time
-    print(f"Finished staging Colab dataset in {elapsed_seconds:.2f}s: {destination}")
+    print(f"Finished Colab dataset staging in {elapsed_seconds:.2f}s: {destination}")
     return str(destination)

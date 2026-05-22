@@ -11,6 +11,7 @@ from src.models.registry import validate_model_name, validate_model_names
 from src.utils.colab import (
     DEFAULT_COLAB_LOCAL_DATA_DIR,
     DEFAULT_COLAB_DRIVE_ROOT,
+    colab_data_zip_path,
     find_project_root,
     is_google_colab_runtime,
     mount_colab_drive_if_available,
@@ -20,7 +21,7 @@ from src.utils.io import load_yaml
 
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
 DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
-PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 2, 4, 6, 8, 10, 12]
+PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 10]# [1, 2, 4, 6, 8, 10, 12]
 PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES = [1, 4]
 COLAB_BATCH_SIZE = 64
 COLAB_NUM_WORKERS = 4
@@ -183,13 +184,15 @@ class CVExperimentConfig:
         # set_paths
         self._set_paths()
 
-        # Validate dirs exist
-        if not os.path.exists(self.data_dir):
+        # Validate data input exists. Colab may stage from a sibling train.zip
+        # even when the extracted Drive train directory is not present.
+        if not self._data_input_exists():
             raise FileNotFoundError(
                 "Dataset directory does not exist: "
                 f"{self.data_dir}. Expected Kaggle Dogs vs Cats images under "
-                "<project-root>/data/dogs-vs-cats/train. In Colab, upload or mount "
-                "the project/data folder before starting the training cells."
+                "<project-root>/data/dogs-vs-cats/train or a Colab staging ZIP at "
+                "<project-root>/data/dogs-vs-cats/train.zip. In Colab, upload or "
+                "mount the project/data folder before starting the training cells."
             )
         os.makedirs(self.outputs_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
@@ -237,6 +240,15 @@ class CVExperimentConfig:
         self.results_dir = self._resolve_project_path(self.results_dir, os.path.join("outputs", "results"))
         self.figures_dir = self._resolve_project_path(self.figures_dir, os.path.join("outputs", "figures"))
         self.profile_output_dir = self._resolve_project_path(self.profile_output_dir, self.results_dir)
+
+    def _data_input_exists(self) -> bool:
+        """Return whether configured image data or its Colab staging ZIP exists."""
+
+        if os.path.exists(self.data_dir):
+            return True
+        if self.using_google_colab and self.stage_colab_data_to_local_disk:
+            return colab_data_zip_path(self.data_dir).exists()
+        return False
 
     def update_configs_for_local_testing(self) -> None:
         """Update configs for local testing."""

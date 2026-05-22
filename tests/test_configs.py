@@ -242,3 +242,15 @@ def test_config_resolves_project_relative_paths():
     resolved_path = CVExperimentConfig._resolve_project_path(config, "outputs/results", "unused")
 
     assert resolved_path == "/project/outputs/results"
+
+
+def test_colab_config_accepts_zip_only_dataset_input(tmp_path):
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.data_dir = str(tmp_path / "data" / "dogs-vs-cats" / "train")
+    config.using_google_colab = True
+    config.stage_colab_data_to_local_disk = True
+    zip_path = Path(f"{config.data_dir}.zip")
+    zip_path.parent.mkdir(parents=True)
+    zip_path.write_bytes(b"zip")
+
+    assert CVExperimentConfig._data_input_exists(config) is True

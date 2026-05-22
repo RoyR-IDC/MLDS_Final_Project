@@ -1,10 +1,14 @@
+import importlib.util
+from pathlib import Path
 import sys
 from types import ModuleType
 from types import SimpleNamespace
+import zipfile
 
 import src.utils.colab as colab
 from src.utils.colab import (
     COLAB_PREINSTALLED_REQUIREMENT_PREFIXES,
+    colab_data_zip_path,
     filter_colab_requirements_lines,
     find_project_root,
     mount_colab_drive_if_available,
@@ -12,6 +16,13 @@ from src.utils.colab import (
     requirement_package_name,
     stage_colab_data_to_local_disk,
 )
+
+
+def write_flat_image_zip(zip_path, filenames):
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, mode="w") as archive:
+        for filename in filenames:
+            archive.writestr(filename, filename.encode())
 
 
 def write_minimal_project(project_root):
@@ -161,12 +172,11 @@ def test_colab_mount_passes_force_remount(monkeypatch):
     assert mount_calls == [("/content/drive", True)]
 
 
-def test_stage_colab_data_copies_drive_images_to_local_disk(tmp_path, monkeypatch):
+def test_stage_colab_data_copies_drive_zip_and_extracts_to_local_disk(tmp_path, monkeypatch):
     source = tmp_path / "drive" / "train"
     destination = tmp_path / "content" / "train"
-    source.mkdir(parents=True)
-    (source / "cat.0.jpg").write_bytes(b"cat")
-    (source / "dog.1.jpg").write_bytes(b"dog")
+    source.parent.mkdir(parents=True)
+    write_flat_image_zip(colab_data_zip_path(source), ["cat.0.jpg", "dog.1.jpg"])
     monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
 
     staged = stage_colab_data_to_local_disk(
@@ -177,15 +187,16 @@ def test_stage_colab_data_copies_drive_images_to_local_disk(tmp_path, monkeypatc
 
     assert staged == str(destination)
     assert sorted(path.name for path in destination.iterdir()) == ["cat.0.jpg", "dog.1.jpg"]
+    assert colab_data_zip_path(destination).exists()
 
 
 def test_stage_colab_data_reuses_existing_local_copy(tmp_path, monkeypatch):
     source = tmp_path / "drive" / "train"
     destination = tmp_path / "content" / "train"
-    source.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
     destination.mkdir(parents=True)
+    write_flat_image_zip(colab_data_zip_path(source), ["cat.0.jpg", "dog.1.jpg"])
     for filename in ("cat.0.jpg", "dog.1.jpg"):
-        (source / filename).write_bytes(b"source")
         (destination / filename).write_bytes(b"local")
     monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
 
@@ -225,3 +236,43 @@ def test_stage_colab_data_leaves_non_colab_path_unchanged(tmp_path):
     staged = stage_colab_data_to_local_disk(source, using_google_colab=False)
 
     assert staged == str(source)
+
+
+def test_stage_colab_data_missing_zip_warns_and_keeps_drive_path(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    source.mkdir(parents=True)
+    (source / "cat.0.jpg").write_bytes(b"cat")
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        using_google_colab=True,
+    )
+
+    assert staged == str(source)
+    assert not destination.exists()
+    assert "ZIP was not found" in capsys.readouterr().out
+
+
+def test_zip_train_images_script_creates_flat_archive(tmp_path):
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "zip_train_images.py"
+    spec = importlib.util.spec_from_file_location("zip_train_images", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    source = tmp_path / "train"
+    output = tmp_path / "train.zip"
+    source.mkdir()
+    (source / "cat.0.jpg").write_bytes(b"cat")
+    (source / "dog.1.jpg").write_bytes(b"dog")
+    (source / "notes.txt").write_text("skip")
+
+    count = module.zip_train_images(source, output)
+
+    assert count == 2
+    with zipfile.ZipFile(output) as archive:
+        assert sorted(archive.namelist()) == ["cat.0.jpg", "dog.1.jpg"]
