@@ -41,6 +41,33 @@ def test_grid_three_dataloader_adjusts_image_size(tmp_path):
     assert targets.shape == (2,)
 
 
+def test_dataloader_can_crop_tile_compatible_image_back_to_model_size(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    samples = []
+    for index in range(4):
+        label_name = "cat" if index % 2 == 0 else "dog"
+        path = data_dir / f"{label_name}.{index}.jpg"
+        _make_image(path, (index * 40 % 255, index * 70 % 255, index * 100 % 255))
+        samples.append((str(path), 0 if label_name == "cat" else 1))
+
+    assert make_tile_compatible_image_size(224, 10) == 230
+    train_loader, _ = build_dataloaders(
+        samples[:2],
+        samples[2:],
+        image_size=224,
+        tiles_per_side=10,
+        tile_permutation=identity_tile_permutation(10),
+        batch_size=2,
+        num_workers=0,
+        output_image_size=224,
+    )
+    images, targets = next(iter(train_loader))
+
+    assert images.shape == (2, 3, 224, 224)
+    assert targets.shape == (2,)
+
+
 def test_dataloader_uses_cuda_loader_options_when_workers_enabled(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir()

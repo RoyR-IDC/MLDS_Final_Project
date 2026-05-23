@@ -22,7 +22,6 @@ from src.utils.io import load_yaml
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
 DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
 PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 10]# [1, 2, 4, 6, 8, 10, 12]
-PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES = [1, 4]
 COLAB_BATCH_SIZE = 64
 COLAB_NUM_WORKERS = 4
 
@@ -255,7 +254,8 @@ class CVExperimentConfig:
         self.sample_data = True
         self.sample_limit = 256
         self.model_names = ["resnet18"]
-        self.tiles_per_side_values = PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES.copy()
+        if not getattr(self, "tiles_per_side_values", None):
+            self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
         self.num_tile_permutations = 2
         self.epochs = 1
         self.plot_samples = True

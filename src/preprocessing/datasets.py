@@ -21,9 +21,11 @@ class DogsCatsDataset(Dataset[tuple[torch.Tensor, int]]):
         transform: Callable[[Image.Image], torch.Tensor],
         tile_permutation: Optional[TilePermutation] = None,
         tile_permutation_probability: float = 1.0,
+        output_transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ) -> None:
         self.samples = list(samples)
         self.transform = transform
+        self.output_transform = output_transform
         self.tile_permutation_transform = (
             TilePermutationTransform(tile_permutation) if tile_permutation is not None else None
         )
@@ -44,6 +46,8 @@ class DogsCatsDataset(Dataset[tuple[torch.Tensor, int]]):
             image_tensor = self.transform(image.convert("RGB"))
         if self.tile_permutation_transform is not None and self._should_apply_tile_permutation():
             image_tensor = self.tile_permutation_transform(image_tensor)
+        if self.output_transform is not None:
+            image_tensor = self.output_transform(image_tensor)
         return image_tensor, int(label)
 
     def _should_apply_tile_permutation(self) -> bool:

@@ -30,6 +30,7 @@ from src.experiments.training_runs import (
     train_model_and_save_progress,
     training_result_row_key,
 )
+from src.models.registry import TIMM_MODEL_IDS
 from src.preprocessing.dataloaders import build_dataloaders
 from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import TilePermutationRecord, build_tile_permutation_records
@@ -69,12 +70,14 @@ def initialize_tile_permutation_result_rows(
 def build_tile_permutation_dataloaders(
     *,
     config: CVExperimentConfig,
+    model_name: str,
     train_samples: Sequence[Sample],
     validation_samples: Sequence[Sample],
     record: TilePermutationRecord,
 ) -> tuple[DataLoader, DataLoader]:
     """Build dataloaders for one Part 1 tile-permutation run."""
 
+    fixed_input_size = config.image_size if model_name in TIMM_MODEL_IDS else None
     return build_dataloaders(
         train_samples=train_samples,
         val_samples=validation_samples,
@@ -84,6 +87,7 @@ def build_tile_permutation_dataloaders(
         batch_size=config.batch_size,
         num_workers=config.num_workers,
         standard_augmentation=False,
+        output_image_size=fixed_input_size,
     )
 
 
@@ -126,6 +130,7 @@ def train_single_tile_permutation_run(
     print("Building dataloaders...")
     train_loader, validation_loader = build_tile_permutation_dataloaders(
         config=config,
+        model_name=model_name,
         train_samples=train_samples,
         validation_samples=validation_samples,
         record=record,
@@ -145,6 +150,7 @@ def train_single_tile_permutation_run(
         seed=seed,
         overrides={"pretrained": config.pretrained},
         progress_desc=progress_desc,
+        expected_input_size=config.image_size if model_name in TIMM_MODEL_IDS else None,
     )
     train_model_and_save_progress(
         spec=spec,

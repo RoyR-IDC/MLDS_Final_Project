@@ -5,7 +5,6 @@ from src.utils.config import (
     COLAB_BATCH_SIZE,
     COLAB_NUM_WORKERS,
     CVExperimentConfig,
-    PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES,
     PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES,
     Part2ExperimentConfig,
     Part3ExperimentConfig,
@@ -189,17 +188,26 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
     assert dataclass_fields["freeze_backbone"].default is True
 
 
-def test_local_testing_defaults_use_larger_part1_signal():
+def test_local_testing_preserves_configured_tile_scope():
     config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.tiles_per_side_values = [1, 4, 10]
 
     CVExperimentConfig.update_configs_for_local_testing(config)
 
     assert config.sample_data is True
     assert config.sample_limit == 256
-    assert config.tiles_per_side_values == PART1_PART2_LOCAL_TILES_PER_SIDE_VALUES
+    assert config.tiles_per_side_values == [1, 4, 10]
     assert config.num_tile_permutations == 2
     assert config.epochs == 1
     assert config.plot_samples is True
+
+
+def test_local_testing_falls_back_to_remote_tile_scope_when_missing():
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+
+    CVExperimentConfig.update_configs_for_local_testing(config)
+
+    assert config.tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
 
 
 def test_colab_runtime_defaults_enable_t4_speed_settings():
