@@ -98,6 +98,29 @@ The experimental pipeline is organized into three notebooks. Part 1 establishes 
 
 The primary model in the current results is ResNet-18 \citep{he2016deep}. Experiments save raw run outputs, aggregated CSV summaries, and figures under \texttt{outputs/results} and \texttt{outputs/figures}. Aggregation reports mean final validation accuracy, mean best validation accuracy, standard deviation where multiple runs exist, and the number of runs.
 
+\subsection{Architecture Comparison and Frozen Backbones}
+
+To compare architectural inductive biases beyond ResNet-18, the Part 1 pipeline also supports three pretrained feature extractors: ResNet-18, DeiT-Tiny \citep{touvron2021deit}, and MLP-Mixer \citep{tolstikhin2021mlp}. All three are used in the same transfer-learning regime: the ImageNet-pretrained backbone is frozen and only the final binary classification head is optimized. This makes the relevant training-capacity comparison the number of learnable head parameters, not the total number of parameters stored in the network.
+
+\begin{table}[t]
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Model} & \textbf{Learnable} & \textbf{Frozen} & \textbf{Total} \\
+    \midrule
+    DeiT-Tiny & 386 & 5,524,416 & 5,524,802 \\
+    ResNet-18 & 1,026 & 11,176,512 & 11,177,538 \\
+    MLP-Mixer Base & 1,538 & 59,111,472 & 59,113,010 \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}
+  \label{tab:model-parameter-comparison}
+\end{table}
+
+The MLP-Mixer choice required special care. The smaller \texttt{mixer\_s16\_224} architecture would have been closer in total parameter count, but the available \texttt{timm} configuration does not provide pretrained weights for that variant. Freezing an untrained MLP-Mixer backbone would train only a classifier on random fixed features, which would not be a meaningful comparison to pretrained ResNet-18 and DeiT-Tiny. We therefore use the larger pretrained \texttt{mixer\_b16\_224.goog\_in21k\_ft\_in1k} model. Although this increases the number of frozen parameters and may increase forward-pass cost, the number of optimized parameters remains comparable to the other models: 1,538 learnable parameters for MLP-Mixer Base versus 1,026 for ResNet-18 and 386 for DeiT-Tiny.
+
 \subsection{Improvement Strategies}
 
 Part 2 evaluates six improvement settings against the regular Part 1 baseline: combined augmentations, patch shuffle, random erasing, same-label CutMix, corruption-probability curriculum, and permutation-difficulty curriculum. The augmentation methods perturb training images so the model sees additional spatial or visual variation. The curriculum methods stage training exposure so the model does not see the hardest corruption pattern from the beginning of training.
@@ -288,6 +311,16 @@ I.~Goodfellow, Y.~Bengio, and A.~Courville.
 K.~He, X.~Zhang, S.~Ren, and J.~Sun.
 \newblock Deep residual learning for image recognition.
 \newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition}, pages 770--778, 2016.
+
+\bibitem[Tolstikhin et~al.(2021)]{tolstikhin2021mlp}
+I.~O. Tolstikhin, N.~Houlsby, A.~Kolesnikov, L.~Beyer, X.~Zhai, T.~Unterthiner, J.~Yung, A.~Steiner, D.~Keysers, J.~Uszkoreit, M.~Lucic, and A.~Dosovitskiy.
+\newblock MLP-Mixer: An all-MLP architecture for vision.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2021.
+
+\bibitem[Touvron et~al.(2021)]{touvron2021deit}
+H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
+\newblock Training data-efficient image transformers and distillation through attention.
+\newblock In \emph{International Conference on Machine Learning}, pages 10347--10357, 2021.
 
 \end{thebibliography}
 
