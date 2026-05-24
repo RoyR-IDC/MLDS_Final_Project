@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 TIMM_MODEL_IDS = {
     "deit_tiny": "deit_tiny_patch16_224.fb_in1k",
+    "mlp_mixer_base": "mixer_b16_224.goog_in21k_ft_in1k",
     "mlp_mixer_small": "mixer_s16_224",
 }
 

@@ -42,7 +42,7 @@ def test_config_normalization_rejects_models_outside_supported_trio():
         normalize_config(raw_config)
     except ValueError as exc:
         assert "Unsupported model_name='resnet50'" in str(exc)
-        assert "resnet18, deit_tiny, mlp_mixer_small" in str(exc)
+        assert "resnet18, deit_tiny, mlp_mixer_base, mlp_mixer_small" in str(exc)
     else:
         raise AssertionError("Expected unsupported model_name to raise")
 
@@ -183,7 +183,7 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
     dataclass_fields = CVExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
 
-    assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_small"]
+    assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_base"]
     assert dataclass_fields["pretrained"].default is True
     assert dataclass_fields["freeze_backbone"].default is True
 

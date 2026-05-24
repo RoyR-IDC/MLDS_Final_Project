@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
+import timm
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -214,6 +216,59 @@ def test_model_trainer_ignores_mismatched_resume_checkpoint(tmp_path):
     assert result.status == "completed"
     assert result.resumed_from_checkpoint is None
     assert result.skipped_from_checkpoint is None
+
+
+def test_build_training_run_spec_records_mlp_mixer_from_scratch_when_pretrained_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(timm, "is_model_pretrained", lambda model_id: False)
+    model_calls = []
+
+    def fake_get_model(*args, **kwargs):
+        model_calls.append((args, kwargs))
+        return nn.Linear(2, 2)
+
+    monkeypatch.setattr(training_runs, "get_model", fake_get_model)
+
+    config = SimpleNamespace(
+        part="part1",
+        config_name="part1",
+        outputs_dir=str(tmp_path / "outputs"),
+        using_google_colab=False,
+        epochs=1,
+        optimizer="adamw",
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        use_amp=False,
+        profile_performance=False,
+        profile_warmup_batches=0,
+        image_size=224,
+        num_classes=2,
+        pretrained=True,
+        freeze_backbone=True,
+    )
+    loader = DataLoader(TensorDataset(torch.zeros(2, 3, 224, 224), torch.zeros(2, dtype=torch.long)))
+    record = TilePermutationRecord(
+        tiles_per_side=None,
+        tile_permutation_id=0,
+        tile_permutation_seed=42,
+        tile_permutation=None,
+    )
+
+    with pytest.warns(RuntimeWarning, match="initialized from scratch"):
+        spec = training_runs.build_training_run_spec(
+            config=config,
+            model_name="mlp_mixer_small",
+            train_loader=loader,
+            val_loader=loader,
+            device=torch.device("cpu"),
+            run_id="run",
+            record=record,
+            seed=42,
+        )
+
+    assert model_calls[0][1]["pretrained"] is False
+    assert model_calls[0][1]["freeze_backbone"] is False
+    assert spec.metadata["pretrained"] is False
+    assert spec.metadata["freeze_backbone"] is False
 
 
 def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):

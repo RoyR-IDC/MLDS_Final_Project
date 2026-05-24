@@ -137,7 +137,7 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_small"]
+        default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_base"]
     )
     pretrained: bool = True
     freeze_backbone: bool = True

@@ -13,7 +13,7 @@ from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 
 from src.experiments.results import build_result_row, build_training_result_row, save_run_rows
-from src.models.factory import get_model
+from src.models.factory import get_model, resolve_model_training_options
 from src.preprocessing.augmentations import BatchAugmentation
 from src.preprocessing.image_transforms import make_tile_compatible_image_size
 from src.preprocessing.tile_permutations import TilePermutationRecord
@@ -201,8 +201,15 @@ def build_training_run_spec(
 
     run_options = dict(overrides or {})
     training_config = build_training_config(config)
-    pretrained = bool(run_options.get("pretrained", getattr(config, "pretrained", False)))
-    freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", True)))
+    requested_pretrained = bool(run_options.get("pretrained", getattr(config, "pretrained", False)))
+    requested_freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", True)))
+    model_options = resolve_model_training_options(
+        model_name,
+        pretrained=requested_pretrained,
+        freeze_backbone=requested_freeze_backbone,
+    )
+    pretrained = model_options.pretrained
+    freeze_backbone = model_options.freeze_backbone
     print(f"Building model '{model_name}'...")
     model = get_model(
         model_name,
