@@ -1,9 +1,10 @@
 # Fdb version 4
-["pdflatex"] 1779590323.06374 "report.tex" "report.pdf" "report" 1779590324.93331 0
+["pdflatex"] 1779590399.80361 "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/paper/draft1/report.tex" "report.pdf" "report" 1779590402.35632 0
   "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779131670.62884 67275 9590d193884888baec46dfe840cad2eb ""
   "../../outputs/figures/part2_ablation_comparison.png" 1779134445.24038 100218 b0716d6b308c8441def82e5cb0272b47 ""
   "../../outputs/figures/part3_metrics_vs_accuracy.png" 1779137902.79449 74914 8fbfd4b334c1d6fccc936cfbea60d365 ""
   "../template/images/runi_logo.png" 1778560389.49127 70164 8693916a2b159cd0d90b1f4671a8235e ""
+  "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/paper/draft1/report.tex" 1779590318.1207 21463 cdf3f9c0fb362fa47fced56081b28fdf ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1136768653 1328 c834bbb027764024c09d3d2bf908b5f0 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm" 1136768653 1324 c910af8c371558dc20f2d7822f66fe64 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi12.tfm" 1136768653 1524 4414a8315f39513458b80dfc63bff03a ""
@@ -84,8 +85,8 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1779590324.6756 4556 aced06eda42205ce1522c3e0763bae2d "pdflatex"
-  "report.out" 1779590324.67768 1467 19bfdbdd8a3febc3ee6888f0acda9d30 "pdflatex"
+  "report.aux" 1779590402.01559 4556 aced06eda42205ce1522c3e0763bae2d "pdflatex"
+  "report.out" 1779590402.01868 1467 19bfdbdd8a3febc3ee6888f0acda9d30 "pdflatex"
   "report.tex" 1779590318.1207 21463 cdf3f9c0fb362fa47fced56081b28fdf ""
   (generated)
   "report.aux"
