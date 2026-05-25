@@ -98,6 +98,35 @@ The experimental pipeline is organized into three notebooks. Part 1 establishes 
 
 The primary model in the current results is ResNet-18 \citep{he2016deep}. Experiments save raw run outputs, aggregated CSV summaries, and figures under \texttt{outputs/results} and \texttt{outputs/figures}. Aggregation reports mean final validation accuracy, mean best validation accuracy, standard deviation where multiple runs exist, and the number of runs.
 
+\subsection{Training and Validation Sets by Experiment}
+
+All experiments use the labeled Kaggle Dogs vs Cats training folder as the only source of supervised examples. Labels are inferred from filenames, and the samples are split once with a stratified class-balanced split using seed 42, validation fraction 0.2, and test fraction 0.0. For the full dataset this gives 20,000 training images and 5,000 validation images: 10,000 cats and 10,000 dogs for training, and 2,500 cats and 2,500 dogs for validation. The validation split is held out from optimization and is not modified by training-only augmentations such as random erasing, CutMix, patch shuffle, or curriculum-stage sampling.
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{p{0.09\textwidth}p{0.17\textwidth}p{0.22\textwidth}p{0.24\textwidth}p{0.24\textwidth}}
+    \toprule
+    \textbf{Part} & \textbf{Models or analysis} & \textbf{Permutations / settings} & \textbf{Training set} & \textbf{Validation set} \\
+    \midrule
+    Part 1 & ResNet-18, DeiT-Tiny, MLP-Mixer Base & Unpermuted baseline with \texttt{tile\_permutation\_id=0}; five 4-by-4 permutations; five 10-by-10 permutations & Fixed 20,000-image training split, transformed with the row's target image size and tile permutation. The unpermuted baseline uses the same images without tile reordering. & Fixed 5,000-image validation split, transformed with the same target permutation as the run. \\
+    Part 2 & ResNet-18 ablations & Patch shuffle, random erasing, same-label CutMix, focal loss, corruption-probability curriculum, and permutation-difficulty curriculum; baseline, three 4-by-4 permutations, and three 10-by-10 permutations where available & Fixed 20,000-image training split with the ablation's training transform, batch augmentation, loss, or curriculum schedule applied. & Fixed 5,000-image validation split with the target run permutation only; training-only augmentations are disabled. \\
+    Part 3 & Hardness analysis, no new model training & Reuses Part 1 ResNet-18 tile-permutation records and validation accuracies & Not applicable; Part 3 computes permutation metrics and does not update model parameters. & Part 1 ResNet-18 held-out validation accuracies are joined to the corresponding permutation metrics. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Training and validation sets used by each experiment part in the current output matrix. Full permutation matrices are stored in the saved permutation metadata rather than repeated in the report.}
+  \label{tab:train-validation-by-experiment}
+\end{table*}
+
+The six Part 2 ablation identifiers in the saved results are \texttt{augmentation\_\allowbreak patch\_\allowbreak shuffle}, \texttt{augmentation\_\allowbreak random\_\allowbreak erasing}, \texttt{augmentation\_\allowbreak same\_\allowbreak label\_\allowbreak cutmix}, \texttt{loss\_\allowbreak focal\_\allowbreak loss}, \texttt{curriculum\_\allowbreak corruption\_\allowbreak probability}, and \texttt{curriculum\_\allowbreak permutation\_\allowbreak difficulty}.
+
+The curriculum ablations in Part 2 use additional stage-specific training loaders, but they do not create separate held-out validation splits per stage. In the corruption-probability curriculum, every stage uses the same 20,000 training images and the target tile permutation, with tile-permutation probabilities 0.1, 0.3, 0.5, and 0.8. In the permutation-difficulty curriculum, every stage again uses the same training images, progressing from original images to 2-by-2, 3-by-3, and 4-by-4 permutations, with an additional 10-by-10 stage for 10-by-10 target runs. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run.
+
+\noindent\textbf{TODO:} Synchronize the experiment lists, tile sizes, tables, figures, and narrative claims across the abstract, data overview, methodology, results, discussion, and conclusion so that every section describes the same current experiment matrix.
+
 \subsection{Architecture Comparison and Frozen Backbones}
 
 To compare architectural inductive biases beyond ResNet-18, the Part 1 pipeline also supports three pretrained feature extractors: ResNet-18, DeiT-Tiny \citep{touvron2021deit}, and MLP-Mixer \citep{tolstikhin2021mlp}. All three are used in the same transfer-learning regime: the ImageNet-pretrained backbone is frozen and only the final binary classification head is optimized. This makes the relevant training-capacity comparison the number of learnable head parameters, not the total number of parameters stored in the network.
