@@ -147,9 +147,11 @@ def _expected_part2_input_size(
     config: CVExperimentConfig,
     ablation: Mapping[str, Any],
     record: TilePermutationRecord,
-) -> int:
+) -> int | None:
     augmentation_name = _ablation_augmentation_name(ablation)
     curriculum_name = _ablation_curriculum_name(ablation)
+    if curriculum_name == "permutation_difficulty":
+        return None
     if augmentation_name in {"patch_shuffle", "combined_augmentations"}:
         tiles_per_side = _patch_shuffle_tiles(record)
     elif curriculum_name == "corruption_probability":
@@ -232,7 +234,10 @@ def _difficulty_stage_tiles(record: TilePermutationRecord) -> list[int | None]:
     target = int(record.tiles_per_side or 1)
     if target <= 1:
         return [None]
-    return [None, *[tiles for tiles in (2, 3, 4) if tiles <= target]]
+    stage_tiles = [tiles for tiles in (2, 3, 4) if tiles <= target]
+    if target not in stage_tiles:
+        stage_tiles.append(target)
+    return [None, *stage_tiles]
 
 
 def _planned_stage_items(

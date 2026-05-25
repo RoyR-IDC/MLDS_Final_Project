@@ -797,6 +797,96 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
     assert schedule.total_epochs == 5
 
 
+def test_difficulty_curriculum_includes_large_target_stage(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
+    record = TilePermutationRecord(
+        tiles_per_side=10,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=random_tile_permutation(10, seed=42),
+    )
+    loader_tiles = []
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        loader_tiles.append(kwargs["tiles_per_side"])
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "permutation_difficulty"},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert schedule.stage_names == [
+        "original",
+        "2x2_permutation",
+        "3x3_permutation",
+        "4x4_permutation",
+        "10x10_permutation",
+    ]
+    assert loader_tiles == [1, 2, 3, 4, 10]
+    assert schedule.total_epochs == 10
+
+
+def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatch):
+    config = SimpleNamespace(
+        part="part2",
+        config_name="part2_improvement",
+        image_size=224,
+        batch_size=4,
+        num_workers=0,
+        seed=42,
+        pretrained=True,
+        freeze_backbone=True,
+        optimizer="adamw",
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        use_amp=False,
+        profile_performance=False,
+        profile_warmup_batches=0,
+        outputs_dir="outputs",
+        results_dir="outputs/results",
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=10,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=random_tile_permutation(10, seed=42),
+    )
+    captured_kwargs = {}
+
+    class FakeLoader:
+        pass
+
+    def fake_build_training_run_spec(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(model_name=kwargs["model_name"])
+
+    monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+
+    part2.build_part2_training_run_spec(
+        config=config,
+        model_name="resnet18",
+        run_id="part2_run",
+        ablation={"name": "curriculum_permutation_difficulty", "curriculum": "permutation_difficulty"},
+        record=record,
+        train_loader=FakeLoader(),
+        validation_loader=FakeLoader(),
+        device="cpu",
+        batch_augmentation=None,
+        curriculum_schedule=SimpleNamespace(stage_names=["original", "10x10_permutation"]),
+    )
+
+    assert captured_kwargs["expected_input_size"] is None
+
+
 def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypatch):
     config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=4, seed=42)
     record = TilePermutationRecord(
