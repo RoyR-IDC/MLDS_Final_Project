@@ -7,7 +7,6 @@ from time import perf_counter
 from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
-from torch import nn
 from torch.utils.data import DataLoader
 from torch._C import device as TorchDevice
 
@@ -54,9 +53,7 @@ from src.experiments.training_runs import (
 )
 from src.preprocessing.augmentations import (
     BatchAugmentation,
-    CompositeBatchAugmentation,
     RandomPatchShuffle,
-    SameLabelCutMix,
 )
 from src.preprocessing.dataloaders import build_dataloaders
 from src.preprocessing.image_transforms import make_tile_compatible_image_size
@@ -68,7 +65,6 @@ from src.preprocessing.tile_permutations import (
     deterministic_tile_permutation,
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
-from src.training.losses import FocalLoss
 from src.training.run import TrainingRunSpec
 from src.utils.config import CVExperimentConfig
 
@@ -86,34 +82,26 @@ def _ablation_curriculum_name(ablation: Mapping[str, Any]) -> str | None:
     return None if curriculum in (None, "", "none") else str(curriculum)
 
 
-def _ablation_loss_name(ablation: Mapping[str, Any]) -> str:
-    return str(ablation.get("loss", "cross_entropy"))
+def _ablation_epochs(ablation: Mapping[str, Any], config: CVExperimentConfig) -> int:
+    return int(ablation.get("epochs", getattr(config, "epochs", 1)))
 
 
-def _ablation_focal_gamma(ablation: Mapping[str, Any]) -> float | None:
-    if _ablation_loss_name(ablation) != "focal_loss":
+def _ablation_p_original(ablation: Mapping[str, Any]) -> float | None:
+    if "p_original" not in ablation:
         return None
-    return float(ablation.get("focal_gamma", 2.0))
+    p_original = float(ablation["p_original"])
+    if not 0.0 <= p_original <= 1.0:
+        raise ValueError("p_original must be between 0 and 1")
+    return p_original
 
 
-def _ablation_focal_alpha(ablation: Mapping[str, Any]) -> float | None:
-    if _ablation_loss_name(ablation) != "focal_loss":
-        return None
-    return float(ablation.get("focal_alpha", 1.0))
+def _ablation_tile_permutation_probability(ablation: Mapping[str, Any]) -> float:
+    p_original = _ablation_p_original(ablation)
+    return 1.0 if p_original is None else 1.0 - p_original
 
 
-def build_ablation_criterion(ablation: Mapping[str, Any]) -> nn.Module | None:
-    """Build an optional criterion override for one Part 2 ablation."""
-
-    loss_name = _ablation_loss_name(ablation)
-    if loss_name == "cross_entropy":
-        return None
-    if loss_name == "focal_loss":
-        return FocalLoss(
-            gamma=float(ablation.get("focal_gamma", 2.0)),
-            alpha=float(ablation.get("focal_alpha", 1.0)),
-        )
-    raise ValueError(f"Unsupported loss: {loss_name}")
+def _ablation_classification_head(ablation: Mapping[str, Any]) -> str:
+    return str(ablation.get("classification_head", "linear"))
 
 
 def _hardness_level(score: float, *, is_baseline: bool) -> str:
@@ -160,7 +148,7 @@ def _expected_part2_input_size(
     curriculum_name = _ablation_curriculum_name(ablation)
     if curriculum_name == "permutation_difficulty":
         return None
-    if augmentation_name in {"patch_shuffle", "combined_augmentations"}:
+    if augmentation_name == "patch_shuffle":
         tiles_per_side = _patch_shuffle_tiles(record)
     elif curriculum_name == "corruption_probability":
         tiles_per_side = max(int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES), PATCH_SHUFFLE_DEFAULT_TILES)
@@ -186,18 +174,29 @@ def build_ablation_batch_augmentation(
     """Build the batch-level augmentation strategy for one Part 2 ablation."""
 
     augmentation_name = _ablation_augmentation_name(ablation)
-    if augmentation_name == "same_label_cutmix":
-        return SameLabelCutMix()
     if augmentation_name == "patch_shuffle":
         return RandomPatchShuffle(tiles_per_side=_patch_shuffle_tiles(record))
-    if augmentation_name == "combined_augmentations":
-        return CompositeBatchAugmentation(
-            [
-                SameLabelCutMix(),
-                RandomPatchShuffle(tiles_per_side=_patch_shuffle_tiles(record)),
-            ]
-        )
-    return None
+    if augmentation_name in {"none", "regular_augmentations"}:
+        return None
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
+
+
+def _ablation_image_augmentation(ablation: Mapping[str, Any]) -> str | None:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    if augmentation_name == "regular_augmentations":
+        return "regular_augmentations"
+    if augmentation_name in {"none", "patch_shuffle"}:
+        return None
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
+
+
+def _ablation_loader_tiles(ablation: Mapping[str, Any], record: TilePermutationRecord) -> int:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    if augmentation_name == "patch_shuffle":
+        return _patch_shuffle_tiles(record)
+    if augmentation_name in {"none", "regular_augmentations"}:
+        return int(record.tiles_per_side or 1)
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
 
 
 def build_ablation_dataloaders(
@@ -210,10 +209,7 @@ def build_ablation_dataloaders(
 ) -> tuple[DataLoader, DataLoader]:
     """Build dataloaders for a non-curriculum Part 2 ablation."""
 
-    augmentation_name = _ablation_augmentation_name(ablation)
-    uses_patch_shuffle = augmentation_name in {"patch_shuffle", "combined_augmentations"}
-    loader_tiles = _patch_shuffle_tiles(record) if uses_patch_shuffle else int(record.tiles_per_side or 1)
-    image_augmentation = "random_erasing" if augmentation_name in {"random_erasing", "combined_augmentations"} else None
+    loader_tiles = _ablation_loader_tiles(ablation, record)
     return build_dataloaders(
         train_samples=train_samples,
         val_samples=validation_samples,
@@ -223,7 +219,8 @@ def build_ablation_dataloaders(
         batch_size=config.batch_size,
         num_workers=config.num_workers,
         standard_augmentation=False,
-        image_augmentation=image_augmentation,
+        image_augmentation=_ablation_image_augmentation(ablation),
+        tile_permutation_probability=_ablation_tile_permutation_probability(ablation),
     )
 
 
@@ -258,12 +255,13 @@ def _planned_stage_items(
     """Return stage names and epoch counts without building stage dataloaders."""
 
     curriculum_name = _ablation_curriculum_name(ablation)
+    total_epochs = _ablation_epochs(ablation, config)
     if curriculum_name is None:
-        return [("standard", int(config.epochs))]
+        return [("standard", total_epochs)]
 
     if curriculum_name == "permutation_difficulty":
         stage_tiles = _difficulty_stage_tiles(record)
-        epochs = _stage_epochs(int(config.epochs), len(stage_tiles))
+        epochs = _stage_epochs(total_epochs, len(stage_tiles))
         names = [
             "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
             for tiles_per_side in stage_tiles
@@ -271,7 +269,7 @@ def _planned_stage_items(
         return list(zip(names, epochs))
 
     if curriculum_name == "corruption_probability":
-        epochs = _stage_epochs(int(config.epochs), len(CORRUPTION_PROBABILITY_SCHEDULE))
+        epochs = _stage_epochs(total_epochs, len(CORRUPTION_PROBABILITY_SCHEDULE))
         names = [f"permuted_probability_{probability:.1f}" for probability in CORRUPTION_PROBABILITY_SCHEDULE]
         return list(zip(names, epochs))
 
@@ -290,10 +288,11 @@ def build_curriculum_schedule(
     curriculum_name = _ablation_curriculum_name(ablation)
     if curriculum_name is None:
         return None
+    total_epochs = _ablation_epochs(ablation, config)
 
     if curriculum_name == "permutation_difficulty":
         stage_tiles = _difficulty_stage_tiles(record)
-        epochs = _stage_epochs(int(config.epochs), len(stage_tiles))
+        epochs = _stage_epochs(total_epochs, len(stage_tiles))
         stages: list[TrainingStage] = []
         for stage_epochs, tiles_per_side in zip(epochs, stage_tiles):
             tile_permutation = (
@@ -329,7 +328,7 @@ def build_curriculum_schedule(
             record=record,
             config=config,
         )
-        epochs = _stage_epochs(int(config.epochs), len(CORRUPTION_PROBABILITY_SCHEDULE))
+        epochs = _stage_epochs(total_epochs, len(CORRUPTION_PROBABILITY_SCHEDULE))
         stages = []
         for stage_epochs, probability in zip(epochs, CORRUPTION_PROBABILITY_SCHEDULE):
             train_loader, _ = build_dataloaders(
@@ -385,19 +384,23 @@ def initialize_ablation_result_rows(
 
 def _part2_metadata_overrides(
     *,
+    config: CVExperimentConfig,
     ablation: Mapping[str, Any],
     record: TilePermutationRecord,
     batch_augmentation: BatchAugmentation | None,
     curriculum_schedule: CurriculumSchedule | None,
 ) -> dict[str, Any]:
+    p_original = _ablation_p_original(ablation)
+    classification_head = _ablation_classification_head(ablation)
     return {
+        "epochs": _ablation_epochs(ablation, config),
         "augmentation_name": _ablation_augmentation_name(ablation),
         "batch_augmentation_name": getattr(batch_augmentation, "name", None),
         "curriculum_name": _ablation_curriculum_name(ablation),
         "curriculum_stages": curriculum_schedule.stage_names if curriculum_schedule is not None else None,
-        "loss_name": _ablation_loss_name(ablation),
-        "focal_gamma": _ablation_focal_gamma(ablation),
-        "focal_alpha": _ablation_focal_alpha(ablation),
+        "classification_head": "MLP" if classification_head.lower() == "mlp" else "linear",
+        "p_original": p_original,
+        "tile_permutation_probability": _ablation_tile_permutation_probability(ablation),
         **_part2_hardness_metadata(record),
     }
 
@@ -437,8 +440,10 @@ def build_part2_training_run_spec(
         record=record,
         seed=config.seed,
         overrides={
+            "epochs": _ablation_epochs(ablation, config),
             "pretrained": bool(ablation.get("use_pretrained", True)),
             "freeze_backbone": bool(ablation.get("freeze_backbone", getattr(config, "freeze_backbone", True))),
+            "classification_head": _ablation_classification_head(ablation),
         },
         ablation_name=str(ablation["name"]),
         progress_desc=progress_desc,
@@ -450,12 +455,12 @@ def build_part2_training_run_spec(
             record=record,
         ),
         metadata_overrides=_part2_metadata_overrides(
+            config=config,
             ablation=ablation,
             record=record,
             batch_augmentation=batch_augmentation,
             curriculum_schedule=curriculum_schedule,
         ),
-        criterion=build_ablation_criterion(ablation),
     )
 
 

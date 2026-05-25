@@ -40,12 +40,18 @@ def build_transforms(
     """Build torchvision transforms for Dogs vs Cats experiments."""
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    if train and image_augmentation == "random_erasing":
+    if train and image_augmentation == "regular_augmentations":
         return transforms.Compose(
             [
+                transforms.RandomRotation(degrees=15),
+                transforms.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.2,
+                    hue=0.05,
+                ),
                 transforms.Resize((image_size, image_size)),
                 PILToFloatTensor(),
-                transforms.RandomErasing(p=1.0, scale=(0.02, 0.2), ratio=(0.3, 3.3)),
                 normalize,
             ]
         )

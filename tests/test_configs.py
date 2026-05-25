@@ -109,15 +109,17 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
         "augmentation_patch_shuffle",
-        "augmentation_random_erasing",
-        "augmentation_same_label_cutmix",
-        "loss_focal_loss",
+        "regular_augmentations",
+        "mixed_original_permuted",
+        "resnet18_mlp_head",
         "curriculum_corruption_probability",
         "curriculum_permutation_difficulty",
     ]
-    assert ablations[3]["loss"] == "focal_loss"
-    assert ablations[3]["focal_gamma"] == 2.0
-    assert ablations[3]["focal_alpha"] == 1.0
+    assert ablations[1]["augmentation"] == "regular_augmentations"
+    assert ablations[2]["p_original"] == 0.5
+    assert ablations[3]["classification_head"] == "mlp"
+    assert ablations[4]["epochs"] == 30
+    assert ablations[5]["epochs"] == 30
 
 
 def test_part2_config_exposes_single_model_name_property():

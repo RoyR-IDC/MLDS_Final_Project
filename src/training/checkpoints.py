@@ -93,6 +93,10 @@ def validate_checkpoint_metadata(
         "use_amp",
         "pretrained",
         "freeze_backbone",
+        "epochs",
+        "classification_head",
+        "p_original",
+        "tile_permutation_probability",
     )
     for key in keys_to_match:
         if expected_metadata.get(key) != checkpoint_metadata.get(key):

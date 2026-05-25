@@ -290,34 +290,35 @@ class Part2ExperimentConfig(CVExperimentConfig):
                 "augmentation": "patch_shuffle",
             },
             {
-                "name": "augmentation_random_erasing",
+                "name": "regular_augmentations",
                 "use_pretrained": True,
-                "augmentation": "random_erasing",
+                "augmentation": "regular_augmentations",
             },
             {
-                "name": "augmentation_same_label_cutmix",
-                "use_pretrained": True,
-                "augmentation": "same_label_cutmix",
-            },
-            {
-                "name": "loss_focal_loss",
+                "name": "mixed_original_permuted",
                 "use_pretrained": True,
                 "augmentation": "none",
-                "loss": "focal_loss",
-                "focal_gamma": 2.0,
-                "focal_alpha": 1.0,
+                "p_original": 0.5,
+            },
+            {
+                "name": "resnet18_mlp_head",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "classification_head": "mlp",
             },
             {
                 "name": "curriculum_corruption_probability",
                 "use_pretrained": True,
                 "augmentation": "none",
                 "curriculum": "corruption_probability",
+                "epochs": 30,
             },
             {
                 "name": "curriculum_permutation_difficulty",
                 "use_pretrained": True,
                 "augmentation": "none",
                 "curriculum": "permutation_difficulty",
+                "epochs": 30,
             },
         ]
     )

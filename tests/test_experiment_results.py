@@ -210,7 +210,7 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
                 "std_best_epoch_val_accuracy": 0.0,
             },
             {
-                "ablation_name": "loss_focal_loss",
+                "ablation_name": "resnet18_mlp_head",
                 "tiles_per_side": 1,
                 "mean_best_epoch_val_accuracy": 0.80,
                 "std_best_epoch_val_accuracy": 0.0,
