@@ -102,6 +102,45 @@ The primary model in the current results is ResNet-18 \citep{he2016deep}. Experi
 
 To compare architectural inductive biases beyond ResNet-18, the Part 1 pipeline also supports three pretrained feature extractors: ResNet-18, DeiT-Tiny \citep{touvron2021deit}, and MLP-Mixer \citep{tolstikhin2021mlp}. All three are used in the same transfer-learning regime: the ImageNet-pretrained backbone is frozen and only the final binary classification head is optimized. This makes the relevant training-capacity comparison the number of learnable head parameters, not the total number of parameters stored in the network.
 
+The three models differ mainly in how they exchange information across the image. ResNet-18 uses convolutions, giving it a strong local-neighborhood bias. DeiT-Tiny represents the image as patches and uses self-attention to let patches interact. MLP-Mixer also operates on image patches, but replaces attention and convolutions with two MLP operations: token mixing, which combines information across patches, and channel mixing, which recombines feature dimensions inside each patch representation.
+
+\begin{table}[t]
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    \textbf{Model} & \textbf{Main operation} & \textbf{Inductive bias} \\
+    \midrule
+    ResNet-18 & Convolution & Local texture and translation structure \\
+    DeiT-Tiny & Self-attention & Patch-to-patch interactions \\
+    MLP-Mixer Base & MLP mixing & Patch and feature mixing without attention \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Architectural comparison of the three frozen feature extractors.}
+  \label{tab:model-architecture-comparison}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \fbox{%
+  \begin{minipage}{0.92\linewidth}
+  \centering
+  \texttt{Image}\\
+  $\downarrow$\\
+  \texttt{Patch embeddings}\\
+  $\downarrow$\\
+  \texttt{Mixer block: token-mixing MLP}\\
+  $\downarrow$\\
+  \texttt{Mixer block: channel-mixing MLP}\\
+  $\downarrow$\\
+  \texttt{Binary classifier head}
+  \end{minipage}
+  }
+  \caption{Simplified MLP-Mixer flow. Token mixing exchanges information across patches, while channel mixing recombines features within each patch representation.}
+  \label{fig:mlp-mixer-flow}
+\end{figure}
+
 \begin{table}[t]
   \centering
   \resizebox{\linewidth}{!}{%
