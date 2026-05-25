@@ -9,6 +9,7 @@
 \usepackage{geometry}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{amsmath}
 \usepackage{hyperref}
 \usepackage{parskip}
 \usepackage[numbers]{natbib}
@@ -129,13 +130,13 @@ All experiments use the labeled Kaggle Dogs vs Cats training folder as the only 
     \textbf{Part 2 strategy} & \textbf{Training set} & \textbf{Added training exposure} & \textbf{Validation set} \\
     \midrule
     Regular Part 1 baseline & Reused Part 1 ResNet-18 runs. & None beyond the fixed target permutation. & Reused Part 1 held-out validation accuracy. \\
-    Patch shuffle & Same 20,000 training images and target permutation. & Extra batch-level random patch shuffling during training, so the model sees additional local rearrangements beyond the fixed dataset examples. & Same 5,000 held-out images with the target permutation only. \\
-    Random erasing & Same 20,000 training images and target permutation. & Randomly removes image regions during training, creating occluded variants of the original training images. & Same 5,000 held-out images with no random erasing. \\
-    Same-label CutMix & Same 20,000 training images and target permutation. & Mixes image patches only between examples with the same label, adding same-class hybrid training images without changing labels. & Same 5,000 held-out images with no CutMix. \\
-    Combined augmentations & Same 20,000 training images and target permutation. & Combines multiple augmentation sources, such as patch shuffle and same-label CutMix, to create richer training variants. & Same 5,000 held-out images with no training-only augmentations. \\
+    Patch shuffle & Same 20,000 training images and target permutation. & No appended files; each batch of size $B$ produces $B$ shuffled training views, for 20,000 shuffled views per epoch. & Same 5,000 held-out images with the target permutation only. \\
+    Random erasing & Same 20,000 training images and target permutation. & No appended files; random erasing is applied with probability 1.0, giving $B$ erased views per batch and 20,000 erased views per epoch. & Same 5,000 held-out images with no random erasing. \\
+    Same-label CutMix & Same 20,000 training images and target permutation. & No appended files; each batch attempts $B$ same-class hybrid views, up to 20,000 hybrid views per epoch. & Same 5,000 held-out images with no CutMix. \\
+    Combined augmentations & Same 20,000 training images and target permutation. & No appended files; each batch receives random erasing plus batch-level CutMix and patch shuffle, yielding $B$ composite views per batch and 20,000 per epoch. & Same 5,000 held-out images with no training-only augmentations. \\
     Focal loss & Same 20,000 training images and target permutation. & No new images; the loss reweights hard examples during optimization. & Same 5,000 held-out images with the target permutation. \\
-    Corruption-probability curriculum & Same 20,000 training images at every stage. & Stages use target permutation probabilities 0.1, 0.3, 0.5, and 0.8. & One fixed target validation loader; no separate validation set per stage. \\
-    Permutation-difficulty curriculum & Same 20,000 training images at every stage. & Stages progress through original, 2-by-2, 3-by-3, 4-by-4, and for 10-by-10 targets an additional 10-by-10 stage. & One fixed final-target validation loader; no separate validation set per stage. \\
+    Corruption-probability curriculum & Same 20,000 training images at every stage. & No appended files; stage probabilities 0.1, 0.3, 0.5, and 0.8 give expected permuted counts of 2,000, 6,000, 10,000, and 16,000 views per stage epoch. & One fixed target validation loader; no separate validation set per stage. \\
+    Permutation-difficulty curriculum & Same 20,000 training images at every stage. & No appended files; each stage processes 20,000 views per epoch at its scheduled difficulty: original, 2-by-2, 3-by-3, 4-by-4, and for 10-by-10 targets an additional 10-by-10 stage. & One fixed final-target validation loader; no separate validation set per stage. \\
     \bottomrule
   \end{tabular}
   }
@@ -149,16 +150,16 @@ All experiments use the labeled Kaggle Dogs vs Cats training folder as the only 
   \resizebox{\textwidth}{!}{%
   \begin{tabular}{p{0.18\textwidth}p{0.17\textwidth}p{0.34\textwidth}p{0.23\textwidth}}
     \toprule
-    \textbf{Part 2 strategy} & \textbf{Stages} & \textbf{Experiment sequence} & \textbf{Dataset increase} \\
+    \textbf{Part 2 strategy} & \textbf{Stages} & \textbf{Experiment sequence} & \textbf{Dataset increase / per-epoch views} \\
     \midrule
     Regular Part 1 baseline & 1 & Standard training on the target permutation. & No increase: 20,000 training examples per epoch. \\
-    Patch shuffle & 1 & Standard training, with random patch shuffling applied inside training batches. & No stored dataset growth; stochastic batch augmentation creates new views on the fly. \\
-    Random erasing & 1 & Standard training, with random image-region erasing in the training transform. & No stored dataset growth; each epoch can show different occluded variants. \\
-    Same-label CutMix & 1 & Standard training, with same-class patches mixed inside training batches. & No stored dataset growth; batch mixing creates extra hybrid views during optimization. \\
-    Combined augmentations & 1 & Standard training, with more than one augmentation source active together. & No stored dataset growth; effective exposure increases through multiple stochastic views. \\
+    Patch shuffle & 1 & Standard training, with random patch shuffling applied inside training batches. & $0$ stored increase; $B$ shuffled views per batch and 20,000 per epoch. \\
+    Random erasing & 1 & Standard training, with random image-region erasing in the training transform. & $0$ stored increase; $B$ erased views per batch and 20,000 per epoch. \\
+    Same-label CutMix & 1 & Standard training, with same-class patches mixed inside training batches. & $0$ stored increase; up to $B$ hybrid views per batch and 20,000 per epoch. \\
+    Combined augmentations & 1 & Standard training, with more than one augmentation source active together. & $0$ stored increase; $B$ composite augmented views per batch and 20,000 per epoch. \\
     Focal loss & 1 & Standard training with focal loss instead of cross-entropy. & No increase: the examples are unchanged, only their loss weights change. \\
-    Corruption-probability curriculum & 4 & Permutation probability stages: 0.1, 0.3, 0.5, 0.8. & No stored dataset growth; each stage reuses all 20,000 images with a different corruption probability. \\
-    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. 4-by-4 target: original, 2-by-2, 3-by-3, 4-by-4. 10-by-10 target: original, 2-by-2, 3-by-3, 4-by-4, 10-by-10. & No stored dataset growth; each stage reuses all 20,000 images with a different difficulty level. \\
+    Corruption-probability curriculum & 4 & Permutation probability stages: 0.1, 0.3, 0.5, 0.8. & $0$ stored increase; expected permuted views per epoch are 2,000, 6,000, 10,000, and 16,000 by stage. \\
+    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. 4-by-4 target: original, 2-by-2, 3-by-3, 4-by-4. 10-by-10 target: original, 2-by-2, 3-by-3, 4-by-4, 10-by-10. & $0$ stored increase; 20,000 scheduled-difficulty views per stage epoch. \\
     \bottomrule
   \end{tabular}
   }
@@ -254,13 +255,20 @@ The MLP-Mixer choice required special care. The smaller \texttt{mixer\_s16\_224}
 
 Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseline. The main distinction is whether a strategy adds new training views of the same images, changes the optimization objective, or changes the order in which the model sees easy and hard inputs. In all cases, validation is performed on the held-out validation images with the target permutation and without training-only perturbations.
 
+For the counts below, let $B$ be the configured batch size and let $N_{\mathrm{train}}=20{,}000$ be the number of training images. The ablations do not append files to the dataset. Instead, they replace the ordinary batch tensor with an augmented view during the forward pass, so the stored increase is zero even when every processed training example is augmented.
+
 \subsubsection{Regular Part 1 Baseline}
 
 \textbf{Main idea.} This is the reference point for Part 2. ResNet-18 is trained normally on the target permutation, with no extra augmentation, no curriculum, and the standard loss.
 
 \textbf{Reason.} The baseline is necessary because every ablation must be judged against ordinary training on the same task. Without it, an improvement strategy might look useful simply because the target permutation is easier than another run.
 
-\textbf{Deeper dive.} The baseline uses the same train and validation split as Part 1. For a permuted run, both training and validation images are transformed by the same fixed tile permutation for that run. It has one training stage and does not increase the dataset size.
+\textbf{Deeper dive.} The baseline uses the same train and validation split as Part 1. For a permuted run, both training and validation images are transformed by the same fixed tile permutation for that run. It has one training stage and does not increase the dataset size. If $x_i$ is an input image, $P_{\pi}$ is the target tile permutation, and $f_{\theta}$ is the classifier, the baseline minimizes
+\[
+  \frac{1}{N_{\mathrm{train}}}\sum_{i=1}^{N_{\mathrm{train}}}
+  \ell\!\left(f_{\theta}(P_{\pi}(x_i)), y_i\right).
+\]
+The number of added augmented images is $0$ per batch and $0$ per epoch; the number of processed training views remains $B$ per batch and 20,000 per epoch.
 
 \subsubsection{Patch Shuffle}
 
@@ -268,7 +276,11 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} This is relevant because the main task already tests whether class information survives spatial reordering. If extra random patch movement helps, it suggests that robustness to local layout disruption is useful for permuted Dogs versus Cats classification.
 
-\textbf{Deeper dive.} The target permutation is still the run-level task definition, but each training batch can also receive random patch shuffling. This does not duplicate image files or increase the stored dataset beyond 20,000 training images; instead, it creates different stochastic views during optimization. The validation loader does not use patch shuffle, so reported accuracy measures the fixed target validation permutation.
+\textbf{Deeper dive.} The target permutation is still the run-level task definition, but each training batch can also receive random patch shuffling. Let $S_{\rho}$ denote a random within-image patch permutation sampled independently during training. The effective training view is
+\[
+  \tilde{x}_i = S_{\rho_i}\!\left(P_{\pi}(x_i)\right),
+\]
+and the loss is computed on $\ell(f_{\theta}(\tilde{x}_i),y_i)$. In the implementation the shuffle probability is 1.0, so a batch of size $B$ contains $B$ shuffled views and an epoch contains 20,000 shuffled views. These views are not appended to the dataset; they replace the current batch examples. The validation loader does not use patch shuffle, so reported accuracy measures the fixed target validation permutation.
 
 \subsubsection{Random Erasing}
 
@@ -276,7 +288,11 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} Tile permutations can break global shape, so a model may need to rely on partial cues such as fur texture, ears, eyes, color, or background context. Random erasing tests whether forcing the model to survive missing local evidence improves that behavior.
 
-\textbf{Deeper dive.} This method creates occluded variants of the same training examples on the fly. It does not store a larger dataset; each epoch can expose different erased regions from the same images. The validation set remains un-erased and is transformed only by the target permutation.
+\textbf{Deeper dive.} This method creates occluded variants of the same training examples on the fly. Let $M_i \in \{0,1\}^{H\times W}$ be a sampled erasing mask and let $v$ be the fill value used by the transform. The augmented image can be written as
+\[
+  \tilde{x}_i = M_i \odot P_{\pi}(x_i) + (1-M_i)\odot v.
+\]
+Random erasing is configured with probability 1.0 and scale range 0.02 to 0.20, so each batch contributes $B$ erased training views and each epoch contributes 20,000 erased views. The stored dataset still contains only the original 20,000 training images. The validation set remains un-erased and is transformed only by the target permutation.
 
 \subsubsection{Same-Label CutMix}
 
@@ -284,7 +300,16 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} This experiment asks whether more same-class local variation helps the model classify permuted images. It is especially relevant when global object layout is damaged and the classifier may need to combine local evidence from separated tiles.
 
-\textbf{Deeper dive.} Unlike ordinary CutMix, this version avoids mixed labels. The added training views are hybrid same-class images produced during batching, not a new stored dataset. Validation uses the original held-out images and does not apply CutMix.
+\textbf{Deeper dive.} Unlike ordinary CutMix, this version avoids mixed labels. For image $i$, the batch augmentation samples a partner $j$ with $y_j=y_i$ and a rectangular binary mask $M_i$. The hybrid view is
+\[
+  \begin{aligned}
+  \tilde{x}_i
+    &= M_i \odot P_{\pi}(x_i) \\
+    &\quad + (1-M_i)\odot P_{\pi}(x_j),\\
+  \tilde{y}_i &= y_i.
+  \end{aligned}
+\]
+The batch-level CutMix probability is 1.0, so each batch attempts to create $B$ same-label hybrid views. If an example has no same-label partner inside a particular batch, it is left unchanged; with shuffled binary batches this edge case is rare for normal batch sizes. The stored increase is $0$, while the effective exposure is up to $B$ hybrid views per batch and up to 20,000 per epoch. Validation uses the original held-out images and does not apply CutMix.
 
 \subsubsection{Combined Augmentations}
 
@@ -292,7 +317,20 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} Different augmentations stress different weaknesses: patch shuffle stresses spatial order, CutMix stresses partial object evidence, and image perturbations stress reliance on specific pixels. Combining them tests whether these robustness pressures are complementary.
 
-\textbf{Deeper dive.} The training split remains the same 20,000 images, but the effective variety of examples increases because stochastic augmentations produce multiple possible views. The validation set is not augmented; it remains the fixed held-out target-permutation set. This makes the comparison a test of whether richer training exposure improves ordinary target validation accuracy.
+\textbf{Deeper dive.} The training split remains the same 20,000 images, but the effective variety of examples increases because stochastic augmentations produce multiple possible views. In the implementation, combined augmentations apply random erasing in the image transform and then apply same-label CutMix followed by patch shuffle at the batch level. One training view can be summarized as
+\[
+  \begin{aligned}
+  \tilde{x}_i =
+  S_{\rho_i}\!\left(
+    M_i \odot E(P_{\pi}(x_i))
+    \right.\\
+    \left.
+    + (1-M_i)\odot E(P_{\pi}(x_j))
+  \right),\\
+  y_j=y_i.
+  \end{aligned}
+\]
+where $E$ denotes the image-level erased transform and $S_{\rho_i}$ denotes the random patch shuffle. This produces $B$ composite augmented views per batch and 20,000 per epoch, with $0$ stored dataset growth. The validation set is not augmented; it remains the fixed held-out target-permutation set. This makes the comparison a test of whether richer training exposure improves ordinary target validation accuracy.
 
 \subsubsection{Focal Loss}
 
@@ -300,7 +338,11 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} Some permuted images may remain easy because local class cues are obvious, while others may become much harder after tile movement. Focal loss tests whether concentrating learning on those harder cases improves performance.
 
-\textbf{Deeper dive.} This strategy does not add new images to the training set and has one stage. It changes only the loss used during optimization. Validation uses the same held-out target set, so any difference comes from the training objective rather than from extra data.
+\textbf{Deeper dive.} This strategy does not add new images to the training set and has one stage. It changes only the loss used during optimization. For the binary target probability $p_t$ assigned to the correct class, focal loss uses
+\[
+  \mathrm{FL}(p_t) = -\alpha(1-p_t)^{\gamma}\log(p_t),
+\]
+with $\gamma=2.0$ and $\alpha=1.0$ in the default ablation configuration. The number of added augmented images is $0$ per batch and $0$ per epoch. Validation uses the same held-out target set, so any difference comes from the training objective rather than from extra data.
 
 \subsubsection{Corruption-Probability Curriculum}
 
@@ -308,7 +350,19 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} Jumping immediately into a hard permutation may make optimization unstable. This curriculum tests whether gradual exposure lets the model first learn dog-versus-cat cues and then adapt those cues to more frequent spatial corruption.
 
-\textbf{Deeper dive.} Each stage uses the same 20,000 training images and target tile permutation, but changes the probability that the permutation is applied. The stages use probabilities 0.1, 0.3, 0.5, and 0.8. This does not store a larger dataset; it changes the sampled training view. There is no separate validation set for each stage; validation always uses the fixed target validation loader.
+\textbf{Deeper dive.} Each stage uses the same 20,000 training images and target tile permutation, but changes the probability that the permutation is applied. For stage probability $q_s$, the sampled training view is
+\[
+  \begin{aligned}
+  \tilde{x}_i =
+  \begin{cases}
+    P_{\pi}(x_i), & z_i < q_s,\\
+    x_i, & z_i \ge q_s,
+  \end{cases}
+  \\
+  z_i \sim \mathrm{Uniform}(0,1).
+  \end{aligned}
+\]
+The stages use $q_s \in \{0.1,0.3,0.5,0.8\}$, so the expected number of permuted views per stage epoch is $q_s N_{\mathrm{train}}$: 2,000, 6,000, 10,000, and 16,000 respectively. In a batch of size $B$, the expected number of permuted views is $q_sB$. This does not store a larger dataset; it changes the sampled training view. There is no separate validation set for each stage; validation always uses the fixed target validation loader.
 
 \subsubsection{Permutation-Difficulty Curriculum}
 
@@ -316,7 +370,15 @@ Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseli
 
 \textbf{Reason.} Smaller or easier permutations preserve more of the original image structure. This experiment tests whether a model can learn useful class cues under mild disruption before facing the final, harder tile rearrangement.
 
-\textbf{Deeper dive.} Each stage uses the same 20,000 training images but changes the tile grid used for training. The schedule begins with original images and then progresses through 2-by-2, 3-by-3, and 4-by-4 permutations; for 10-by-10 target runs, it adds a final 10-by-10 stage. The stored dataset size does not increase, and validation remains the held-out loader for the final target run.
+\textbf{Deeper dive.} Each stage uses the same 20,000 training images but changes the tile grid used for training. If $g_s$ is the stage grid size and $\pi_s$ is the corresponding sampled or target permutation, then
+\[
+  \tilde{x}_i^{(s)} =
+  \begin{cases}
+    x_i, & g_s=1,\\
+    P_{\pi_s}^{(g_s)}(x_i), & g_s>1.
+  \end{cases}
+\]
+The schedule begins with original images and then progresses through 2-by-2, 3-by-3, and 4-by-4 permutations; for 10-by-10 target runs, it adds a final 10-by-10 stage. Each stage processes $B$ scheduled-difficulty views per batch and 20,000 per stage epoch. The stored dataset size does not increase, and validation remains the held-out loader for the final target run.
 
 \subsection{Tile Permutation Hardness Metrics}
 
