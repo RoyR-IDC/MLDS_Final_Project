@@ -84,6 +84,7 @@ def setup_part2_config() -> SimpleNamespace:
         warn_if_colab_runtime_without_cuda,
     )
     from src.utils.config import Part2ExperimentConfig
+    from src.preprocessing.tile_permutations import TILE_PERMUTATION_NAMES
     from src.utils.reproducibility import seed_everything
 
     config = Part2ExperimentConfig()
@@ -100,6 +101,8 @@ def setup_part2_config() -> SimpleNamespace:
                 "model_name": config.model_name,
                 "tiles_per_side_values": config.tiles_per_side_values,
                 "num_tile_permutations": config.num_tile_permutations,
+                "tile_permutation_names": list(TILE_PERMUTATION_NAMES[: config.num_tile_permutations]),
+                "grid_x_permutation_runs": len(config.tiles_per_side_values) * config.num_tile_permutations,
                 "epochs": config.epochs,
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,
@@ -119,6 +122,7 @@ def setup_part3_config() -> SimpleNamespace:
     import pandas as pd
 
     from src.evaluation.experiment_results import part3_output_paths
+    from src.preprocessing.tile_permutations import TILE_PERMUTATION_NAMES
     from src.utils.config import Part3ExperimentConfig
 
     config = Part3ExperimentConfig()
@@ -133,6 +137,8 @@ def setup_part3_config() -> SimpleNamespace:
                 "model_name": config.model_name,
                 "tiles_per_side_values": config.tiles_per_side_values,
                 "num_tile_permutations": config.num_tile_permutations,
+                "tile_permutation_names": list(TILE_PERMUTATION_NAMES[: config.num_tile_permutations]),
+                "grid_x_permutation_records": len(config.tiles_per_side_values) * config.num_tile_permutations,
                 "seed": config.seed,
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,

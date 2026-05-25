@@ -345,6 +345,22 @@ def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
     }
 
 
+def test_part3_metrics_rebuild_named_deterministic_records_when_csv_is_missing(tmp_path):
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "missing_tile_permutations.csv"),
+        tiles_per_side_values=[1, 4, 7, 10],
+        num_tile_permutations=3,
+        seed=42,
+        validation_samples=[],
+        image_size=224,
+    )
+
+    assert len(metrics) == 12
+    assert metrics["tile_permutation_name"].tolist() == ["easy", "medium", "large"] * 4
+    assert metrics.loc[:2, "global_tile_displacement"].eq(0.0).all()
+    assert set(metrics.loc[3:, "tiles_per_side"]) == {4, 7, 10}
+
+
 def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
     pd.DataFrame(
         [

@@ -143,10 +143,13 @@ def test_part2_config_rejects_non_resnet18_supported_model():
 def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
     dataclass_fields = Part3ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
+    tiles_per_side_values = dataclass_fields["tiles_per_side_values"].default_factory()
 
     assert dataclass_fields["part"].default == "part3"
     assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
     assert model_names == ["resnet18"]
+    assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
+    assert dataclass_fields["num_tile_permutations"].default == 3
     assert dataclass_fields["weight_adj"].default == 0.5
     assert dataclass_fields["weight_entropy"].default == 0.3
     assert dataclass_fields["weight_dist"].default == 0.2
@@ -182,21 +185,25 @@ def test_cv_experiment_config_exposes_single_seed_field():
 def test_part1_model_defaults_to_lightweight_pretrained_trio():
     dataclass_fields = CVExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
+    tiles_per_side_values = dataclass_fields["tiles_per_side_values"].default_factory()
 
     assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_base"]
+    assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
+    assert dataclass_fields["num_tile_permutations"].default == 3
     assert dataclass_fields["pretrained"].default is True
     assert dataclass_fields["freeze_backbone"].default is True
 
 
 def test_local_testing_preserves_configured_tile_scope():
     config = CVExperimentConfig.__new__(CVExperimentConfig)
-    config.tiles_per_side_values = [1, 4, 10]
+    config.tiles_per_side_values = [1, 4, 7, 10]
+    config.num_tile_permutations = 3
 
     CVExperimentConfig.update_configs_for_local_testing(config)
 
     assert config.sample_data is True
     assert config.sample_limit == 256
-    assert config.tiles_per_side_values == [1, 4, 10]
+    assert config.tiles_per_side_values == [1, 4, 7, 10]
     assert config.num_tile_permutations == 2
     assert config.epochs == 1
     assert config.plot_samples is True
@@ -228,7 +235,7 @@ def test_part3_local_testing_keeps_hardness_notebook_tile_scope():
 
     Part3ExperimentConfig.update_configs_for_local_testing(config)
 
-    assert config.tiles_per_side_values == [1, 3]
+    assert config.tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
 
 
 def test_find_project_root_walks_up_from_notebook_directory(tmp_path):

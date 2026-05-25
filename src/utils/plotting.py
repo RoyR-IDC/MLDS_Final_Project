@@ -108,7 +108,8 @@ def plot_tile_permutation_samples(
                 ).clip(0.0, 1.0)
                 axes[row_index, col_index].imshow(reordered_image)
                 axes[row_index, col_index].set_title(
-                    f"{label_name} {record.tiles_per_side}x{record.tiles_per_side} permutation {record.tile_permutation_id}"
+                    f"{label_name} {record.tiles_per_side}x{record.tiles_per_side} "
+                    f"{record.tile_permutation_name or record.tile_permutation_id}"
                 )
                 axes[row_index, col_index].axis("off")
 

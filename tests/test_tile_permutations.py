@@ -1,8 +1,10 @@
 import pytest
 
 from src.preprocessing.tile_permutations import (
+    TILE_PERMUTATION_NAMES,
     TilePermutation,
     build_tile_permutation_records,
+    deterministic_tile_permutation,
     generate_tile_permutations,
     identity_tile_permutation,
     matrix_to_flat_order,
@@ -46,13 +48,29 @@ def test_tile_permutation_rejects_out_of_range_coordinate():
         TilePermutation(tiles_per_side=2, order=[[(0, 0), (0, 1)], [(1, 0), (2, 0)]])
 
 
-def test_build_tile_permutation_records_uses_none_baseline_and_seeded_random_records():
-    records = build_tile_permutation_records([1, 2], num_tile_permutations=1, seed=123)
+def test_build_tile_permutation_records_uses_named_deterministic_matrix():
+    records = build_tile_permutation_records([1, 4, 7, 10], num_tile_permutations=3, seed=123)
 
     assert {record.tile_permutation_seed for record in records} == {123}
-    assert records[0].tiles_per_side is None
-    assert records[0].tile_permutation_id == 0
-    assert records[0].tile_permutation is None
-    assert records[1].tiles_per_side == 2
-    assert records[1].tile_permutation_id == 1
-    assert records[1].tile_permutation is not None
+    assert len(records) == 12
+    assert [(record.tile_permutation_id, record.tile_permutation_name) for record in records[:3]] == [
+        (1, "easy"),
+        (2, "medium"),
+        (3, "large"),
+    ]
+    assert all(record.tiles_per_side is None for record in records[:3])
+    assert all(record.tile_permutation is None for record in records[:3])
+    assert {record.tiles_per_side for record in records[3:]} == {4, 7, 10}
+    assert all(record.tile_permutation_name in TILE_PERMUTATION_NAMES for record in records)
+    assert all(record.tile_permutation is not None for record in records[3:])
+
+
+def test_deterministic_tile_permutations_are_valid_and_repeatable():
+    for tiles_per_side in (4, 7, 10):
+        for permutation_name in TILE_PERMUTATION_NAMES:
+            first = deterministic_tile_permutation(tiles_per_side, permutation_name)
+            second = deterministic_tile_permutation(tiles_per_side, permutation_name)
+
+            assert matrix_to_flat_order(first) == matrix_to_flat_order(second)
+            assert sorted(matrix_to_flat_order(first)) == list(range(tiles_per_side * tiles_per_side))
+            assert matrix_to_flat_order(first) != list(range(tiles_per_side * tiles_per_side))

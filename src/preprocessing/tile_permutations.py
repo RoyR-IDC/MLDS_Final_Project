@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import random
-from typing import Any, Iterable, Sequence, TypeAlias, TypeGuard, cast
+from typing import Any, Callable, Iterable, Sequence, TypeAlias, TypeGuard, cast
 
 
 TileCoordinate: TypeAlias = tuple[int, int]
@@ -62,6 +62,11 @@ class TilePermutationRecord:
     tile_permutation_id: int
     tile_permutation_seed: int
     tile_permutation: TilePermutation | None
+    tile_permutation_name: str = ""
+
+
+TILE_PERMUTATION_NAMES = ("easy", "medium", "large")
+TilePermutationFunction: TypeAlias = Callable[[TilesPerSide], TilePermutation]
 
 
 def _is_tile_coordinate(value: object) -> TypeGuard[TileCoordinate]:
@@ -138,6 +143,113 @@ def identity_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
     return TilePermutation(tiles_per_side=tiles_per_side, order=order)
 
 
+def _swap_positions(flat_order: list[int], tiles_per_side: TilesPerSide, first: TileCoordinate, second: TileCoordinate) -> None:
+    first_index = first[0] * tiles_per_side + first[1]
+    second_index = second[0] * tiles_per_side + second[1]
+    flat_order[first_index], flat_order[second_index] = flat_order[second_index], flat_order[first_index]
+
+
+def easy_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
+    """Return a low-disruption deterministic local-swap permutation."""
+
+    if tiles_per_side < 1:
+        raise ValueError("tiles_per_side must be at least 1")
+    flat_order = list(range(tiles_per_side * tiles_per_side))
+    if tiles_per_side == 1:
+        return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
+
+    swap_count = max(1, tiles_per_side // 4)
+    for index in range(swap_count):
+        row = min(tiles_per_side - 1, index * 2)
+        col = (index * 3) % (tiles_per_side - 1)
+        _swap_positions(flat_order, tiles_per_side, (row, col), (row, col + 1))
+    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
+
+
+def medium_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
+    """Return a medium-disruption deterministic shift-and-swap permutation."""
+
+    if tiles_per_side < 1:
+        raise ValueError("tiles_per_side must be at least 1")
+    if tiles_per_side == 1:
+        return identity_tile_permutation(tiles_per_side)
+
+    grid = [[row * tiles_per_side + col for col in range(tiles_per_side)] for row in range(tiles_per_side)]
+    for row, values in enumerate(grid):
+        shift = row % 3 + 1
+        grid[row] = values[shift:] + values[:shift]
+    for col in range(tiles_per_side):
+        values = [grid[row][col] for row in range(tiles_per_side)]
+        shift = col % 2 + 1
+        values = values[shift:] + values[:shift]
+        for row, value in enumerate(values):
+            grid[row][col] = value
+    flat_order = [value for row in grid for value in row]
+    swap_count = max(2, tiles_per_side // 2)
+    for index in range(swap_count):
+        row = (index * 2 + 1) % tiles_per_side
+        col = (index * 3 + 1) % tiles_per_side
+        _swap_positions(
+            flat_order,
+            tiles_per_side,
+            (row, col),
+            ((row + 1) % tiles_per_side, (col + 1) % tiles_per_side),
+        )
+    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
+
+
+def large_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
+    """Return a high-disruption deterministic global permutation."""
+
+    if tiles_per_side < 1:
+        raise ValueError("tiles_per_side must be at least 1")
+    if tiles_per_side == 1:
+        return identity_tile_permutation(tiles_per_side)
+
+    matrix = [
+        [
+            (
+                (tiles_per_side - 1 - col + row) % tiles_per_side,
+                (tiles_per_side - 1 - row + 2 * col) % tiles_per_side,
+            )
+            for col in range(tiles_per_side)
+        ]
+        for row in range(tiles_per_side)
+    ]
+    flat_order = [old_row * tiles_per_side + old_col for row in matrix for old_row, old_col in row]
+    if sorted(flat_order) != list(range(tiles_per_side * tiles_per_side)):
+        flat_order = list(reversed(range(tiles_per_side * tiles_per_side)))
+
+    swap_count = max(tiles_per_side, 3)
+    for index in range(swap_count):
+        row = index % tiles_per_side
+        col = (index * 2) % tiles_per_side
+        _swap_positions(
+            flat_order,
+            tiles_per_side,
+            (row, col),
+            (tiles_per_side - 1 - row, tiles_per_side - 1 - col),
+        )
+    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
+
+
+TILE_PERMUTATION_FUNCTIONS: dict[str, TilePermutationFunction] = {
+    "easy": easy_tile_permutation,
+    "medium": medium_tile_permutation,
+    "large": large_tile_permutation,
+}
+
+
+def deterministic_tile_permutation(tiles_per_side: TilesPerSide, name: str) -> TilePermutation:
+    """Return one named deterministic tile permutation."""
+
+    try:
+        permutation_function = TILE_PERMUTATION_FUNCTIONS[name]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported tile permutation name: {name}") from exc
+    return permutation_function(tiles_per_side)
+
+
 def random_tile_permutation(tiles_per_side: TilesPerSide, seed: int) -> TilePermutation:
     """Generate one seeded random tile permutation."""
 
@@ -172,35 +284,44 @@ def build_tile_permutation_records(
     seed: int = 42,
     include_baseline: bool = True,
 ) -> list[TilePermutationRecord]:
-    """Build stable tile-permutation records for experiment reuse.
-
-    The baseline is represented by ``tile_permutation=None``.
-    """
+    """Build stable named tile-permutation records for experiment reuse."""
 
     records: list[TilePermutationRecord] = []
-    if include_baseline:
-        records.append(
-            TilePermutationRecord(
-                tiles_per_side=None,
-                tile_permutation_id=0,
-                tile_permutation_seed=seed,
-                tile_permutation=None,
-            )
+    permutation_names = list(TILE_PERMUTATION_NAMES[:num_tile_permutations])
+    if num_tile_permutations < 0:
+        raise ValueError("num_tile_permutations must be non-negative")
+    if len(permutation_names) != num_tile_permutations:
+        raise ValueError(
+            f"num_tile_permutations must be between 0 and {len(TILE_PERMUTATION_NAMES)} "
+            f"for deterministic named permutations, got {num_tile_permutations}"
         )
 
     for tiles_per_side in tiles_per_side_values:
-        if tiles_per_side == 1:
+        resolved_tiles_per_side = int(tiles_per_side)
+        if resolved_tiles_per_side < 1:
+            raise ValueError("tiles_per_side values must be at least 1")
+        if resolved_tiles_per_side == 1:
+            if not include_baseline:
+                continue
+            for offset, permutation_name in enumerate(permutation_names, start=1):
+                records.append(
+                    TilePermutationRecord(
+                        tiles_per_side=None,
+                        tile_permutation_id=offset,
+                        tile_permutation_seed=seed,
+                        tile_permutation=None,
+                        tile_permutation_name=permutation_name,
+                    )
+                )
             continue
-        for offset, tile_permutation in enumerate(
-            generate_tile_permutations(tiles_per_side, num_tile_permutations, seed),
-            start=1,
-        ):
+        for offset, permutation_name in enumerate(permutation_names, start=1):
             records.append(
                 TilePermutationRecord(
-                    tiles_per_side=tiles_per_side,
+                    tiles_per_side=resolved_tiles_per_side,
                     tile_permutation_id=offset,
                     tile_permutation_seed=seed,
-                    tile_permutation=tile_permutation,
+                    tile_permutation=deterministic_tile_permutation(resolved_tiles_per_side, permutation_name),
+                    tile_permutation_name=permutation_name,
                 )
             )
     return records

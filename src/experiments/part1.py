@@ -105,7 +105,7 @@ def _print_tile_permutation_run_header(
     print(
         f"[{record_index}/{num_records}]\nmodel={model_name}, "
         f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-        f"seed={record.tile_permutation_seed}\n{stage_summary}"
+        f"tile_permutation_name={record.tile_permutation_name}, seed={record.tile_permutation_seed}\n{stage_summary}"
     )
 
 
@@ -139,11 +139,15 @@ def train_single_tile_permutation_run(
     print(f"Built dataloaders: {format_dataloader_summary(train_loader, validation_loader)}.")
 
     tiles_label = record.tiles_per_side or 1
-    progress_desc = f"{model_name} {tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
     expected_input_size = (
         config.image_size
         if model_name in TIMM_MODEL_IDS
         else make_tile_compatible_image_size(config.image_size, record.tiles_per_side or 1)
+    )
+    permutation_label = (
+        f"{record.tile_permutation_name} permutation"
+        if record.tile_permutation_name
+        else f"permutation {record.tile_permutation_id}"
     )
     spec = build_training_run_spec(
         config=config,
@@ -155,7 +159,7 @@ def train_single_tile_permutation_run(
         record=record,
         seed=seed,
         overrides={"pretrained": config.pretrained},
-        progress_desc=progress_desc,
+        progress_desc=f"{model_name} {tiles_label}x{tiles_label} {permutation_label}",
         expected_input_size=expected_input_size,
     )
     train_model_and_save_progress(

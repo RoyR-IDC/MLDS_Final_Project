@@ -57,7 +57,7 @@ from src.preprocessing.tile_permutations import (
     TilePermutation,
     TilePermutationRecord,
     build_tile_permutation_records,
-    random_tile_permutation,
+    deterministic_tile_permutation,
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
 from src.training.losses import FocalLoss
@@ -227,7 +227,8 @@ def _permutation_for_stage(
 ) -> TilePermutation:
     if record.tiles_per_side == tiles_per_side and record.tile_permutation is not None:
         return record.tile_permutation
-    return random_tile_permutation(tiles_per_side, seed=int(config.seed) + int(record.tile_permutation_id))
+    permutation_name = record.tile_permutation_name or "medium"
+    return deterministic_tile_permutation(tiles_per_side, permutation_name)
 
 
 def _difficulty_stage_tiles(record: TilePermutationRecord) -> list[int | None]:
@@ -409,9 +410,14 @@ def build_part2_training_run_spec(
     """Build the training spec for one Part 2 ablation/tile run."""
 
     tiles_label = record.tiles_per_side or 1
+    permutation_label = (
+        f"{record.tile_permutation_name} permutation"
+        if record.tile_permutation_name
+        else f"permutation #{record.tile_permutation_id}"
+    )
     progress_desc = (
         f"{model_name} [{ablation['name']}] "
-        f"{tiles_label}x{tiles_label} permutation #{record.tile_permutation_id}. epochs progress"
+        f"{tiles_label}x{tiles_label} {permutation_label}. epochs progress"
     )
     return build_training_run_spec(
         config=config,
@@ -458,7 +464,7 @@ def _print_ablation_tile_run_header(
     print(
         f"[{record_index}/{num_records}]\nmodel={model_name}, ablation={ablation['name']}, "
         f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
-        f"seed={record.tile_permutation_seed}\n{stage_summary}"
+        f"tile_permutation_name={record.tile_permutation_name}, seed={record.tile_permutation_seed}\n{stage_summary}"
     )
 
 

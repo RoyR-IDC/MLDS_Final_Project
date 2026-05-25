@@ -21,7 +21,7 @@ from src.utils.io import load_yaml
 
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
 DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
-PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 10]# [1, 2, 4, 6, 8, 10, 12]
+PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 7, 10]
 COLAB_BATCH_SIZE = 64
 COLAB_NUM_WORKERS = 4
 
@@ -144,7 +144,7 @@ class CVExperimentConfig:
 
     # Tile permutation experiment configuration
     tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
-    num_tile_permutations: int = 5
+    num_tile_permutations: int = 3
 
     # Training configuration
     epochs: int = 10
@@ -256,7 +256,7 @@ class CVExperimentConfig:
         self.model_names = ["resnet18"]
         if not getattr(self, "tiles_per_side_values", None):
             self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
-        self.num_tile_permutations = 2
+        self.num_tile_permutations = min(2, int(getattr(self, "num_tile_permutations", 3)))
         self.epochs = 1
         self.plot_samples = True
 
@@ -354,7 +354,7 @@ class Part3ExperimentConfig(CVExperimentConfig):
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
     model_names: list[str] = field(default_factory=lambda: ["resnet18"])
-    tiles_per_side_values: list[int] = field(default_factory=lambda: [1, 3, 4])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     weight_adj: float = 0.5
     weight_entropy: float = 0.3
     weight_dist: float = 0.2
@@ -363,7 +363,8 @@ class Part3ExperimentConfig(CVExperimentConfig):
         """Keep Part 3 local smoke runs aligned with the hardness notebook scope."""
 
         super().update_configs_for_local_testing()
-        self.tiles_per_side_values = [1, 3]
+        if not getattr(self, "tiles_per_side_values", None):
+            self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
 
     @property
     def model_name(self) -> str:

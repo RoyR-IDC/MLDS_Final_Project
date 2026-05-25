@@ -30,7 +30,7 @@ from src.experiments.results import (
 from src.models.registry import validate_model_name
 from src.preprocessing.samples import Sample, discover_samples, stratified_split
 from src.preprocessing.tile_permutations import (
-    generate_tile_permutations,
+    build_tile_permutation_records,
     tile_permutation_from_jsonable,
     tile_permutation_to_jsonable,
 )
@@ -319,29 +319,22 @@ def load_or_build_part1_tile_permutations(
     if os.path.exists(tile_permutation_csv):
         return _read_csv_dataframe(tile_permutation_csv)
 
-    rows = [
-        {
-            "tiles_per_side": None,
-            "tile_permutation_id": 0,
-            "tile_permutation_seed": seed,
-            "tile_permutation": json.dumps(None),
-        }
-    ]
-    for tiles_per_side in [int(value) for value in tiles_per_side_values]:
-        if tiles_per_side == 1:
-            continue
-        for offset, tile_permutation in enumerate(
-            generate_tile_permutations(tiles_per_side, int(num_tile_permutations), seed=seed),
-            start=1,
-        ):
-            rows.append(
-                {
-                    "tiles_per_side": tiles_per_side,
-                    "tile_permutation_id": offset,
-                    "tile_permutation_seed": seed,
-                    "tile_permutation": json.dumps(tile_permutation_to_jsonable(tile_permutation)),
-                }
-            )
+    rows = []
+    for record in build_tile_permutation_records(
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=int(num_tile_permutations),
+        seed=seed,
+        include_baseline=True,
+    ):
+        rows.append(
+            {
+                "tiles_per_side": record.tiles_per_side,
+                "tile_permutation_id": record.tile_permutation_id,
+                "tile_permutation_name": record.tile_permutation_name,
+                "tile_permutation_seed": record.tile_permutation_seed,
+                "tile_permutation": json.dumps(tile_permutation_to_jsonable(record.tile_permutation)),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -449,6 +442,7 @@ def compute_part3_tile_permutation_metrics(
                 "tiles_per_side": tiles_per_side,
                 "num_tiles": num_tiles,
                 "tile_permutation_id": int(cast(Any, row["tile_permutation_id"])),
+                "tile_permutation_name": cast(Any, row.get("tile_permutation_name")),
                 "tile_permutation_seed": cast(Any, row.get("tile_permutation_seed")),
                 "global_tile_displacement": global_tile_displacement,
                 "adjacency_destruction_hardness": adjacency_destruction_hardness,

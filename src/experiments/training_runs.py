@@ -168,6 +168,7 @@ def build_training_metadata(
         "ablation_name": ablation_name,
         "tiles_per_side": record.tiles_per_side,
         "tile_permutation_id": record.tile_permutation_id,
+        "tile_permutation_name": record.tile_permutation_name,
         "tile_permutation_seed": record.tile_permutation_seed,
         "seed": seed,
         "optimizer_name": getattr(config, "optimizer", "adamw"),
