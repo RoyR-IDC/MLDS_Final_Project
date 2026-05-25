@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1779691179.04831 "report.tex" "report.pdf" "report" 1779691180.99021 2
+["pdflatex"] 1779717031.81983 "report.tex" "report.pdf" "report" 1779717037.65879 2
   "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779683261.962 106357 1405fd86eaa7ec41b9503c99c41a01b5 ""
   "../../outputs/figures/part2_ablation_comparison.png" 0 -1 0 ""
   "../../outputs/figures/part3_metrics_vs_accuracy.png" 0 -1 0 ""
@@ -7,6 +7,7 @@
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1136768653 1328 c834bbb027764024c09d3d2bf908b5f0 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm" 1136768653 1324 c910af8c371558dc20f2d7822f66fe64 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx8.tfm" 1136768653 1332 1fde11373e221473104d6cc5993f046e ""
+  "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi10.tfm" 1136768653 1528 abec98dbc43e172678c11b3b9031252a ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi12.tfm" 1136768653 1524 4414a8315f39513458b80dfc63bff03a ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi6.tfm" 1136768653 1512 f21f83efb36853c0b70002322c1ab3ad ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi8.tfm" 1136768653 1520 eccf95517727cb11801f4f1aee3a21b4 ""
@@ -90,9 +91,9 @@
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
   "part2_ablation_comparison.png" 0 -1 0 ""
   "part3_metrics_vs_accuracy.png" 0 -1 0 ""
-  "report.aux" 1779691180.66778 6036 b9dbf5bf4d53699b2f20955f7cc96d27 "pdflatex"
-  "report.out" 1779691180.67082 1750 138e5b12cc4198cc1c551f95dcaf5594 "pdflatex"
-  "report.tex" 1779691168.70023 27127 48e88688b35e01ab86fc480f4620777a ""
+  "report.aux" 1779717036.89764 9006 e7ae1b954bddd2f9083bce7851030973 "pdflatex"
+  "report.out" 1779717036.91176 3965 b96bd400841c175f27c0e2654148dcf7 "pdflatex"
+  "report.tex" 1779716999.61591 38162 c4f16700538293c0caea2f84283a4a8e ""
   (generated)
   "report.aux"
   "report.log"

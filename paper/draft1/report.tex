@@ -102,28 +102,89 @@ The primary model in the current results is ResNet-18 \citep{he2016deep}. Experi
 
 All experiments use the labeled Kaggle Dogs vs Cats training folder as the only source of supervised examples. Labels are inferred from filenames, and the samples are split once with a stratified class-balanced split using seed 42, validation fraction 0.2, and test fraction 0.0. For the full dataset this gives 20,000 training images and 5,000 validation images: 10,000 cats and 10,000 dogs for training, and 2,500 cats and 2,500 dogs for validation. The validation split is held out from optimization and is not modified by training-only augmentations such as random erasing, CutMix, patch shuffle, or curriculum-stage sampling.
 
-\begin{table*}[t]
+\begin{table}[t]
   \centering
-  \scriptsize
-  \setlength{\tabcolsep}{3pt}
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{p{0.09\textwidth}p{0.17\textwidth}p{0.22\textwidth}p{0.24\textwidth}p{0.24\textwidth}}
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{p{0.22\linewidth}p{0.31\linewidth}p{0.38\linewidth}}
     \toprule
-    \textbf{Part} & \textbf{Models or analysis} & \textbf{Permutations / settings} & \textbf{Training set} & \textbf{Validation set} \\
+    \textbf{Part 1 run} & \textbf{Training set} & \textbf{Validation set} \\
     \midrule
-    Part 1 & ResNet-18, DeiT-Tiny, MLP-Mixer Base & Unpermuted baseline with \texttt{tile\_permutation\_id=0}; five 4-by-4 permutations; five 10-by-10 permutations & Fixed 20,000-image training split, transformed with the row's target image size and tile permutation. The unpermuted baseline uses the same images without tile reordering. & Fixed 5,000-image validation split, transformed with the same target permutation as the run. \\
-    Part 2 & ResNet-18 ablations & Patch shuffle, random erasing, same-label CutMix, focal loss, corruption-probability curriculum, and permutation-difficulty curriculum; baseline, three 4-by-4 permutations, and three 10-by-10 permutations where available & Fixed 20,000-image training split with the ablation's training transform, batch augmentation, loss, or curriculum schedule applied. & Fixed 5,000-image validation split with the target run permutation only; training-only augmentations are disabled. \\
-    Part 3 & Hardness analysis, no new model training & Reuses Part 1 ResNet-18 tile-permutation records and validation accuracies & Not applicable; Part 3 computes permutation metrics and does not update model parameters. & Part 1 ResNet-18 held-out validation accuracies are joined to the corresponding permutation metrics. \\
+    Baseline & 20,000 unpermuted images. & 5,000 unpermuted held-out images. \\
+    4-by-4 permutations & Same 20,000 images with one fixed 4-by-4 tile permutation per run; five permutation IDs are saved. & Same 5,000 held-out images with the matching 4-by-4 permutation. \\
+    10-by-10 permutations & Same 20,000 images with one fixed 10-by-10 tile permutation per run; five permutation IDs are saved. & Same 5,000 held-out images with the matching 10-by-10 permutation. \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Training and validation sets used by each experiment part in the current output matrix. Full permutation matrices are stored in the saved permutation metadata rather than repeated in the report.}
-  \label{tab:train-validation-by-experiment}
+  \caption{Part 1 training and validation sets. The same split is reused for ResNet-18, DeiT-Tiny, and MLP-Mixer Base.}
+  \label{tab:part1-train-validation}
+\end{table}
+
+\begin{table*}[t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{p{0.18\textwidth}p{0.28\textwidth}p{0.28\textwidth}p{0.20\textwidth}}
+    \toprule
+    \textbf{Part 2 strategy} & \textbf{Training set} & \textbf{Added training exposure} & \textbf{Validation set} \\
+    \midrule
+    Regular Part 1 baseline & Reused Part 1 ResNet-18 runs. & None beyond the fixed target permutation. & Reused Part 1 held-out validation accuracy. \\
+    Patch shuffle & Same 20,000 training images and target permutation. & Extra batch-level random patch shuffling during training, so the model sees additional local rearrangements beyond the fixed dataset examples. & Same 5,000 held-out images with the target permutation only. \\
+    Random erasing & Same 20,000 training images and target permutation. & Randomly removes image regions during training, creating occluded variants of the original training images. & Same 5,000 held-out images with no random erasing. \\
+    Same-label CutMix & Same 20,000 training images and target permutation. & Mixes image patches only between examples with the same label, adding same-class hybrid training images without changing labels. & Same 5,000 held-out images with no CutMix. \\
+    Combined augmentations & Same 20,000 training images and target permutation. & Combines multiple augmentation sources, such as patch shuffle and same-label CutMix, to create richer training variants. & Same 5,000 held-out images with no training-only augmentations. \\
+    Focal loss & Same 20,000 training images and target permutation. & No new images; the loss reweights hard examples during optimization. & Same 5,000 held-out images with the target permutation. \\
+    Corruption-probability curriculum & Same 20,000 training images at every stage. & Stages use target permutation probabilities 0.1, 0.3, 0.5, and 0.8. & One fixed target validation loader; no separate validation set per stage. \\
+    Permutation-difficulty curriculum & Same 20,000 training images at every stage. & Stages progress through original, 2-by-2, 3-by-3, 4-by-4, and for 10-by-10 targets an additional 10-by-10 stage. & One fixed final-target validation loader; no separate validation set per stage. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 2 training and validation sets by ablation. The current output matrix uses ResNet-18 with the baseline, three 4-by-4 permutations, and three 10-by-10 permutations where available.}
+  \label{tab:part2-train-validation}
 \end{table*}
 
-The six Part 2 ablation identifiers in the saved results are \texttt{augmentation\_\allowbreak patch\_\allowbreak shuffle}, \texttt{augmentation\_\allowbreak random\_\allowbreak erasing}, \texttt{augmentation\_\allowbreak same\_\allowbreak label\_\allowbreak cutmix}, \texttt{loss\_\allowbreak focal\_\allowbreak loss}, \texttt{curriculum\_\allowbreak corruption\_\allowbreak probability}, and \texttt{curriculum\_\allowbreak permutation\_\allowbreak difficulty}.
+\begin{table*}[t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{p{0.18\textwidth}p{0.17\textwidth}p{0.34\textwidth}p{0.23\textwidth}}
+    \toprule
+    \textbf{Part 2 strategy} & \textbf{Stages} & \textbf{Experiment sequence} & \textbf{Dataset increase} \\
+    \midrule
+    Regular Part 1 baseline & 1 & Standard training on the target permutation. & No increase: 20,000 training examples per epoch. \\
+    Patch shuffle & 1 & Standard training, with random patch shuffling applied inside training batches. & No stored dataset growth; stochastic batch augmentation creates new views on the fly. \\
+    Random erasing & 1 & Standard training, with random image-region erasing in the training transform. & No stored dataset growth; each epoch can show different occluded variants. \\
+    Same-label CutMix & 1 & Standard training, with same-class patches mixed inside training batches. & No stored dataset growth; batch mixing creates extra hybrid views during optimization. \\
+    Combined augmentations & 1 & Standard training, with more than one augmentation source active together. & No stored dataset growth; effective exposure increases through multiple stochastic views. \\
+    Focal loss & 1 & Standard training with focal loss instead of cross-entropy. & No increase: the examples are unchanged, only their loss weights change. \\
+    Corruption-probability curriculum & 4 & Permutation probability stages: 0.1, 0.3, 0.5, 0.8. & No stored dataset growth; each stage reuses all 20,000 images with a different corruption probability. \\
+    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. 4-by-4 target: original, 2-by-2, 3-by-3, 4-by-4. 10-by-10 target: original, 2-by-2, 3-by-3, 4-by-4, 10-by-10. & No stored dataset growth; each stage reuses all 20,000 images with a different difficulty level. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 2 ablation experiment design. Augmentations do not duplicate files on disk; they increase the diversity of training views produced from the same fixed split.}
+  \label{tab:part2-ablation-design}
+\end{table*}
 
-The curriculum ablations in Part 2 use additional stage-specific training loaders, but they do not create separate held-out validation splits per stage. In the corruption-probability curriculum, every stage uses the same 20,000 training images and the target tile permutation, with tile-permutation probabilities 0.1, 0.3, 0.5, and 0.8. In the permutation-difficulty curriculum, every stage again uses the same training images, progressing from original images to 2-by-2, 3-by-3, and 4-by-4 permutations, with an additional 10-by-10 stage for 10-by-10 target runs. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run.
+\begin{table}[t]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{p{0.30\linewidth}p{0.30\linewidth}p{0.31\linewidth}}
+    \toprule
+    \textbf{Part 3 analysis} & \textbf{Training set} & \textbf{Validation source} \\
+    \midrule
+    Hardness metric computation & Not applicable; Part 3 does not train a model. & Reuses Part 1 ResNet-18 validation accuracies. \\
+    Metric-accuracy join & Not applicable; only saved CSV outputs are joined. & Matches each metric row to the corresponding Part 1 permutation ID. \\
+    Correlation analysis & Not applicable; no parameters are updated. & Computes correlations against the joined held-out validation accuracies. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits.}
+  \label{tab:part3-train-validation}
+\end{table}
+
+The curriculum ablations in Part 2 use stage-specific training loaders, but they do not create separate held-out validation splits per stage. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run.
 
 \noindent\textbf{TODO:} Synchronize the experiment lists, tile sizes, tables, figures, and narrative claims across the abstract, data overview, methodology, results, discussion, and conclusion so that every section describes the same current experiment matrix.
 
@@ -191,7 +252,71 @@ The MLP-Mixer choice required special care. The smaller \texttt{mixer\_s16\_224}
 
 \subsection{Improvement Strategies}
 
-Part 2 evaluates six improvement settings against the regular Part 1 baseline: combined augmentations, patch shuffle, random erasing, same-label CutMix, corruption-probability curriculum, and permutation-difficulty curriculum. The augmentation methods perturb training images so the model sees additional spatial or visual variation. The curriculum methods stage training exposure so the model does not see the hardest corruption pattern from the beginning of training.
+Part 2 evaluates training strategies against the regular Part 1 ResNet-18 baseline. The main distinction is whether a strategy adds new training views of the same images, changes the optimization objective, or changes the order in which the model sees easy and hard inputs. In all cases, validation is performed on the held-out validation images with the target permutation and without training-only perturbations.
+
+\subsubsection{Regular Part 1 Baseline}
+
+\textbf{Main idea.} This is the reference point for Part 2. ResNet-18 is trained normally on the target permutation, with no extra augmentation, no curriculum, and the standard loss.
+
+\textbf{Reason.} The baseline is necessary because every ablation must be judged against ordinary training on the same task. Without it, an improvement strategy might look useful simply because the target permutation is easier than another run.
+
+\textbf{Deeper dive.} The baseline uses the same train and validation split as Part 1. For a permuted run, both training and validation images are transformed by the same fixed tile permutation for that run. It has one training stage and does not increase the dataset size.
+
+\subsubsection{Patch Shuffle}
+
+\textbf{Main idea.} Patch shuffle randomly rearranges smaller patches during training. The model therefore sees extra local spatial disruptions in addition to the fixed tile permutation.
+
+\textbf{Reason.} This is relevant because the main task already tests whether class information survives spatial reordering. If extra random patch movement helps, it suggests that robustness to local layout disruption is useful for permuted Dogs versus Cats classification.
+
+\textbf{Deeper dive.} The target permutation is still the run-level task definition, but each training batch can also receive random patch shuffling. This does not duplicate image files or increase the stored dataset beyond 20,000 training images; instead, it creates different stochastic views during optimization. The validation loader does not use patch shuffle, so reported accuracy measures the fixed target validation permutation.
+
+\subsubsection{Random Erasing}
+
+\textbf{Main idea.} Random erasing hides random image regions during training. The model must learn from the remaining visible evidence rather than depending on one part of the animal.
+
+\textbf{Reason.} Tile permutations can break global shape, so a model may need to rely on partial cues such as fur texture, ears, eyes, color, or background context. Random erasing tests whether forcing the model to survive missing local evidence improves that behavior.
+
+\textbf{Deeper dive.} This method creates occluded variants of the same training examples on the fly. It does not store a larger dataset; each epoch can expose different erased regions from the same images. The validation set remains un-erased and is transformed only by the target permutation.
+
+\subsubsection{Same-Label CutMix}
+
+\textbf{Main idea.} Same-label CutMix replaces part of one training image with a patch from another image of the same class. The label stays unchanged because cat is mixed only with cat and dog only with dog.
+
+\textbf{Reason.} This experiment asks whether more same-class local variation helps the model classify permuted images. It is especially relevant when global object layout is damaged and the classifier may need to combine local evidence from separated tiles.
+
+\textbf{Deeper dive.} Unlike ordinary CutMix, this version avoids mixed labels. The added training views are hybrid same-class images produced during batching, not a new stored dataset. Validation uses the original held-out images and does not apply CutMix.
+
+\subsubsection{Combined Augmentations}
+
+\textbf{Main idea.} Combined augmentations apply more than one training perturbation in the same ablation. The goal is to expose the model to richer variation than any single augmentation provides.
+
+\textbf{Reason.} Different augmentations stress different weaknesses: patch shuffle stresses spatial order, CutMix stresses partial object evidence, and image perturbations stress reliance on specific pixels. Combining them tests whether these robustness pressures are complementary.
+
+\textbf{Deeper dive.} The training split remains the same 20,000 images, but the effective variety of examples increases because stochastic augmentations produce multiple possible views. The validation set is not augmented; it remains the fixed held-out target-permutation set. This makes the comparison a test of whether richer training exposure improves ordinary target validation accuracy.
+
+\subsubsection{Focal Loss}
+
+\textbf{Main idea.} Focal loss changes the training objective so harder examples receive more emphasis and easy examples receive less.
+
+\textbf{Reason.} Some permuted images may remain easy because local class cues are obvious, while others may become much harder after tile movement. Focal loss tests whether concentrating learning on those harder cases improves performance.
+
+\textbf{Deeper dive.} This strategy does not add new images to the training set and has one stage. It changes only the loss used during optimization. Validation uses the same held-out target set, so any difference comes from the training objective rather than from extra data.
+
+\subsubsection{Corruption-Probability Curriculum}
+
+\textbf{Main idea.} The model starts with mostly intact images and gradually sees the target permutation more often. The corruption probability increases across four stages.
+
+\textbf{Reason.} Jumping immediately into a hard permutation may make optimization unstable. This curriculum tests whether gradual exposure lets the model first learn dog-versus-cat cues and then adapt those cues to more frequent spatial corruption.
+
+\textbf{Deeper dive.} Each stage uses the same 20,000 training images and target tile permutation, but changes the probability that the permutation is applied. The stages use probabilities 0.1, 0.3, 0.5, and 0.8. This does not store a larger dataset; it changes the sampled training view. There is no separate validation set for each stage; validation always uses the fixed target validation loader.
+
+\subsubsection{Permutation-Difficulty Curriculum}
+
+\textbf{Main idea.} The model starts on easier spatial structure and moves toward the final harder permutation. Instead of changing probability, it changes the tile grid difficulty across stages.
+
+\textbf{Reason.} Smaller or easier permutations preserve more of the original image structure. This experiment tests whether a model can learn useful class cues under mild disruption before facing the final, harder tile rearrangement.
+
+\textbf{Deeper dive.} Each stage uses the same 20,000 training images but changes the tile grid used for training. The schedule begins with original images and then progresses through 2-by-2, 3-by-3, and 4-by-4 permutations; for 10-by-10 target runs, it adds a final 10-by-10 stage. The stored dataset size does not increase, and validation remains the held-out loader for the final target run.
 
 \subsection{Tile Permutation Hardness Metrics}
 
@@ -213,7 +338,10 @@ We quantify the difficulty induced by a tile permutation using three complementa
   \label{tab:tile-permutation-hardness-metrics}
 \end{table*}
 
-\textbf{Adjacency destruction hardness.}
+\subsubsection{Adjacency Destruction Hardness}
+
+\textbf{Main idea.} This metric asks how much of the original neighborhood structure survives after the tile permutation. If tiles that were next to each other are no longer neighbors, the image becomes harder for a convolutional model that relies on local structure.
+
 For every original rightward and downward neighboring relation, we test whether the same two source tiles remain adjacent in the same direction after permutation. The number of such canonical adjacency relations is
 \[
 M = 2N(N-1).
@@ -224,7 +352,10 @@ A = 1 - \frac{A_{\mathrm{preserved}}}{M}.
 \]
 A low value means that much of the original local structure is preserved. A high value means that neighboring tile relations were mostly destroyed.
 
-\textbf{Global tile displacement.}
+\subsubsection{Global Tile Displacement}
+
+\textbf{Main idea.} This metric measures how far tiles move from their original positions. A permutation that only nudges tiles nearby should preserve more global shape than one that sends tiles across the image.
+
 For each tile, we compute its Manhattan displacement in grid coordinates:
 \[
 \delta_i = |r'_i-r_i| + |c'_i-c_i|.
@@ -235,7 +366,10 @@ D = \frac{\sum_i \delta_i}{D_{\max}},
 \]
 where $D_{\max}$ is the maximum possible total Manhattan displacement for an $N \times N$ grid. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
 
-\textbf{Spatial permutation entropy.}
+\subsubsection{Spatial Permutation Entropy}
+
+\textbf{Main idea.} This metric asks whether tile movement follows a simple pattern or many different movement patterns. More varied movement directions and distances mean the permutation is less orderly.
+
 For each tile, we compute
 \[
 \Delta_i = (r'_i-r_i,\ c'_i-c_i)
@@ -258,7 +392,10 @@ E = \frac{-\sum_b p_b \log p_b}{\log(N^2)}.
 \]
 A low value means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances, making it more disorderly.
 
-\textbf{Combined hardness score.}
+\subsubsection{Combined Hardness Score}
+
+\textbf{Main idea.} The combined score summarizes the previous metrics into one number so permutations can be ranked by an overall notion of difficulty.
+
 The final score is a convex combination of the three normalized components:
 \[
 C = w_a A + w_d D + w_e E,
