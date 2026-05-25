@@ -15,7 +15,7 @@ from src.experiments.part2 import (
     build_curriculum_schedule,
     train_part2_ablation_experiments,
 )
-from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
+from src.preprocessing.tile_permutations import TilePermutationRecord, deterministic_tile_permutation, identity_tile_permutation
 from src.training.checkpoints import load_checkpoint, save_checkpoint
 from src.training.losses import FocalLoss
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
@@ -29,7 +29,7 @@ def test_executable_tile_permutation_records_returns_records():
             tiles_per_side=2,
             tile_permutation_id=1,
             tile_permutation_seed=42,
-            tile_permutation=random_tile_permutation(2, seed=42),
+            tile_permutation=deterministic_tile_permutation(2, "medium"),
         ),
     ]
 
@@ -295,7 +295,7 @@ def test_build_training_run_spec_distinguishes_auto_from_disabled_expected_input
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
 
     auto_spec = training_runs.build_training_run_spec(
@@ -534,7 +534,7 @@ def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch
             tiles_per_side=2,
             tile_permutation_id=1,
             tile_permutation_seed=100,
-            tile_permutation=random_tile_permutation(2, seed=100),
+            tile_permutation=deterministic_tile_permutation(2, "medium"),
         ),
     ]
     calls = iter(["ok", "fail"])
@@ -754,7 +754,7 @@ def test_part2_focal_loss_ablation_builds_focal_criterion_and_metadata(monkeypat
             tiles_per_side=3,
             tile_permutation_id=1,
             tile_permutation_seed=42,
-            tile_permutation=random_tile_permutation(3, seed=42),
+            tile_permutation=deterministic_tile_permutation(3, "medium"),
         )
     ]
     ablations = [
@@ -830,7 +830,7 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
         tiles_per_side=4,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(4, seed=42),
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
     )
 
     class FakeLoader:
@@ -850,13 +850,13 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
     assert schedule.total_epochs == 5
 
 
-def test_difficulty_curriculum_includes_large_target_stage(monkeypatch):
+def test_difficulty_curriculum_includes_target_grid_stage(monkeypatch):
     config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
     record = TilePermutationRecord(
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
     loader_tiles = []
 
@@ -911,7 +911,7 @@ def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatc
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
     captured_kwargs = {}
 
@@ -946,7 +946,7 @@ def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypat
         tiles_per_side=3,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(3, seed=42),
+        tile_permutation=deterministic_tile_permutation(3, "medium"),
     )
     probabilities = []
 

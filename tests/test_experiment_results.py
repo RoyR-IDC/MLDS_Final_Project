@@ -356,7 +356,7 @@ def test_part3_metrics_rebuild_named_deterministic_records_when_csv_is_missing(t
     )
 
     assert len(metrics) == 12
-    assert metrics["tile_permutation_name"].tolist() == ["easy", "medium", "large"] * 4
+    assert metrics["tile_permutation_name"].tolist() == ["easy", "medium", "hard"] * 4
     assert metrics.loc[:2, "global_tile_displacement"].eq(0.0).all()
     assert set(metrics.loc[3:, "tiles_per_side"]) == {4, 7, 10}
 

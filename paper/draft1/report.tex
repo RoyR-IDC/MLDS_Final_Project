@@ -65,7 +65,7 @@
 {\small \today}\\[1em]
 \begin{flushleft}
 \begin{abstract}
-This project studies binary Dogs versus Cats classification after fixed tile-wise permutations are applied to each image. The proposal frames the task as a relaxed image-domain analogue of permuted-puzzle problems with cryptographic motivation: instead of pixel-wise permutations over function graphs, images are divided into coarse grids and their tiles are rearranged before classification. We implement a notebook-first experimental pipeline around the Kaggle Dogs vs Cats dataset, train baselines on unpermuted and permuted images, evaluate augmentation and curriculum strategies, and define model-agnostic permutation hardness metrics. The updated experiment matrix uses four grid settings, $1$ tile / none, $4$-by-$4$, $7$-by-$7$, and $10$-by-$10$, crossed with three deterministic permutation functions named easy, medium, and large. Each remote run trains for 10 epochs, giving $4 \times 3$ grid-permutation records per model or ablation. Existing saved numeric tables are retained as prior outputs until the updated remote Colab sweep is rerun.
+This project studies binary Dogs versus Cats classification after fixed tile-wise permutations are applied to each image. The proposal frames the task as a relaxed image-domain analogue of permuted-puzzle problems with cryptographic motivation: instead of pixel-wise permutations over function graphs, images are divided into coarse grids and their tiles are rearranged before classification. We implement a notebook-first experimental pipeline around the Kaggle Dogs vs Cats dataset, train baselines on unpermuted and permuted images, evaluate augmentation and curriculum strategies, and define model-agnostic permutation hardness metrics. The updated experiment matrix uses four grid settings, $1$ tile / none, $4$-by-$4$, $7$-by-$7$, and $10$-by-$10$, crossed with three deterministic permutation functions named easy, medium, and hard. Each remote run trains for 10 epochs, giving $4 \times 3$ grid-permutation records per model or ablation. Existing saved numeric tables are retained as prior outputs until the updated remote Colab sweep is rerun.
 \end{abstract}
 \end{flushleft}
 \vspace{1em}
@@ -91,7 +91,7 @@ The ablations also connect to standard regularization and robustness ideas in de
 
 The dataset is Kaggle's Dogs vs Cats image dataset, with labels inferred from filenames such as \texttt{cat.123.jpg} and \texttt{dog.456.jpg}. The repository expects labeled training images under \texttt{data/dogs-vs-cats/train}; the unlabeled Kaggle test folder is not used for validation accuracy. The task is binary classification, and the saved experiment outputs report validation accuracy after the configured training runs.
 
-For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile permutation is applied across images for a run. The updated grid settings are one tile / none, 16 tiles, 49 tiles, and 100 tiles. The one-tile baseline is repeated under the easy, medium, and large labels so that all parts use the same $4 \times 3$ grid-permutation matrix.
+For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile permutation is applied across images for a run. The updated grid settings are one tile / none, 16 tiles, 49 tiles, and 100 tiles. The one-tile baseline is repeated under the easy, medium, and hard labels so that all parts use the same $4 \times 3$ grid-permutation matrix.
 
 \section{Methodology}
 
@@ -111,10 +111,10 @@ All experiments use the labeled Kaggle Dogs vs Cats training folder as the only 
     \toprule
     \textbf{Part 1 run} & \textbf{Training set} & \textbf{Validation set} \\
     \midrule
-    1 tile / none & 20,000 unpermuted images repeated under easy, medium, and large labels. & 5,000 unpermuted held-out images. \\
-    4-by-4 permutations & Same 20,000 images with easy, medium, and large deterministic 4-by-4 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
-    7-by-7 permutations & Same 20,000 images with easy, medium, and large deterministic 7-by-7 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
-    10-by-10 permutations & Same 20,000 images with easy, medium, and large deterministic 10-by-10 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    1 tile / none & 20,000 unpermuted images repeated under easy, medium, and hard labels. & 5,000 unpermuted held-out images. \\
+    4-by-4 permutations & Same 20,000 images with easy, medium, and hard deterministic 4-by-4 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    7-by-7 permutations & Same 20,000 images with easy, medium, and hard deterministic 7-by-7 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    10-by-10 permutations & Same 20,000 images with easy, medium, and hard deterministic 10-by-10 permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
     \bottomrule
   \end{tabular}
   }
@@ -141,7 +141,7 @@ All experiments use the labeled Kaggle Dogs vs Cats training folder as the only 
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 2 training and validation sets by ablation. The updated output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and large deterministic permutation records, for 12 records per ablation.}
+  \caption{Part 2 training and validation sets by ablation. The updated output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation.}
   \label{tab:part2-train-validation}
 \end{table*}
 
@@ -160,7 +160,7 @@ All experiments use the labeled Kaggle Dogs vs Cats training folder as the only 
     Combined augmentations & 1 & Standard training, with more than one augmentation source active together. & $0$ stored increase; $B$ composite augmented views per batch and 20,000 per epoch. \\
     Focal loss & 1 & Standard training with focal loss instead of cross-entropy. & No increase: the examples are unchanged, only their loss weights change. \\
     Corruption-probability curriculum & 4 & Permutation probability stages: 0.1, 0.3, 0.5, 0.8. & $0$ stored increase; expected permuted views per epoch are 2,000, 6,000, 10,000, and 16,000 by stage. \\
-    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. Tiled targets: original, 2-by-2, 3-by-3, 4-by-4, and the final target grid when larger than 4-by-4, using the same easy/medium/large function as the target record. & $0$ stored increase; 20,000 scheduled-difficulty views per stage epoch. \\
+    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. Tiled targets: original, 2-by-2, 3-by-3, 4-by-4, and the final target grid when larger than 4-by-4, using the same easy/medium/hard function as the target record. & $0$ stored increase; 20,000 scheduled-difficulty views per stage epoch. \\
     \bottomrule
   \end{tabular}
   }
@@ -190,9 +190,9 @@ The curriculum ablations in Part 2 use stage-specific training loaders, but they
 
 \subsection{Deterministic Permutation Functions}
 
-The updated experiments no longer sample random tile permutations for the main matrix. Instead, every part uses the same three deterministic functions: easy, medium, and large. This makes comparisons across Parts 1, 2, and 3 reproducible and interpretable, because a given difficulty label refers to the same construction wherever it appears.
+The updated experiments no longer sample random tile permutations for the main matrix. Instead, every part uses one shared deterministic generator with three parameter presets: easy, medium, and hard. This makes comparisons across Parts 1, 2, and 3 reproducible and interpretable, because a given difficulty label refers to the same construction wherever it appears.
 
-The easy function performs a small number of local adjacent swaps, preserving most local image structure. The medium function combines row and column shifts with several local swaps, creating moderate spatial disruption while retaining some regularity. The large function applies broad global reversals or rotations with additional swaps, producing the highest layout disruption. For the one-tile baseline, all three labels map to the unpermuted image; the labels are still saved so the experiment matrix remains exactly $4$ grid settings by $3$ functions.
+The generator is controlled by relative parameters: the fraction of tiles to swap, the maximum swap distance as a fraction of grid width, row and column shift fractions, and whether to apply a global reversal before the shifts and swaps. This matters because fixed operation counts are not comparable across grid sizes: two swaps affect 25\% of the tiles in a 4-by-4 grid but only 4\% of the tiles in a 10-by-10 grid. The easy preset therefore uses a small tile-count-scaled swap fraction and short local movement; medium increases the swap fraction and adds moderate row and column shifts; hard uses the largest swap fraction, broader movement radius, stronger shifts, and a global reversal. For the one-tile baseline, all three labels map to the unpermuted image; the labels are still saved so the experiment matrix remains exactly $4$ grid settings by $3$ presets.
 
 \subsection{Architecture Comparison and Frozen Backbones}
 
@@ -489,7 +489,7 @@ A low combined score represents an easier permutation with preserved structure, 
   \label{tab:part1-results}
 \end{table}
 
-The Part 1 numeric table reflects prior saved outputs and is kept as a reference point until the updated deterministic Colab sweep is rerun. The updated Part 1 design will report the unpermuted baseline labels and the easy, medium, and large deterministic functions for 4-by-4, 7-by-7, and 10-by-10 grids. This supports the proposal's hypothesis that the Dogs versus Cats image setting is a useful relaxation: the permutation disrupts spatial layout, yet enough visual class information may remain for standard models to learn above chance.
+The Part 1 numeric table reflects prior saved outputs and is kept as a reference point until the updated deterministic Colab sweep is rerun. The updated Part 1 design will report the unpermuted baseline labels and the easy, medium, and hard deterministic presets for 4-by-4, 7-by-7, and 10-by-10 grids. This supports the proposal's hypothesis that the Dogs versus Cats image setting is a useful relaxation: the permutation disrupts spatial layout, yet enough visual class information may remain for standard models to learn above chance.
 
 \begin{figure}[t]
   \centering
@@ -513,11 +513,11 @@ The Part 1 numeric table reflects prior saved outputs and is kept as a reference
     Permutation-difficulty curriculum & 9 & 89.4\% & 93.3\% & 2 \\
     \bottomrule
   \end{tabular}
-  \caption{Prior Part 2 3-by-3 ablation results for ResNet-18. The updated remote matrix will replace this with easy, medium, and large deterministic records for 1 tile / none, 4-by-4, 7-by-7, and 10-by-10 grids.}
+  \caption{Prior Part 2 3-by-3 ablation results for ResNet-18. The updated remote matrix will replace this with easy, medium, and hard deterministic records for 1 tile / none, 4-by-4, 7-by-7, and 10-by-10 grids.}
   \label{tab:part2-results}
 \end{table*}
 
-In the prior saved results, Part 2 identifies permutation-difficulty curriculum training as the best final 3-by-3 setting, reaching 89.4\% mean final validation accuracy and 93.3\% mean best validation accuracy. Patch shuffle is the strongest non-curriculum ablation at 87.5\%. The updated deterministic matrix will test whether these patterns hold across interpretable easy, medium, and large permutations at larger grid sizes.
+In the prior saved results, Part 2 identifies permutation-difficulty curriculum training as the best final 3-by-3 setting, reaching 89.4\% mean final validation accuracy and 93.3\% mean best validation accuracy. Patch shuffle is the strongest non-curriculum ablation at 87.5\%. The updated deterministic matrix will test whether these patterns hold across interpretable easy, medium, and hard permutations at larger grid sizes.
 
 \begin{figure}[t]
   \centering
@@ -553,7 +553,7 @@ Part 3 provides an initial ranking lens for permutations. In the prior joined da
 
 \section{Discussion}
 
-The proposal asks whether a neural network can classify post-permutation images and whether performance depends on tile resolution and permutation choice. Prior saved results answer the first question affirmatively for 3-by-3 tile permutations. The updated experiment matrix is designed to answer the same question more systematically across 1 tile / none, 4-by-4, 7-by-7, and 10-by-10 grids, with easy, medium, and large deterministic functions at each grid size.
+The proposal asks whether a neural network can classify post-permutation images and whether performance depends on tile resolution and permutation choice. Prior saved results answer the first question affirmatively for the earlier saved run configuration. The updated experiment matrix is designed to answer the same question more systematically across 1 tile / none, 4-by-4, 7-by-7, and 10-by-10 grids, with easy, medium, and hard deterministic presets at each grid size.
 
 The prior ablation results indicate that training strategy matters. Patch shuffle and permutation-difficulty curriculum improved over the regular saved baseline, which is consistent with the idea that exposure to spatial disruption can make the model more robust to permuted inputs. The gap between best and final accuracy for the corruption-probability curriculum is an important warning: a method can discover a strong checkpoint while still finishing poorly, so best-checkpoint reporting and final-epoch reporting should both remain in the evaluation.
 

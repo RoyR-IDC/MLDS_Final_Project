@@ -6,7 +6,7 @@ metrics for each run, and produce scatter plots of metric vs accuracy with
 correlation statistics.
 
 Usage:
-    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --num_tile_permutations 5
+    python -m src.evaluation.plots --summary results/tiles_experiment/summary.csv --out results/tiles_experiment/plots --num_tile_permutations 3
 """
 from __future__ import annotations
 
@@ -27,7 +27,8 @@ from src.evaluation.tile_permutation_difficulty import (
 from src.evaluation.experiment_results import _add_combined_hardness_scores
 from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import (
-    generate_tile_permutations,
+    TILE_PERMUTATION_NAMES,
+    deterministic_tile_permutation,
     tile_permutation_from_jsonable,
 )
 
@@ -110,24 +111,26 @@ def plot_accuracy_vs_tiles(summary_csv: str, out_dir: str):
 def _get_tile_permutation_for_row(
     tiles_per_side: int | None,
     permutation_idx: int,
+    permutation_name: str | None = None,
     n_tile_permutations: int = 5,
-    gen_seed: int = 42,
 ):
-    """Reconstruct the generated tile permutation for one summary row.
+    """Reconstruct the deterministic tile permutation for one summary row.
 
     Args:
         tiles_per_side: Number of tiles along each image side.
         permutation_idx: Tile-permutation ID from the summary.
+        permutation_name: Optional deterministic difficulty label.
         n_tile_permutations: Number of tile permutations used by the runner.
-        gen_seed: Seed used by the runner.
 
     Returns:
         Output tile permutation for the summary row.
     """
     if tiles_per_side is None or permutation_idx == 0:
         return None
-    tile_permutations = generate_tile_permutations(tiles_per_side, n_tile_permutations - 1, seed=gen_seed)
-    return tile_permutations[permutation_idx - 1]
+    if permutation_name is None or bool(pd.isna(permutation_name)):
+        permutation_names = list(TILE_PERMUTATION_NAMES[:n_tile_permutations])
+        permutation_name = permutation_names[permutation_idx - 1]
+    return deterministic_tile_permutation(tiles_per_side, str(permutation_name))
 
 
 def compute_metrics_for_summary(
@@ -163,6 +166,7 @@ def compute_metrics_for_summary(
             tile_permutation = _get_tile_permutation_for_row(
                 tiles_per_side,
                 int(cast(Any, row['tile_permutation_id'])),
+                permutation_name=cast(Any, row.get('tile_permutation_name')),
                 n_tile_permutations=num_tile_permutations,
             )
         metric_rows.append(

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-import random
-from typing import Any, Callable, Iterable, Sequence, TypeAlias, TypeGuard, cast
+from typing import Any, Iterable, Sequence, TypeAlias, TypeGuard, cast
 
 
 TileCoordinate: TypeAlias = tuple[int, int]
@@ -65,8 +64,41 @@ class TilePermutationRecord:
     tile_permutation_name: str = ""
 
 
-TILE_PERMUTATION_NAMES = ("easy", "medium", "large")
-TilePermutationFunction: TypeAlias = Callable[[TilesPerSide], TilePermutation]
+TILE_PERMUTATION_NAMES = ("easy", "medium", "hard")
+
+
+@dataclass(frozen=True)
+class DifficultyPermutationPreset:
+    """Relative parameters for one deterministic difficulty level."""
+
+    swap_fraction: float
+    max_swap_distance_fraction: float
+    row_shift_fraction: float
+    col_shift_fraction: float
+    use_global_reversal: bool = False
+
+
+DIFFICULTY_PERMUTATION_PRESETS: dict[str, DifficultyPermutationPreset] = {
+    "easy": DifficultyPermutationPreset(
+        swap_fraction=0.05,
+        max_swap_distance_fraction=0.15,
+        row_shift_fraction=0.0,
+        col_shift_fraction=0.0,
+    ),
+    "medium": DifficultyPermutationPreset(
+        swap_fraction=0.14,
+        max_swap_distance_fraction=0.35,
+        row_shift_fraction=0.20,
+        col_shift_fraction=0.20,
+    ),
+    "hard": DifficultyPermutationPreset(
+        swap_fraction=0.28,
+        max_swap_distance_fraction=0.80,
+        row_shift_fraction=0.45,
+        col_shift_fraction=0.45,
+        use_global_reversal=True,
+    ),
+}
 
 
 def _is_tile_coordinate(value: object) -> TypeGuard[TileCoordinate]:
@@ -149,133 +181,139 @@ def _swap_positions(flat_order: list[int], tiles_per_side: TilesPerSide, first: 
     flat_order[first_index], flat_order[second_index] = flat_order[second_index], flat_order[first_index]
 
 
-def easy_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
-    """Return a low-disruption deterministic local-swap permutation."""
+def _validate_difficulty_fraction(value: float, name: str) -> None:
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be between 0.0 and 1.0")
+
+
+def _shift_row(values: list[int], shift: int) -> list[int]:
+    if not values:
+        return values
+    shift = shift % len(values)
+    if shift == 0:
+        return values
+    return values[shift:] + values[:shift]
+
+
+def _matrix_to_flat_values(matrix: list[list[int]]) -> list[int]:
+    return [value for row in matrix for value in row]
+
+
+def _apply_row_and_column_shifts(
+    flat_order: list[int],
+    tiles_per_side: TilesPerSide,
+    *,
+    row_shift_fraction: float,
+    col_shift_fraction: float,
+) -> list[int]:
+    row_shift = int(round((tiles_per_side - 1) * row_shift_fraction))
+    col_shift = int(round((tiles_per_side - 1) * col_shift_fraction))
+    if row_shift == 0 and col_shift == 0:
+        return flat_order
+
+    matrix = [
+        flat_order[row * tiles_per_side : (row + 1) * tiles_per_side]
+        for row in range(tiles_per_side)
+    ]
+    if row_shift:
+        for row, values in enumerate(matrix):
+            shift = (row_shift + row % max(1, row_shift)) % tiles_per_side
+            matrix[row] = _shift_row(values, shift)
+    if col_shift:
+        for col in range(tiles_per_side):
+            values = [matrix[row][col] for row in range(tiles_per_side)]
+            shift = (col_shift + col % max(1, col_shift)) % tiles_per_side
+            shifted = _shift_row(values, shift)
+            for row, value in enumerate(shifted):
+                matrix[row][col] = value
+    return _matrix_to_flat_values(matrix)
+
+
+def _difficulty_swap_count(num_tiles: int, swap_fraction: float) -> int:
+    if swap_fraction == 0.0:
+        return 0
+    return min(num_tiles // 2, max(1, int(round(num_tiles * swap_fraction))))
+
+
+def _deterministic_swap_pair(
+    *,
+    index: int,
+    tiles_per_side: TilesPerSide,
+    max_distance: int,
+) -> tuple[TileCoordinate, TileCoordinate]:
+    row = (index * 3 + index // 2) % tiles_per_side
+    col = (index * 5 + index // 3) % tiles_per_side
+    row_delta = ((index * 2 + 1) % (2 * max_distance + 1)) - max_distance
+    col_delta = ((index * 3 + 2) % (2 * max_distance + 1)) - max_distance
+    if row_delta == 0 and col_delta == 0:
+        col_delta = 1
+    row_delta = max(-max_distance, min(max_distance, row_delta))
+    col_delta = max(-max_distance, min(max_distance, col_delta))
+    other_row = (row + row_delta) % tiles_per_side
+    other_col = (col + col_delta) % tiles_per_side
+    if (other_row, other_col) == (row, col):
+        other_col = (col + 1) % tiles_per_side
+    return (row, col), (other_row, other_col)
+
+
+def build_difficulty_tile_permutation(
+    tiles_per_side: TilesPerSide,
+    *,
+    swap_fraction: float,
+    max_swap_distance_fraction: float,
+    row_shift_fraction: float,
+    col_shift_fraction: float,
+    use_global_reversal: bool = False,
+) -> TilePermutation:
+    """Build one deterministic tile permutation from relative difficulty parameters."""
 
     if tiles_per_side < 1:
         raise ValueError("tiles_per_side must be at least 1")
-    flat_order = list(range(tiles_per_side * tiles_per_side))
+    _validate_difficulty_fraction(swap_fraction, "swap_fraction")
+    _validate_difficulty_fraction(max_swap_distance_fraction, "max_swap_distance_fraction")
+    _validate_difficulty_fraction(row_shift_fraction, "row_shift_fraction")
+    _validate_difficulty_fraction(col_shift_fraction, "col_shift_fraction")
+
+    num_tiles = tiles_per_side * tiles_per_side
+    flat_order = list(range(num_tiles))
     if tiles_per_side == 1:
         return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
 
-    swap_count = max(1, tiles_per_side // 4)
+    if use_global_reversal:
+        flat_order.reverse()
+    flat_order = _apply_row_and_column_shifts(
+        flat_order,
+        tiles_per_side,
+        row_shift_fraction=row_shift_fraction,
+        col_shift_fraction=col_shift_fraction,
+    )
+    swap_count = _difficulty_swap_count(num_tiles, swap_fraction)
+    max_distance = max(1, int(round((tiles_per_side - 1) * max_swap_distance_fraction)))
     for index in range(swap_count):
-        row = min(tiles_per_side - 1, index * 2)
-        col = (index * 3) % (tiles_per_side - 1)
-        _swap_positions(flat_order, tiles_per_side, (row, col), (row, col + 1))
-    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
-
-
-def medium_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
-    """Return a medium-disruption deterministic shift-and-swap permutation."""
-
-    if tiles_per_side < 1:
-        raise ValueError("tiles_per_side must be at least 1")
-    if tiles_per_side == 1:
-        return identity_tile_permutation(tiles_per_side)
-
-    grid = [[row * tiles_per_side + col for col in range(tiles_per_side)] for row in range(tiles_per_side)]
-    for row, values in enumerate(grid):
-        shift = row % 3 + 1
-        grid[row] = values[shift:] + values[:shift]
-    for col in range(tiles_per_side):
-        values = [grid[row][col] for row in range(tiles_per_side)]
-        shift = col % 2 + 1
-        values = values[shift:] + values[:shift]
-        for row, value in enumerate(values):
-            grid[row][col] = value
-    flat_order = [value for row in grid for value in row]
-    swap_count = max(2, tiles_per_side // 2)
-    for index in range(swap_count):
-        row = (index * 2 + 1) % tiles_per_side
-        col = (index * 3 + 1) % tiles_per_side
-        _swap_positions(
-            flat_order,
-            tiles_per_side,
-            (row, col),
-            ((row + 1) % tiles_per_side, (col + 1) % tiles_per_side),
+        first, second = _deterministic_swap_pair(
+            index=index,
+            tiles_per_side=tiles_per_side,
+            max_distance=max_distance,
         )
+        _swap_positions(flat_order, tiles_per_side, first, second)
     return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
-
-
-def large_tile_permutation(tiles_per_side: TilesPerSide) -> TilePermutation:
-    """Return a high-disruption deterministic global permutation."""
-
-    if tiles_per_side < 1:
-        raise ValueError("tiles_per_side must be at least 1")
-    if tiles_per_side == 1:
-        return identity_tile_permutation(tiles_per_side)
-
-    matrix = [
-        [
-            (
-                (tiles_per_side - 1 - col + row) % tiles_per_side,
-                (tiles_per_side - 1 - row + 2 * col) % tiles_per_side,
-            )
-            for col in range(tiles_per_side)
-        ]
-        for row in range(tiles_per_side)
-    ]
-    flat_order = [old_row * tiles_per_side + old_col for row in matrix for old_row, old_col in row]
-    if sorted(flat_order) != list(range(tiles_per_side * tiles_per_side)):
-        flat_order = list(reversed(range(tiles_per_side * tiles_per_side)))
-
-    swap_count = max(tiles_per_side, 3)
-    for index in range(swap_count):
-        row = index % tiles_per_side
-        col = (index * 2) % tiles_per_side
-        _swap_positions(
-            flat_order,
-            tiles_per_side,
-            (row, col),
-            (tiles_per_side - 1 - row, tiles_per_side - 1 - col),
-        )
-    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
-
-
-TILE_PERMUTATION_FUNCTIONS: dict[str, TilePermutationFunction] = {
-    "easy": easy_tile_permutation,
-    "medium": medium_tile_permutation,
-    "large": large_tile_permutation,
-}
 
 
 def deterministic_tile_permutation(tiles_per_side: TilesPerSide, name: str) -> TilePermutation:
     """Return one named deterministic tile permutation."""
 
     try:
-        permutation_function = TILE_PERMUTATION_FUNCTIONS[name]
+        preset = DIFFICULTY_PERMUTATION_PRESETS[name]
     except KeyError as exc:
         raise ValueError(f"Unsupported tile permutation name: {name}") from exc
-    return permutation_function(tiles_per_side)
-
-
-def random_tile_permutation(tiles_per_side: TilesPerSide, seed: int) -> TilePermutation:
-    """Generate one seeded random tile permutation."""
-
-    flat_order = list(range(tiles_per_side * tiles_per_side))
-    random.Random(seed).shuffle(flat_order)
-    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
-
-
-def generate_tile_permutations(
-    tiles_per_side: TilesPerSide,
-    n: int,
-    seed: int = 0,
-) -> list[TilePermutation]:
-    """Generate reusable seeded random tile permutations."""
-
-    if n < 0:
-        raise ValueError("n must be non-negative")
-    rng = random.Random(seed)
-    tile_permutations: list[TilePermutation] = []
-    for _ in range(n):
-        flat_order = list(range(tiles_per_side * tiles_per_side))
-        rng.shuffle(flat_order)
-        tile_permutations.append(
-            TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
-        )
-    return tile_permutations
+    return build_difficulty_tile_permutation(
+        tiles_per_side,
+        swap_fraction=preset.swap_fraction,
+        max_swap_distance_fraction=preset.max_swap_distance_fraction,
+        row_shift_fraction=preset.row_shift_fraction,
+        col_shift_fraction=preset.col_shift_fraction,
+        use_global_reversal=preset.use_global_reversal,
+    )
 
 
 def build_tile_permutation_records(
