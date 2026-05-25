@@ -271,6 +271,59 @@ def test_build_training_run_spec_records_mlp_mixer_from_scratch_when_pretrained_
     assert spec.metadata["freeze_backbone"] is False
 
 
+def test_build_training_run_spec_distinguishes_auto_from_disabled_expected_input_size(monkeypatch):
+    monkeypatch.setattr(training_runs, "get_model", lambda *args, **kwargs: nn.Linear(2, 2))
+    config = SimpleNamespace(
+        part="part1",
+        config_name="part1",
+        outputs_dir="outputs",
+        using_google_colab=False,
+        epochs=1,
+        optimizer="adamw",
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        use_amp=False,
+        profile_performance=False,
+        profile_warmup_batches=0,
+        image_size=224,
+        num_classes=2,
+        pretrained=True,
+        freeze_backbone=True,
+    )
+    loader = DataLoader(TensorDataset(torch.zeros(2, 3, 224, 224), torch.zeros(2, dtype=torch.long)))
+    record = TilePermutationRecord(
+        tiles_per_side=10,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=random_tile_permutation(10, seed=42),
+    )
+
+    auto_spec = training_runs.build_training_run_spec(
+        config=config,
+        model_name="resnet18",
+        train_loader=loader,
+        val_loader=loader,
+        device=torch.device("cpu"),
+        run_id="run",
+        record=record,
+        seed=42,
+    )
+    disabled_spec = training_runs.build_training_run_spec(
+        config=config,
+        model_name="resnet18",
+        train_loader=loader,
+        val_loader=loader,
+        device=torch.device("cpu"),
+        run_id="run",
+        record=record,
+        seed=42,
+        expected_input_size=None,
+    )
+
+    assert auto_spec.expected_input_size == 230
+    assert disabled_spec.expected_input_size is None
+
+
 def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):
     features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]])
     labels = torch.tensor([0, 1, 0, 1])

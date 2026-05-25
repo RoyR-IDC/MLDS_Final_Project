@@ -24,6 +24,9 @@ from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir
 
 
+_AUTO_EXPECTED_INPUT_SIZE = object()
+
+
 def format_elapsed_time(seconds: float) -> str:
     """Return a compact human-readable elapsed time string."""
 
@@ -194,7 +197,7 @@ def build_training_run_spec(
     batch_augmentation: BatchAugmentation | None = None,
     curriculum_schedule: CurriculumSchedule | None = None,
     metadata_overrides: Optional[Mapping[str, Any]] = None,
-    expected_input_size: int | None = None,
+    expected_input_size: int | None | object = _AUTO_EXPECTED_INPUT_SIZE,
     criterion: nn.Module | None = None,
 ) -> TrainingRunSpec:
     """Build the shared OOP training specification for one run."""
@@ -223,10 +226,13 @@ def build_training_run_spec(
         "freeze_backbone": freeze_backbone,
         **dict(metadata_overrides or {}),
     }
-    resolved_expected_input_size = expected_input_size or make_tile_compatible_image_size(
-        int(getattr(config, "image_size", 224)),
-        int(record.tiles_per_side or 1),
-    )
+    if expected_input_size is _AUTO_EXPECTED_INPUT_SIZE:
+        resolved_expected_input_size = make_tile_compatible_image_size(
+            int(getattr(config, "image_size", 224)),
+            int(record.tiles_per_side or 1),
+        )
+    else:
+        resolved_expected_input_size = expected_input_size
     return TrainingRunSpec(
         model_name=model_name,
         model=model,

@@ -32,6 +32,7 @@ from src.experiments.training_runs import (
 )
 from src.models.registry import TIMM_MODEL_IDS
 from src.preprocessing.dataloaders import build_dataloaders
+from src.preprocessing.image_transforms import make_tile_compatible_image_size
 from src.preprocessing.samples import Sample
 from src.preprocessing.tile_permutations import TilePermutationRecord, build_tile_permutation_records
 from src.utils.config import CVExperimentConfig
@@ -139,6 +140,11 @@ def train_single_tile_permutation_run(
 
     tiles_label = record.tiles_per_side or 1
     progress_desc = f"{model_name} {tiles_label}x{tiles_label} permutation {record.tile_permutation_id}"
+    expected_input_size = (
+        config.image_size
+        if model_name in TIMM_MODEL_IDS
+        else make_tile_compatible_image_size(config.image_size, record.tiles_per_side or 1)
+    )
     spec = build_training_run_spec(
         config=config,
         model_name=model_name,
@@ -150,7 +156,7 @@ def train_single_tile_permutation_run(
         seed=seed,
         overrides={"pretrained": config.pretrained},
         progress_desc=progress_desc,
-        expected_input_size=config.image_size if model_name in TIMM_MODEL_IDS else None,
+        expected_input_size=expected_input_size,
     )
     train_model_and_save_progress(
         spec=spec,
