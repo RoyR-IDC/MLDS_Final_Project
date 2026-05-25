@@ -18,13 +18,21 @@ from src.evaluation.tile_permutation_difficulty import (
     compute_spatial_permutation_entropy,
 )
 from src.evaluation.experiment_results import (
+    add_part2_grid_baseline_deltas,
     get_device,
     load_experiment_samples,
     load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
     plot_ablation_results,
 )
-from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+from src.experiments.results import (
+    aggregate_accuracy,
+    experiment_intermediate_figure_path,
+    experiment_output_paths,
+    save_aggregated_accuracy,
+    save_rows,
+    save_run_rows,
+)
 import src.experiments.training_runs as _training_runs
 
 # Notebook kernels often keep imported dependencies alive across saved source edits.
@@ -544,6 +552,8 @@ def train_part2_ablation_experiments(
     run_id: str,
     session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
+    baseline_rows: Sequence[Mapping[str, Any]] = (),
+    intermediate_figures_dir: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train all Part 2 ablations across tile-permutation records."""
 
@@ -593,6 +603,30 @@ def train_part2_ablation_experiments(
                 session_start_time=resolved_session_start_time,
                 raw_results_output_path=raw_results_output_path,
             )
+        if intermediate_figures_dir:
+            ablation_name = str(ablation["name"])
+            current_rows = [
+                row
+                for row in rows
+                if str(row.get("ablation_name")) == ablation_name and pd.notna(row.get("best_val_accuracy"))
+            ]
+            if current_rows:
+                raw_ablation_results = pd.DataFrame([*baseline_rows, *current_rows])
+                aggregated_ablation_results = aggregate_accuracy(
+                    raw_ablation_results,
+                    group_columns=["model_name", "ablation_name", "tiles_per_side", "num_tiles"],
+                )
+                figure_path = experiment_intermediate_figure_path(
+                    intermediate_figures_dir,
+                    config.part,
+                    f"ablation_{ablation_name}",
+                )
+                plot_ablation_results(
+                    aggregated_ablation_results,
+                    figure_path,
+                    raw_results=raw_ablation_results,
+                )
+                print(f"Saved intermediate ablation plot: {figure_path}")
     return rows
 
 
@@ -621,7 +655,8 @@ def run_part2_improvement_experiments(
     else:
         print("Checkpointing disabled outside Google Colab.")
 
-    rows = load_part1_model_baseline_raw_rows(config, model_name)
+    baseline_rows = load_part1_model_baseline_raw_rows(config, model_name)
+    rows = list(baseline_rows)
     rows.extend(
         train_part2_ablation_experiments(
             config=config,
@@ -633,6 +668,8 @@ def run_part2_improvement_experiments(
             run_id=run_id,
             session_start_time=session_start_time,
             raw_results_output_path=output_paths["raw_results"],
+            baseline_rows=baseline_rows,
+            intermediate_figures_dir=config.figures_dir,
         )
     )
 
@@ -653,5 +690,6 @@ def run_part2_improvement_experiments(
         aggregated_results = pd.concat([part1_baseline_aggregated, aggregated_results], ignore_index=True, sort=False)
         aggregated_results.to_csv(output_paths["aggregated_results"], index=False)
 
-    plot_ablation_results(aggregated_results, output_paths["figure"])
-    return aggregated_results
+    plot_ablation_results(aggregated_results, output_paths["figure"], raw_results=raw_results)
+    aggregated_with_delta, _ = add_part2_grid_baseline_deltas(aggregated_results)
+    return aggregated_with_delta

@@ -11,7 +11,14 @@ from torch._C import device as TorchDevice
 from torch.utils.data import DataLoader
 
 from src.evaluation.experiment_results import get_device, load_experiment_samples, plot_accuracy_vs_tiles
-from src.experiments.results import experiment_output_paths, save_aggregated_accuracy, save_rows, save_run_rows
+from src.experiments.results import (
+    aggregate_accuracy,
+    experiment_intermediate_figure_path,
+    experiment_output_paths,
+    save_aggregated_accuracy,
+    save_rows,
+    save_run_rows,
+)
 import src.experiments.training_runs as _training_runs
 
 # Notebook kernels often keep imported dependencies alive across saved source edits.
@@ -188,6 +195,7 @@ def train_model_on_tile_permutation_records(
     device: TorchDevice,
     session_start_time: Optional[float] = None,
     raw_results_output_path: Optional[str] = None,
+    intermediate_figure_output_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Train one model across tile-permutation records and collect result rows."""
 
@@ -228,6 +236,18 @@ def train_model_on_tile_permutation_records(
             raw_results_output_path=raw_results_output_path,
             session_start_time=resolved_session_start_time,
         )
+    if intermediate_figure_output_path:
+        raw_model_results = pd.DataFrame(rows)
+        aggregated_model_results = aggregate_accuracy(
+            raw_model_results,
+            group_columns=["model_name", "tiles_per_side", "num_tiles"],
+        )
+        plot_accuracy_vs_tiles(
+            aggregated_model_results,
+            intermediate_figure_output_path,
+            raw_results=raw_model_results,
+        )
+        print(f"Saved intermediate model plot: {intermediate_figure_output_path}")
     return rows
 
 
@@ -265,6 +285,11 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
                 seed=config.seed,
                 device=resolved_device,
                 raw_results_output_path=output_paths["raw_results"],
+                intermediate_figure_output_path=experiment_intermediate_figure_path(
+                    config.figures_dir,
+                    config.part,
+                    f"accuracy_vs_tiles_{model_name}",
+                ),
                 session_start_time=session_start_time,
             )
         )
@@ -276,5 +301,5 @@ def run_part1_experiments(config: CVExperimentConfig, device: Optional[TorchDevi
         group_columns=["model_name", "tiles_per_side", "num_tiles"],
         output_path=output_paths["aggregated_results"],
     )
-    plot_accuracy_vs_tiles(aggregated_results, output_paths["figure"])
+    plot_accuracy_vs_tiles(aggregated_results, output_paths["figure"], raw_results=raw_results)
     return aggregated_results

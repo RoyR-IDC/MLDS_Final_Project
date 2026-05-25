@@ -23,6 +23,7 @@ from src.evaluation.tile_permutation_difficulty import (
 from src.experiments.results import (
     aggregate_accuracy,
     build_result_row,
+    experiment_intermediate_figure_path,
     experiment_output_paths,
     save_aggregated_accuracy,
     save_rows,
@@ -41,10 +42,27 @@ from src.utils.io import ensure_dir, save_csv
 __all__ = [
     "aggregate_accuracy",
     "build_result_row",
+    "experiment_intermediate_figure_path",
     "experiment_output_paths",
     "save_aggregated_accuracy",
     "save_rows",
 ]
+
+
+PERMUTATION_MARKERS = {
+    "easy": "o",
+    "medium": "x",
+    "hard": "^",
+    "baseline": ".",
+    "unknown": ".",
+}
+PERMUTATION_X_OFFSETS = {
+    "easy": -1.0,
+    "medium": 0.0,
+    "hard": 1.0,
+    "baseline": 0.0,
+    "unknown": 0.0,
+}
 
 
 def _read_csv_dataframe(path: str) -> pd.DataFrame:
@@ -69,6 +87,173 @@ def _reset_dataframe_index(frame: pd.DataFrame) -> pd.DataFrame:
     """Return a DataFrame with a reset index and a narrowed static type."""
 
     return cast(pd.DataFrame, frame.reset_index(drop=True))
+
+
+def _permutation_marker_name(value: object) -> str:
+    """Return a normalized marker key for a tile permutation difficulty label."""
+
+    if value is None or (isinstance(value, float) and bool(pd.isna(value))):
+        return "baseline"
+    name = str(value).strip().lower()
+    return name if name in PERMUTATION_MARKERS else "unknown"
+
+
+def _tile_grid_label(value: object) -> str:
+    """Return a readable tile-grid label."""
+
+    if value is None or (isinstance(value, float) and bool(pd.isna(value))):
+        return "1x1"
+    tiles_per_side = int(value)
+    return f"{tiles_per_side}x{tiles_per_side}"
+
+
+def _raw_accuracy_column(raw_results: pd.DataFrame) -> str:
+    if "best_val_accuracy" in raw_results.columns:
+        return "best_val_accuracy"
+    if "val_accuracy" in raw_results.columns:
+        return "val_accuracy"
+    raise ValueError("raw_results must contain best_val_accuracy or val_accuracy")
+
+
+def _with_num_tiles(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return a frame with ``num_tiles`` populated from ``tiles_per_side`` if needed."""
+
+    frame = frame.copy()
+    if "num_tiles" in frame.columns or "tiles_per_side" not in frame.columns:
+        return frame
+    frame["num_tiles"] = [
+        1 if pd.isna(tiles_per_side) else int(tiles_per_side) * int(tiles_per_side)
+        for tiles_per_side in frame["tiles_per_side"]
+    ]
+    return frame
+
+
+def _scatter_raw_accuracy_vs_tiles(
+    ax: Axes,
+    raw_results: pd.DataFrame | None,
+    *,
+    model_column: str,
+) -> None:
+    """Overlay raw permutation results on an accuracy-vs-tiles axis."""
+
+    if raw_results is None or raw_results.empty or "num_tiles" not in raw_results.columns:
+        return
+
+    raw = raw_results.copy()
+    accuracy_column = _raw_accuracy_column(raw)
+    if "tile_permutation_name" not in raw.columns:
+        raw["tile_permutation_name"] = None
+
+    model_values = list(raw[model_column].dropna().astype(str).unique()) if model_column in raw.columns else []
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    color_by_model = {
+        model_name: color_cycle[index % len(color_cycle)]
+        for index, model_name in enumerate(model_values)
+        if color_cycle
+    }
+
+    for _, row in raw.iterrows():
+        marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
+        num_tiles = float(row["num_tiles"])
+        offset = PERMUTATION_X_OFFSETS[marker_name] * max(0.08, num_tiles * 0.015)
+        model_name = str(row.get(model_column, "raw"))
+        ax.scatter(
+            num_tiles + offset,
+            row[accuracy_column],
+            marker=PERMUTATION_MARKERS[marker_name],
+            s=42 if marker_name != "baseline" else 24,
+            alpha=0.65,
+            color=color_by_model.get(model_name),
+            edgecolors="none" if marker_name in {"x", "baseline"} else "black",
+            linewidths=0.4,
+            label="_nolegend_",
+        )
+
+
+def _add_permutation_marker_legend(ax: Axes) -> None:
+    """Add a compact legend for raw permutation marker shapes."""
+
+    handles = []
+    labels = []
+    for name in ("easy", "medium", "hard", "baseline"):
+        handles.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker=PERMUTATION_MARKERS[name],
+                color="0.25",
+                linestyle="None",
+                markersize=6,
+            )
+        )
+        labels.append(name)
+    marker_legend = ax.legend(handles, labels, title="Permutation", loc="best")
+    if marker_legend is not None:
+        ax.add_artist(marker_legend)
+
+
+def add_part2_grid_baseline_deltas(
+    aggregated: pd.DataFrame,
+    raw_results: pd.DataFrame | None = None,
+    *,
+    baseline_name: str = "regular_part1",
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Add grid-matched Part 1 baseline deltas to Part 2 result frames."""
+
+    if aggregated.empty or "ablation_name" not in aggregated.columns:
+        return aggregated.copy(), None if raw_results is None else raw_results.copy()
+
+    key_columns = ["tiles_per_side", "num_tiles"]
+    aggregated_with_delta = _with_num_tiles(aggregated)
+    baseline_rows = aggregated_with_delta[aggregated_with_delta["ablation_name"] == baseline_name]
+    if baseline_rows.empty:
+        aggregated_with_delta["delta_vs_grid_baseline"] = pd.NA
+    else:
+        baseline_by_grid = (
+            baseline_rows.groupby(key_columns, dropna=False)["mean_best_epoch_val_accuracy"].mean().reset_index()
+        )
+        baseline_by_grid = baseline_by_grid.rename(
+            columns={"mean_best_epoch_val_accuracy": "_grid_baseline_best_val_accuracy"}
+        )
+        aggregated_with_delta = aggregated_with_delta.merge(baseline_by_grid, on=key_columns, how="left")
+        aggregated_with_delta["delta_vs_grid_baseline"] = (
+            aggregated_with_delta["mean_best_epoch_val_accuracy"]
+            - aggregated_with_delta["_grid_baseline_best_val_accuracy"]
+        )
+
+    if raw_results is None:
+        return aggregated_with_delta, None
+
+    raw_with_delta = _with_num_tiles(raw_results)
+    if raw_with_delta.empty or "ablation_name" not in raw_with_delta.columns:
+        return aggregated_with_delta, raw_with_delta
+
+    accuracy_column = _raw_accuracy_column(raw_with_delta)
+    raw_baseline = raw_with_delta[raw_with_delta["ablation_name"] == baseline_name]
+    if raw_baseline.empty:
+        raw_with_delta["delta_vs_grid_baseline"] = pd.NA
+        return aggregated_with_delta, raw_with_delta
+
+    exact_key_columns = [*key_columns, "tile_permutation_id"]
+    exact_baseline = raw_baseline.groupby(exact_key_columns, dropna=False)[accuracy_column].mean().reset_index()
+    exact_baseline = exact_baseline.rename(columns={accuracy_column: "_exact_baseline_best_val_accuracy"})
+    grid_baseline = raw_baseline.groupby(key_columns, dropna=False)[accuracy_column].mean().reset_index()
+    grid_baseline = grid_baseline.rename(columns={accuracy_column: "_grid_baseline_best_val_accuracy"})
+
+    raw_with_delta = raw_with_delta.merge(exact_baseline, on=exact_key_columns, how="left")
+    raw_with_delta = raw_with_delta.merge(grid_baseline, on=key_columns, how="left")
+    raw_with_delta["_matched_baseline_best_val_accuracy"] = raw_with_delta[
+        "_exact_baseline_best_val_accuracy"
+    ].fillna(raw_with_delta["_grid_baseline_best_val_accuracy"])
+    raw_with_delta["delta_vs_grid_baseline"] = (
+        raw_with_delta[accuracy_column] - raw_with_delta["_matched_baseline_best_val_accuracy"]
+    )
+    return aggregated_with_delta, raw_with_delta
+
+
+def _part3_metric_plot_path(figures_dir: str, metric: str) -> str:
+    metric_slug = "combined_hardness" if metric == "combined_hardness_score" else metric
+    return os.path.join(figures_dir, f"part3_{metric_slug}_vs_accuracy.png")
 
 
 def get_device(config: CVExperimentConfig) -> TorchDevice:
@@ -233,13 +418,19 @@ def load_part1_model_baseline_aggregated(
     return baseline
 
 
-def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_column: str = "model_name") -> None:
+def plot_accuracy_vs_tiles(
+    aggregated: pd.DataFrame,
+    output_path: str,
+    model_column: str = "model_name",
+    raw_results: pd.DataFrame | None = None,
+) -> None:
     """Save an accuracy-vs-number-of-tiles plot.
 
     Args:
         aggregated: Aggregated result table.
         output_path: Destination path for the figure.
         model_column: Column used to split one curve per model.
+        raw_results: Optional raw result table to overlay individual permutations.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -254,42 +445,111 @@ def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_col
             marker="o",
             label=str(model_name),
         )
+    _scatter_raw_accuracy_vs_tiles(ax, raw_results, model_column=model_column)
     ax.set_xlabel("Number of tiles")
     ax.set_ylabel("Best validation accuracy")
     ax.set_title("Accuracy vs Number of Tiles")
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    model_legend = ax.legend(title=model_column.replace("_", " ").title(), loc="lower left")
+    if model_legend is not None:
+        ax.add_artist(model_legend)
+    if raw_results is not None and not raw_results.empty:
+        _add_permutation_marker_legend(ax)
     fig.tight_layout()
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
 
 
-def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
+def plot_ablation_results(
+    aggregated: pd.DataFrame,
+    output_path: str,
+    raw_results: pd.DataFrame | None = None,
+) -> None:
     """Save a baseline-vs-improvement ablation plot.
 
     Args:
         aggregated: Aggregated Part 2 result table.
         output_path: Destination path for the figure.
+        raw_results: Optional raw result table to overlay individual permutations.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
+    aggregated, raw_results = add_part2_grid_baseline_deltas(aggregated, raw_results)
+    y_column = (
+        "delta_vs_grid_baseline"
+        if "delta_vs_grid_baseline" in aggregated.columns and aggregated["delta_vs_grid_baseline"].notna().any()
+        else "mean_best_epoch_val_accuracy"
+    )
+    ablation_names = sorted(str(name) for name in aggregated["ablation_name"].dropna().unique())
+    x_positions = {ablation_name: index for index, ablation_name in enumerate(ablation_names)}
+    aggregated["_tile_label"] = aggregated["tiles_per_side"].map(_tile_grid_label)
+    tile_values = list(aggregated["_tile_label"].drop_duplicates())
+    tile_offsets = {
+        tile_value: (index - (len(tile_values) - 1) / 2.0) * 0.12
+        for index, tile_value in enumerate(tile_values)
+    }
+
     fig, axis = plt.subplots(figsize=(8, 5))
     ax = _as_axes(axis)
-    for tiles_per_side, group in aggregated.groupby("tiles_per_side"):
+    for tile_label, group in aggregated.groupby("_tile_label", sort=False):
         sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "ablation_name")
+        x_values = [
+            x_positions[str(ablation_name)] + tile_offsets.get(str(tile_label), 0.0)
+            for ablation_name in sorted_group["ablation_name"]
+        ]
         ax.errorbar(
-            sorted_group["ablation_name"],
-            sorted_group["mean_best_epoch_val_accuracy"],
+            x_values,
+            sorted_group[y_column],
             yerr=cast(Any, sorted_group)["std_best_epoch_val_accuracy"].fillna(0.0),
             fmt="o",
             linestyle="None",
-            label=f"{tiles_per_side}x{tiles_per_side}",
+            label=str(tile_label),
         )
+
+    if raw_results is not None and not raw_results.empty:
+        raw = raw_results.copy()
+        raw_y_column = "delta_vs_grid_baseline" if y_column == "delta_vs_grid_baseline" else _raw_accuracy_column(raw)
+        if "tile_permutation_name" not in raw.columns:
+            raw["tile_permutation_name"] = None
+        for _, row in raw.iterrows():
+            ablation_name = str(row.get("ablation_name"))
+            if ablation_name not in x_positions or raw_y_column not in row or pd.isna(row[raw_y_column]):
+                continue
+            marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
+            tile_label = _tile_grid_label(row.get("tiles_per_side"))
+            x_value = (
+                x_positions[ablation_name]
+                + tile_offsets.get(tile_label, 0.0)
+                + PERMUTATION_X_OFFSETS[marker_name] * 0.035
+            )
+            ax.scatter(
+                x_value,
+                row[raw_y_column],
+                marker=PERMUTATION_MARKERS[marker_name],
+                s=42 if marker_name != "baseline" else 24,
+                alpha=0.65,
+                color="0.25",
+                edgecolors="none" if marker_name in {"x", "baseline"} else "black",
+                linewidths=0.4,
+                label="_nolegend_",
+            )
+
+    if y_column == "delta_vs_grid_baseline":
+        ax.axhline(0.0, color="0.25", linewidth=1.0, linestyle="--", alpha=0.8)
     ax.set_xlabel("Ablation")
-    ax.set_ylabel("Best validation accuracy")
-    ax.set_title("Baseline vs Improved Ablations")
+    ax.set_ylabel(
+        "Best validation accuracy - matched Part 1 grid baseline"
+        if y_column == "delta_vs_grid_baseline"
+        else "Best validation accuracy"
+    )
+    ax.set_title("Ablations vs Matched Grid Baseline")
+    ax.set_xticks(list(x_positions.values()), ablation_names)
     ax.grid(True, axis="y", alpha=0.3)
-    ax.legend()
+    grid_legend = ax.legend(title="Grid", loc="lower left")
+    if grid_legend is not None:
+        ax.add_artist(grid_legend)
+    if raw_results is not None and not raw_results.empty:
+        _add_permutation_marker_legend(ax)
     fig.autofmt_xdate(rotation=20)
     fig.tight_layout()
     fig.savefig(output_path, dpi=160)
@@ -300,11 +560,22 @@ def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
     """Return stable output paths for notebook-owned Part 3 analysis."""
 
     combined_plot = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
+    metric_plots = {
+        metric: _part3_metric_plot_path(figures_dir, metric)
+        for metric in PART3_METRIC_COLUMNS
+    }
+    existing_plots = [
+        path
+        for path in [*metric_plots.values(), combined_plot]
+        if os.path.exists(path)
+    ]
     return {
         "metrics": os.path.join(results_dir, "tile_permutation_metrics.csv"),
         "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
         "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
-        "plots": [combined_plot] if os.path.exists(combined_plot) else [],
+        "metric_plots": metric_plots,
+        "combined_plot": combined_plot,
+        "plots": existing_plots,
     }
 
 
@@ -526,24 +797,67 @@ def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "r
     return pd.DataFrame(rows)
 
 
+def plot_part3_metric_vs_accuracy(joined: pd.DataFrame, figures_dir: str, metric: str) -> str:
+    """Save one Part 3 metric-vs-accuracy scatter plot."""
+
+    if metric not in PART3_METRIC_COLUMNS:
+        raise ValueError(f"Unsupported Part 3 metric: {metric}")
+
+    ensure_dir(figures_dir)
+    output_path = _part3_metric_plot_path(figures_dir, metric)
+    fig, axis = plt.subplots(figsize=(7, 5))
+    ax = _as_axes(axis)
+    frame = joined.copy()
+    if "tile_permutation_name" not in frame.columns:
+        frame["tile_permutation_name"] = None
+    for marker_name, group in frame.groupby(frame["tile_permutation_name"].map(_permutation_marker_name)):
+        ax.scatter(
+            group[metric],
+            group["best_val_accuracy"],
+            marker=PERMUTATION_MARKERS[str(marker_name)],
+            label=str(marker_name),
+            alpha=0.75,
+            s=46 if marker_name != "baseline" else 26,
+        )
+    ax.set_xlabel(metric.replace("_", " ").title())
+    ax.set_ylabel("Best validation accuracy")
+    ax.set_title(f"{metric.replace('_', ' ').title()} vs Accuracy")
+    ax.grid(True, alpha=0.3)
+    ax.legend(title="Permutation")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
+
+
 def plot_part3_metrics_vs_accuracy(joined: pd.DataFrame, figures_dir: str) -> None:
     """Save one combined Part 3 hardness metric-vs-accuracy scatter plot."""
 
     ensure_dir(figures_dir)
     fig, axis = plt.subplots(figsize=(8, 5))
     ax = _as_axes(axis)
+    frame = joined.copy()
+    if "tile_permutation_name" not in frame.columns:
+        frame["tile_permutation_name"] = None
     for metric in PART3_METRIC_COLUMNS:
-        ax.scatter(
-            joined[metric],
-            joined["best_val_accuracy"],
-            label=metric.replace("_", " ").title(),
-            alpha=0.8,
-        )
+        for group_index, (marker_name, group) in enumerate(
+            frame.groupby(frame["tile_permutation_name"].map(_permutation_marker_name))
+        ):
+            ax.scatter(
+                group[metric],
+                group["best_val_accuracy"],
+                marker=PERMUTATION_MARKERS[str(marker_name)],
+                label=metric.replace("_", " ").title() if group_index == 0 else "_nolegend_",
+                alpha=0.7,
+            )
     ax.set_xlabel("Hardness metric value")
     ax.set_ylabel("Best validation accuracy")
     ax.set_title("Part 3 Hardness Metrics vs Accuracy")
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    metric_legend = ax.legend(title="Metric", loc="lower left")
+    if metric_legend is not None:
+        ax.add_artist(metric_legend)
+    _add_permutation_marker_legend(ax)
     fig.tight_layout()
     fig.savefig(os.path.join(figures_dir, "part3_metrics_vs_accuracy.png"), dpi=160)
     plt.close(fig)
@@ -618,6 +932,8 @@ def run_part3_hardness_analysis(
     correlations = compute_part3_metric_correlations(joined, group_name=model_name)
     log("Saving correlations and plots...")
     save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
+    for metric in PART3_METRIC_COLUMNS:
+        plot_part3_metric_vs_accuracy(joined, figures_dir, metric)
     plot_part3_metrics_vs_accuracy(joined, figures_dir)
     log("Part 3 hardness analysis complete.")
     return {"metrics": metrics, "joined": joined, "correlations": correlations}

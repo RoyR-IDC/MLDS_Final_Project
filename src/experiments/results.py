@@ -188,6 +188,14 @@ def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) 
         "aggregated_results": os.path.join(results_dir, f"{part_name}_aggregated_results.csv"),
         "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
     }
+    output_paths["intermediate_figures_dir"] = os.path.join(figures_dir, "intermediate")
     if part_name == "part1":
         output_paths["tile_permutations"] = os.path.join(results_dir, "part1_tile_permutations.csv")
     return output_paths
+
+
+def experiment_intermediate_figure_path(figures_dir: str, part_name: str, figure_slug: str) -> str:
+    """Return a stable path for a notebook intermediate figure."""
+
+    safe_slug = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in figure_slug)
+    return os.path.join(figures_dir, "intermediate", f"{part_name}_{safe_slug}.png")

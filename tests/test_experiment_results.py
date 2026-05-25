@@ -12,13 +12,17 @@ from PIL import Image
 import pytest
 
 from src.evaluation.experiment_results import (
+    PERMUTATION_MARKERS,
+    add_part2_grid_baseline_deltas,
     aggregate_accuracy,
     compute_part3_metric_correlations,
     compute_part3_tile_permutation_metrics,
+    experiment_intermediate_figure_path,
     load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
     load_part1_model_results,
     part3_output_paths,
+    plot_part3_metric_vs_accuracy,
     plot_ablation_results,
     plot_accuracy_vs_tiles,
     plot_part3_metrics_vs_accuracy,
@@ -142,6 +146,53 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     assert output_path.exists()
 
 
+def test_plot_accuracy_vs_tiles_overlays_permutation_markers(monkeypatch, tmp_path):
+    markers = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.01,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tile_permutation_name": "medium",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.68,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["medium"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+
+
 def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_path):
     calls = []
 
@@ -172,6 +223,137 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
     assert calls
     assert calls[0]["fmt"] == "o"
     assert calls[0]["linestyle"] == "None"
+
+
+def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_path):
+    markers = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.73,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"), raw_results=raw_results)
+
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+
+
+def test_part2_grid_baseline_deltas_match_tile_permutation_before_grid_fallback():
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.60,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 7,
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.80,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.50,
+            },
+            {
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.75,
+            },
+        ]
+    )
+
+    aggregated_delta, raw_delta = add_part2_grid_baseline_deltas(aggregated, raw_results)
+
+    row = aggregated_delta[aggregated_delta["ablation_name"] == "patch_shuffle"].iloc[0]
+    assert row["delta_vs_grid_baseline"] == pytest.approx(0.10)
+    raw_row = raw_delta[raw_delta["ablation_name"] == "patch_shuffle"].iloc[0]
+    assert raw_row["delta_vs_grid_baseline"] == pytest.approx(0.05)
+
+
+def test_intermediate_figure_path_uses_part_and_slug(tmp_path):
+    path = experiment_intermediate_figure_path(str(tmp_path), "part1", "accuracy vs tiles resnet18")
+
+    assert path == str(tmp_path / "intermediate" / "part1_accuracy_vs_tiles_resnet18.png")
 
 
 def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
@@ -482,6 +664,36 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
 
     assert paths["plots"] == [str(tmp_path / "part3_metrics_vs_accuracy.png")]
     assert (tmp_path / "part3_metrics_vs_accuracy.png").exists()
+
+
+def test_part3_metric_plots_are_reported_by_output_paths(tmp_path):
+    joined = pd.DataFrame(
+        [
+            {
+                "best_val_accuracy": 0.70,
+                "tile_permutation_name": "easy",
+                "global_tile_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.30,
+                "spatial_permutation_entropy": 0.20,
+                "combined_hardness_score": 0.25,
+            },
+            {
+                "best_val_accuracy": 0.60,
+                "tile_permutation_name": "hard",
+                "global_tile_displacement": 0.80,
+                "adjacency_destruction_hardness": 0.90,
+                "spatial_permutation_entropy": 0.70,
+                "combined_hardness_score": 0.70,
+            },
+        ]
+    )
+
+    output_path = plot_part3_metric_vs_accuracy(joined, str(tmp_path), "combined_hardness_score")
+    paths = part3_output_paths(str(tmp_path), str(tmp_path))
+
+    assert output_path == str(tmp_path / "part3_combined_hardness_vs_accuracy.png")
+    assert output_path in paths["plots"]
+    assert paths["metric_plots"]["combined_hardness_score"] == output_path
 
 
 def test_part3_correlations_are_nan_for_constant_accuracy():
