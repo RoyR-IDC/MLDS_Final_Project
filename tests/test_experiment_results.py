@@ -22,10 +22,9 @@ from src.evaluation.experiment_results import (
     load_part1_model_baseline_raw_rows,
     load_part1_model_results,
     part3_output_paths,
-    plot_part3_metric_vs_accuracy,
     plot_ablation_results,
     plot_accuracy_vs_tiles,
-    plot_part3_metrics_vs_accuracy,
+    plot_part3_metric_grid_views,
     run_part3_hardness_analysis,
     save_rows,
 )
@@ -1018,47 +1017,75 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
         )
 
 
-def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
-    joined = pd.DataFrame(
+def test_part3_hardness_analysis_normalizes_joined_permutation_metadata(tmp_path):
+    pd.DataFrame(
         [
             {
-                "best_val_accuracy": 0.70,
-                "global_tile_displacement": 0.10,
-                "adjacency_destruction_hardness": 0.30,
-                "spatial_permutation_entropy": 0.20,
-                "combined_hardness_score": 0.25,
-            },
-            {
-                "best_val_accuracy": 0.60,
-                "global_tile_displacement": 0.80,
-                "adjacency_destruction_hardness": 0.90,
-                "spatial_permutation_entropy": 0.70,
-                "combined_hardness_score": 0.70,
-            },
-        ]
-    )
-
-    plot_part3_metrics_vs_accuracy(joined, str(tmp_path))
-    paths = part3_output_paths(str(tmp_path), str(tmp_path))
-
-    assert paths["plots"] == [str(tmp_path / "part3_metrics_vs_accuracy.png")]
-    assert (tmp_path / "part3_metrics_vs_accuracy.png").exists()
-
-
-def test_part3_metric_plots_are_reported_by_output_paths(tmp_path):
-    joined = pd.DataFrame(
-        [
-            {
-                "best_val_accuracy": 0.70,
-                "tile_permutation_name": "easy",
-                "global_tile_displacement": 0.10,
-                "adjacency_destruction_hardness": 0.30,
-                "spatial_permutation_entropy": 0.20,
-                "combined_hardness_score": 0.25,
-            },
-            {
-                "best_val_accuracy": 0.60,
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
                 "tile_permutation_name": "hard",
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "tile_permutation_seed": 7,
+                "best_val_accuracy": 0.75,
+                "val_accuracy": 0.70,
+            }
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    results = run_part3_hardness_analysis(
+        results_dir=str(tmp_path),
+        figures_dir=str(tmp_path),
+        part1_results_csv=str(tmp_path / "part1_raw_results.csv"),
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[2],
+        num_tile_permutations=1,
+        seed=42,
+        validation_samples=_validation_samples(tmp_path),
+        image_size=4,
+        model_name="resnet18",
+        verbose=False,
+        show_progress=False,
+    )
+
+    assert "tile_permutation_name" in results["joined"].columns
+    assert "tile_permutation_name_x" not in results["joined"].columns
+    assert "tile_permutation_name_y" not in results["joined"].columns
+    assert results["joined"].loc[0, "tile_permutation_name"] == "hard"
+    assert results["joined"].loc[0, "tile_permutation_seed"] == 42
+
+
+def test_part3_metric_grid_plots_are_reported_by_output_paths(tmp_path):
+    joined = pd.DataFrame(
+        [
+            {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.70,
+                "global_tile_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.30,
+                "spatial_permutation_entropy": 0.20,
+                "combined_hardness_score": 0.25,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
                 "adjacency_destruction_hardness": 0.90,
                 "spatial_permutation_entropy": 0.70,
@@ -1067,12 +1094,105 @@ def test_part3_metric_plots_are_reported_by_output_paths(tmp_path):
         ]
     )
 
-    output_path = plot_part3_metric_vs_accuracy(joined, str(tmp_path), "combined_hardness_score")
+    output_paths = plot_part3_metric_grid_views(joined, str(tmp_path), "combined_hardness_score")
     paths = part3_output_paths(str(tmp_path), str(tmp_path))
 
-    assert output_path == str(tmp_path / "part3_combined_hardness_vs_accuracy.png")
-    assert output_path in paths["plots"]
-    assert paths["metric_plots"]["combined_hardness_score"] == output_path
+    assert output_paths == {
+        "grid_hardness": str(tmp_path / "part3_combined_hardness_grid_vs_hardness.png"),
+        "grid_hardness_accuracy_3d": str(tmp_path / "part3_combined_hardness_grid_hardness_accuracy_3d.png"),
+    }
+    assert paths["plots"] == [
+        str(tmp_path / "part3_combined_hardness_grid_vs_hardness.png"),
+        str(tmp_path / "part3_combined_hardness_grid_hardness_accuracy_3d.png"),
+    ]
+    assert paths["metric_plots"]["combined_hardness_score"] == output_paths
+
+
+def test_part3_metric_grid_plots_use_condition_markers_and_grid_axes(monkeypatch, tmp_path):
+    markers = []
+    scatter_args = []
+    xtick_labels = []
+
+    def fake_scatter_2d(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+        scatter_args.append(args)
+
+    def fake_scatter_3d(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+        scatter_args.append(args)
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        if labels is not None:
+            xtick_labels.extend(labels)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter_2d)
+    monkeypatch.setattr("mpl_toolkits.mplot3d.axes3d.Axes3D.scatter", fake_scatter_3d)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    joined = pd.DataFrame(
+        [
+            {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.70,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "easy",
+                "global_tile_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.30,
+                "spatial_permutation_entropy": 0.20,
+                "combined_hardness_score": 0.25,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.65,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "easy",
+                "global_tile_displacement": 0.20,
+                "adjacency_destruction_hardness": 0.35,
+                "spatial_permutation_entropy": 0.25,
+                "combined_hardness_score": 0.30,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.62,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "medium",
+                "global_tile_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.50,
+                "spatial_permutation_entropy": 0.45,
+                "combined_hardness_score": 0.48,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 3,
+                "best_val_accuracy": 0.60,
+                "tile_permutation_name_x": "easy",
+                "tile_permutation_name_y": "hard",
+                "global_tile_displacement": 0.80,
+                "adjacency_destruction_hardness": 0.90,
+                "spatial_permutation_entropy": 0.70,
+                "combined_hardness_score": 0.70,
+            },
+        ]
+    )
+
+    plot_part3_metric_grid_views(joined, str(tmp_path), "combined_hardness_score")
+
+    assert PERMUTATION_MARKERS["baseline"] in markers
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["medium"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+    assert xtick_labels[:2] == ["1", "2x2"]
+    assert list(scatter_args[0][0]) == [0]
+    assert list(scatter_args[0][1]) == [0.25]
+    assert len(scatter_args[0]) == 2
+    assert len(scatter_args[-1]) == 3
+    assert list(scatter_args[-1][2]) == [0.60]
 
 
 def test_part3_correlations_are_nan_for_constant_accuracy():

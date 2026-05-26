@@ -390,9 +390,19 @@ def add_part2_grid_baseline_deltas(
     return aggregated_with_delta, raw_with_delta
 
 
-def _part3_metric_plot_path(figures_dir: str, metric: str) -> str:
-    metric_slug = "combined_hardness" if metric == "combined_hardness_score" else metric
-    return os.path.join(figures_dir, f"part3_{metric_slug}_vs_accuracy.png")
+def _part3_metric_slug(metric: str) -> str:
+    return "combined_hardness" if metric == "combined_hardness_score" else metric
+
+
+def _part3_metric_grid_plot_paths(figures_dir: str, metric: str) -> dict[str, str]:
+    metric_slug = _part3_metric_slug(metric)
+    return {
+        "grid_hardness": os.path.join(figures_dir, f"part3_{metric_slug}_grid_vs_hardness.png"),
+        "grid_hardness_accuracy_3d": os.path.join(
+            figures_dir,
+            f"part3_{metric_slug}_grid_hardness_accuracy_3d.png",
+        ),
+    }
 
 
 def get_device(config: CVExperimentConfig) -> TorchDevice:
@@ -749,14 +759,21 @@ def plot_ablation_results(
 def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
     """Return stable output paths for notebook-owned Part 3 analysis."""
 
-    combined_plot = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
     metric_plots = {
-        metric: _part3_metric_plot_path(figures_dir, metric)
+        metric: _part3_metric_grid_plot_paths(figures_dir, metric)
         for metric in PART3_METRIC_COLUMNS
     }
+    ordered_plot_paths = [
+        path
+        for metric in PART3_METRIC_COLUMNS
+        for path in [
+            metric_plots[metric]["grid_hardness"],
+            metric_plots[metric]["grid_hardness_accuracy_3d"],
+        ]
+    ]
     existing_plots = [
         path
-        for path in [*metric_plots.values(), combined_plot]
+        for path in ordered_plot_paths
         if os.path.exists(path)
     ]
     return {
@@ -764,7 +781,6 @@ def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
         "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
         "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
         "metric_plots": metric_plots,
-        "combined_plot": combined_plot,
         "plots": existing_plots,
     }
 
@@ -987,83 +1003,127 @@ def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "r
     return pd.DataFrame(rows)
 
 
-def plot_part3_metric_vs_accuracy(
+def _normalize_part3_joined_columns(joined: pd.DataFrame) -> pd.DataFrame:
+    """Collapse merge-suffixed Part 3 metadata columns into stable names."""
+
+    joined = joined.copy()
+    for column in ("tile_permutation_name", "tile_permutation_seed"):
+        metric_column = f"{column}_y"
+        raw_column = f"{column}_x"
+        if metric_column in joined.columns and raw_column in joined.columns:
+            joined[column] = joined[metric_column].combine_first(joined[raw_column])
+            joined = joined.drop(columns=[raw_column, metric_column])
+        elif metric_column in joined.columns:
+            joined[column] = joined[metric_column]
+            joined = joined.drop(columns=[metric_column])
+        elif raw_column in joined.columns:
+            joined[column] = joined[raw_column]
+            joined = joined.drop(columns=[raw_column])
+    return joined
+
+
+def _part3_plot_marker_name(row: pd.Series) -> str:
+    """Return condition marker key for a Part 3 joined row."""
+
+    num_tiles = row.get("num_tiles")
+    tiles_per_side = row.get("tiles_per_side")
+    tile_permutation_id = row.get("tile_permutation_id")
+    if (
+        (num_tiles is not None and not pd.isna(num_tiles) and int(num_tiles) == 1)
+        or _is_missing_scalar(tiles_per_side)
+        or (tile_permutation_id is not None and not pd.isna(tile_permutation_id) and int(tile_permutation_id) == 0)
+    ):
+        return "baseline"
+    return _permutation_marker_name(row.get("tile_permutation_name"))
+
+
+def _part3_grid_positions(frame: pd.DataFrame) -> dict[int, int]:
+    frame = _with_num_tiles(frame)
+    return _tile_axis_positions(list(frame["num_tiles"]))
+
+
+def _set_part3_grid_axis_ticks(ax: Axes, grid_positions: dict[int, int]) -> None:
+    tick_values = list(grid_positions)
+    ax.set_xticks(
+        [grid_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+
+
+def _part3_metric_label(metric: str) -> str:
+    return metric.replace("_", " ").title()
+
+
+def plot_part3_metric_grid_views(
     joined: pd.DataFrame,
     figures_dir: str,
     metric: str,
     title: str | None = None,
-) -> str:
-    """Save one Part 3 metric-vs-accuracy scatter plot."""
+) -> dict[str, str]:
+    """Save Part 3 grid-vs-hardness and grid/hardness/accuracy scatter plots."""
 
     if metric not in PART3_METRIC_COLUMNS:
         raise ValueError(f"Unsupported Part 3 metric: {metric}")
 
     ensure_dir(figures_dir)
-    output_path = _part3_metric_plot_path(figures_dir, metric)
+    output_paths = _part3_metric_grid_plot_paths(figures_dir, metric)
+    frame = _with_num_tiles(_normalize_part3_joined_columns(joined))
+    if "tile_permutation_name" not in frame.columns:
+        frame["tile_permutation_name"] = None
+    frame["_condition_marker"] = [_part3_plot_marker_name(row) for _, row in frame.iterrows()]
+    grid_positions = _part3_grid_positions(frame)
+    metric_label = _part3_metric_label(metric)
+
     fig, axis = plt.subplots(figsize=(7, 5))
     ax = _as_axes(axis)
-    frame = joined.copy()
-    if "tile_permutation_name" not in frame.columns:
-        frame["tile_permutation_name"] = None
-    for marker_name, group in frame.groupby(frame["tile_permutation_name"].map(_permutation_marker_name)):
+    for marker_name, group in frame.groupby("_condition_marker", sort=False):
+        x_values = [grid_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
         ax.scatter(
+            x_values,
             group[metric],
-            group["best_val_accuracy"],
-            marker=PERMUTATION_MARKERS[str(marker_name)],
-            label=str(marker_name),
-            alpha=0.75,
-            s=46 if marker_name != "baseline" else 26,
+            **_condition_marker_kwargs(str(marker_name), color=None, alpha=0.78),
+            label="_nolegend_",
         )
-    ax.set_xlabel(metric.replace("_", " ").title())
-    ax.set_ylabel("Best validation accuracy")
-    base_title = f"{metric.replace('_', ' ').title()} vs Accuracy"
-    ax.set_title(title or _plot_title(base_title, frame=joined))
+    _set_part3_grid_axis_ticks(ax, grid_positions)
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel(metric_label)
+    base_title = f"{metric_label} by Grid Size"
+    ax.set_title(title or _plot_title(base_title, frame=frame))
     ax.grid(True, alpha=0.3)
-    ax.legend(title="Permutation")
-    fig.tight_layout()
-    _archive_existing_figure(output_path)
-    fig.savefig(output_path, dpi=160)
-    plt.close(fig)
-    return output_path
-
-
-def plot_part3_metrics_vs_accuracy(
-    joined: pd.DataFrame,
-    figures_dir: str,
-    title: str | None = None,
-) -> None:
-    """Save one combined Part 3 hardness metric-vs-accuracy scatter plot."""
-
-    ensure_dir(figures_dir)
-    fig, axis = plt.subplots(figsize=(8, 5))
-    ax = _as_axes(axis)
-    frame = joined.copy()
-    if "tile_permutation_name" not in frame.columns:
-        frame["tile_permutation_name"] = None
-    for metric in PART3_METRIC_COLUMNS:
-        for group_index, (marker_name, group) in enumerate(
-            frame.groupby(frame["tile_permutation_name"].map(_permutation_marker_name))
-        ):
-            ax.scatter(
-                group[metric],
-                group["best_val_accuracy"],
-                marker=PERMUTATION_MARKERS[str(marker_name)],
-                label=metric.replace("_", " ").title() if group_index == 0 else "_nolegend_",
-                alpha=0.7,
-            )
-    ax.set_xlabel("Hardness metric value")
-    ax.set_ylabel("Best validation accuracy")
-    ax.set_title(title or _plot_title("Part 3 Hardness Metrics vs Accuracy", frame=joined))
-    ax.grid(True, alpha=0.3)
-    metric_legend = ax.legend(title="Metric", loc="lower left")
-    if metric_legend is not None:
-        ax.add_artist(metric_legend)
     _add_permutation_marker_legend(ax)
     fig.tight_layout()
-    output_path = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
-    _archive_existing_figure(output_path)
-    fig.savefig(output_path, dpi=160)
+    _archive_existing_figure(output_paths["grid_hardness"])
+    fig.savefig(output_paths["grid_hardness"], dpi=160)
     plt.close(fig)
+
+    fig = plt.figure(figsize=(8, 6))
+    axis_3d = fig.add_subplot(111, projection="3d")
+    for marker_name, group in frame.groupby("_condition_marker", sort=False):
+        x_values = [grid_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
+        axis_3d.scatter(
+            x_values,
+            group[metric],
+            group["best_val_accuracy"],
+            **_condition_marker_kwargs(str(marker_name), color=None, alpha=0.78),
+            label="_nolegend_",
+        )
+    tick_values = list(grid_positions)
+    axis_3d.set_xticks(
+        [grid_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+    axis_3d.set_xlabel("Grid size")
+    axis_3d.set_ylabel(metric_label)
+    axis_3d.set_zlabel("Best validation accuracy")
+    base_title = f"{metric_label} by Grid Size and Accuracy"
+    axis_3d.set_title(title or _plot_title(base_title, frame=frame))
+    axis_3d.grid(True, alpha=0.3)
+    _add_permutation_marker_legend(axis_3d)
+    fig.tight_layout()
+    _archive_existing_figure(output_paths["grid_hardness_accuracy_3d"])
+    fig.savefig(output_paths["grid_hardness_accuracy_3d"], dpi=160)
+    plt.close(fig)
+    return output_paths
 
 
 def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
@@ -1125,6 +1185,7 @@ def run_part3_hardness_analysis(
     raw_results = load_part1_model_results(part1_results_csv, model_name)
     log(f"Joining hardness metrics with {model_name} accuracy...")
     joined = raw_results.merge(metrics, on=["tiles_per_side", "num_tiles", "tile_permutation_id"], how="left")
+    joined = _normalize_part3_joined_columns(joined)
     joined = _reset_dataframe_index(
         _sorted_dataframe(joined, ["tiles_per_side", "tile_permutation_id"], na_position="first")
     )
@@ -1136,7 +1197,6 @@ def run_part3_hardness_analysis(
     log("Saving correlations and plots...")
     save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
     for metric in PART3_METRIC_COLUMNS:
-        plot_part3_metric_vs_accuracy(joined, figures_dir, metric)
-    plot_part3_metrics_vs_accuracy(joined, figures_dir)
+        plot_part3_metric_grid_views(joined, figures_dir, metric)
     log("Part 3 hardness analysis complete.")
     return {"metrics": metrics, "joined": joined, "correlations": correlations}
