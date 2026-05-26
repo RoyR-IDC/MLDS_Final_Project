@@ -246,7 +246,7 @@ def train_model_on_tile_permutation_records(
             aggregated_model_results,
             intermediate_figure_output_path,
             raw_results=raw_model_results,
-            title=f"{model_name}: Accuracy vs Number of Tiles",
+            title=f"Intermediate Model Plot: Validation Accuracy by Tiling Level - {model_name}",
         )
         print(f"Saved intermediate model plot: {intermediate_figure_output_path}")
     return rows

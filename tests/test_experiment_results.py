@@ -146,13 +146,54 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     assert output_path.exists()
 
 
-def test_plot_accuracy_vs_tiles_title_includes_single_model(monkeypatch, tmp_path):
+def test_plot_accuracy_vs_tiles_uses_mean_lines_without_error_bars(monkeypatch, tmp_path):
+    plot_calls = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("accuracy plots should not use error bars")
+
+    def fake_plot(self, *args, **kwargs):
+        plot_calls.append((args, kwargs))
+        return []
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.02,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.65,
+                "std_best_epoch_val_accuracy": 0.03,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+
+    assert plot_calls
+    assert list(plot_calls[0][0][1]) == [0.75, 0.65]
+
+
+def test_plot_accuracy_vs_tiles_title_and_ylim_for_intermediate_model(monkeypatch, tmp_path):
     titles = []
+    y_limits = []
 
     def fake_set_title(self, title, *args, **kwargs):
         titles.append(title)
 
+    def fake_set_ylim(self, *args, **kwargs):
+        y_limits.append(args)
+
     monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_ylim", fake_set_ylim)
     aggregated = pd.DataFrame(
         [
             {
@@ -163,13 +204,24 @@ def test_plot_accuracy_vs_tiles_title_includes_single_model(monkeypatch, tmp_pat
             }
         ]
     )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
 
-    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
 
-    assert titles[-1] == "resnet18: Accuracy vs Number of Tiles"
+    assert titles[-1] == "Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18"
+    assert y_limits[-1] == (0.50, 1.00)
 
 
-def test_plot_accuracy_vs_tiles_overlays_permutation_markers(monkeypatch, tmp_path):
+def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(monkeypatch, tmp_path):
     markers = []
 
     def fake_scatter(self, *args, **kwargs):
@@ -206,6 +258,12 @@ def test_plot_accuracy_vs_tiles_overlays_permutation_markers(monkeypatch, tmp_pa
                 "tile_permutation_name": "hard",
                 "best_val_accuracy": 0.68,
             },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.74,
+            },
         ]
     )
 
@@ -214,15 +272,124 @@ def test_plot_accuracy_vs_tiles_overlays_permutation_markers(monkeypatch, tmp_pa
     assert PERMUTATION_MARKERS["easy"] in markers
     assert PERMUTATION_MARKERS["medium"] in markers
     assert PERMUTATION_MARKERS["hard"] in markers
+    assert PERMUTATION_MARKERS["baseline"] in markers
+    assert PERMUTATION_MARKERS["baseline"] == "D"
 
 
-def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_path):
-    calls = []
+def test_plot_accuracy_vs_tiles_condition_legend_clarifies_baseline(monkeypatch, tmp_path):
+    legend_labels = []
+    legend_titles = []
 
-    def fake_errorbar(self, *args, **kwargs):
-        calls.append(kwargs)
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
 
-    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fake_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert "Condition" in legend_titles
+    assert "baseline / no permutation" in legend_labels
+
+
+def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_condition_points(monkeypatch, tmp_path):
+    plot_labels = []
+    markers = []
+    titles = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("final accuracy plot should not use error bars")
+
+    def fake_plot(self, *args, **kwargs):
+        plot_labels.append(kwargs.get("label"))
+        return []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "deit_tiny",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.65,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "deit_tiny",
+                "num_tiles": 16,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.63,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert plot_labels == ["deit_tiny", "resnet18"]
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+    assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+
+
+def test_plot_ablation_results_uses_aggregate_points_without_error_bars(monkeypatch, tmp_path):
+    markers = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("ablation plots should not use error bars")
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
     monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
     aggregated = pd.DataFrame(
         [
@@ -243,9 +410,7 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
 
     plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
 
-    assert calls
-    assert calls[0]["fmt"] == "o"
-    assert calls[0]["linestyle"] == "None"
+    assert markers == ["o"]
 
 
 def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeypatch, tmp_path):
@@ -283,6 +448,7 @@ def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_pat
         markers.append(kwargs.get("marker"))
 
     monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
     aggregated = pd.DataFrame(
         [
             {

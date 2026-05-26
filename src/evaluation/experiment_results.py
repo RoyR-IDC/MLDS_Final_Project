@@ -28,7 +28,7 @@ from src.experiments.results import (
     save_aggregated_accuracy,
     save_rows,
 )
-from src.models.registry import validate_model_name
+from src.models.registry import SUPPORTED_MODEL_NAMES, validate_model_name
 from src.preprocessing.samples import Sample, discover_samples, stratified_split
 from src.preprocessing.tile_permutations import (
     build_tile_permutation_records,
@@ -53,15 +53,23 @@ PERMUTATION_MARKERS = {
     "easy": "o",
     "medium": "x",
     "hard": "^",
-    "baseline": ".",
-    "unknown": ".",
+    "baseline": "D",
+    "unknown": "s",
 }
 PERMUTATION_X_OFFSETS = {
-    "easy": -1.0,
-    "medium": 0.0,
-    "hard": 1.0,
-    "baseline": 0.0,
+    "easy": -1.5,
+    "medium": -0.5,
+    "hard": 0.5,
+    "baseline": 1.5,
     "unknown": 0.0,
+}
+ACCURACY_Y_LIMITS = (0.50, 1.00)
+CONDITION_LABELS = {
+    "easy": "easy",
+    "medium": "medium",
+    "hard": "hard",
+    "baseline": "baseline / no permutation",
+    "unknown": "unknown",
 }
 
 
@@ -121,6 +129,59 @@ def _plot_title(base_title: str, *, frame: pd.DataFrame, model_column: str = "mo
     return f"{context}: {base_title}" if context else base_title
 
 
+def _model_values(frame: pd.DataFrame, model_column: str) -> list[str]:
+    if model_column not in frame.columns:
+        return []
+    return [str(value) for value in frame[model_column].dropna().unique()]
+
+
+def _color_by_model(model_values: Sequence[str]) -> dict[str, str]:
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    if not color_cycle:
+        return {}
+    known_colors = {
+        model_name: color_cycle[index % len(color_cycle)]
+        for index, model_name in enumerate(SUPPORTED_MODEL_NAMES)
+    }
+    extra_names = sorted(model_name for model_name in model_values if model_name not in known_colors)
+    extra_colors = {
+        model_name: color_cycle[(len(SUPPORTED_MODEL_NAMES) + index) % len(color_cycle)]
+        for index, model_name in enumerate(extra_names)
+    }
+    return {model_name: known_colors.get(model_name, extra_colors.get(model_name, "")) for model_name in model_values}
+
+
+def _tile_axis_label(value: object) -> str:
+    num_tiles = int(value)
+    if num_tiles == 1:
+        return "1"
+    tiles_per_side = int(num_tiles ** 0.5)
+    if tiles_per_side * tiles_per_side == num_tiles:
+        return f"{tiles_per_side}x{tiles_per_side}"
+    return str(num_tiles)
+
+
+def _set_tile_axis_ticks(ax: Axes, values: Sequence[object]) -> None:
+    tick_values = sorted({int(value) for value in values if not pd.isna(value)})
+    ax.set_xticks(tick_values, [_tile_axis_label(value) for value in tick_values])
+
+
+def _condition_marker_kwargs(marker_name: str, *, color: str | None, alpha: float = 0.78) -> dict[str, Any]:
+    marker = PERMUTATION_MARKERS[marker_name]
+    kwargs: dict[str, Any] = {
+        "marker": marker,
+        "s": 72 if marker_name == "baseline" else 58,
+        "alpha": alpha,
+        "color": color,
+        "linewidths": 1.1,
+    }
+    if marker == "x":
+        kwargs["edgecolors"] = color
+    else:
+        kwargs["edgecolors"] = "black"
+    return kwargs
+
+
 def _raw_accuracy_column(raw_results: pd.DataFrame) -> str:
     if "best_val_accuracy" in raw_results.columns:
         return "best_val_accuracy"
@@ -147,6 +208,8 @@ def _scatter_raw_accuracy_vs_tiles(
     raw_results: pd.DataFrame | None,
     *,
     model_column: str,
+    color_by_model: dict[str, str],
+    alpha: float = 0.78,
 ) -> None:
     """Overlay raw permutation results on an accuracy-vs-tiles axis."""
 
@@ -158,14 +221,6 @@ def _scatter_raw_accuracy_vs_tiles(
     if "tile_permutation_name" not in raw.columns:
         raw["tile_permutation_name"] = None
 
-    model_values = list(raw[model_column].dropna().astype(str).unique()) if model_column in raw.columns else []
-    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
-    color_by_model = {
-        model_name: color_cycle[index % len(color_cycle)]
-        for index, model_name in enumerate(model_values)
-        if color_cycle
-    }
-
     for _, row in raw.iterrows():
         marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
         num_tiles = float(row["num_tiles"])
@@ -174,34 +229,48 @@ def _scatter_raw_accuracy_vs_tiles(
         ax.scatter(
             num_tiles + offset,
             row[accuracy_column],
-            marker=PERMUTATION_MARKERS[marker_name],
-            s=42 if marker_name != "baseline" else 24,
-            alpha=0.65,
-            color=color_by_model.get(model_name),
-            edgecolors="none" if marker_name in {"x", "baseline"} else "black",
-            linewidths=0.4,
+            **_condition_marker_kwargs(
+                marker_name,
+                color=color_by_model.get(model_name),
+                alpha=alpha,
+            ),
             label="_nolegend_",
         )
 
 
-def _add_permutation_marker_legend(ax: Axes) -> None:
-    """Add a compact legend for raw permutation marker shapes."""
-
+def _condition_legend_handles() -> list[plt.Line2D]:
     handles = []
-    labels = []
     for name in ("easy", "medium", "hard", "baseline"):
+        marker = PERMUTATION_MARKERS[name]
         handles.append(
             plt.Line2D(
                 [0],
                 [0],
-                marker=PERMUTATION_MARKERS[name],
+                marker=marker,
                 color="0.25",
+                markeredgecolor="black" if marker != "x" else "0.25",
                 linestyle="None",
-                markersize=6,
+                markersize=7,
+                label=CONDITION_LABELS[name],
             )
         )
-        labels.append(name)
-    marker_legend = ax.legend(handles, labels, title="Permutation", loc="best")
+    return handles
+
+
+def _add_permutation_marker_legend(
+    ax: Axes,
+    *,
+    loc: str = "best",
+    bbox_to_anchor: tuple[float, float] | None = None,
+) -> None:
+    """Add a compact legend for raw permutation marker shapes."""
+
+    marker_legend = ax.legend(
+        handles=_condition_legend_handles(),
+        title="Condition",
+        loc=loc,
+        bbox_to_anchor=bbox_to_anchor,
+    )
     if marker_legend is not None:
         ax.add_artist(marker_legend)
 
@@ -450,29 +519,62 @@ def plot_accuracy_vs_tiles(
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
-    fig, axis = plt.subplots(figsize=(8, 5))
+    aggregated = _with_num_tiles(aggregated)
+    raw_results = None if raw_results is None else _with_num_tiles(raw_results)
+    model_values = _model_values(aggregated, model_column)
+    color_by_model = _color_by_model(model_values)
+    is_intermediate_plot = len(model_values) == 1 and raw_results is not None and not raw_results.empty
+    has_multiple_models = len(model_values) > 1
+
+    fig, axis = plt.subplots(figsize=(9, 5.5))
     ax = _as_axes(axis)
     for model_name, group in aggregated.groupby(model_column):
         group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
-        ax.errorbar(
+        line_label = "Mean across permutations" if is_intermediate_plot else str(model_name)
+        ax.plot(
             group["num_tiles"],
             group["mean_best_epoch_val_accuracy"],
-            yerr=cast(Any, group)["std_best_epoch_val_accuracy"].fillna(0.0),
             marker="o",
-            label=str(model_name),
+            linewidth=2.0,
+            color=color_by_model.get(str(model_name)),
+            label=line_label,
         )
-    _scatter_raw_accuracy_vs_tiles(ax, raw_results, model_column=model_column)
-    ax.set_xlabel("Number of tiles")
+
+    if raw_results is not None and not raw_results.empty:
+        _scatter_raw_accuracy_vs_tiles(
+            ax,
+            raw_results,
+            model_column=model_column,
+            color_by_model=color_by_model,
+            alpha=0.62 if has_multiple_models else 0.82,
+        )
+
+    x_values = list(aggregated["num_tiles"])
+    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
+        x_values.extend(list(raw_results["num_tiles"]))
+    _set_tile_axis_ticks(ax, x_values)
+    ax.set_ylim(*ACCURACY_Y_LIMITS)
+    ax.set_xlabel("Number of image tiles after splitting")
     ax.set_ylabel("Best validation accuracy")
-    ax.set_title(title or _plot_title("Accuracy vs Number of Tiles", frame=aggregated, model_column=model_column))
+    default_title = (
+        f"Intermediate Model Plot: Validation Accuracy by Tiling Level - {model_values[0]}"
+        if is_intermediate_plot
+        else "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+    )
+    ax.set_title(title or default_title)
     ax.grid(True, alpha=0.3)
-    model_legend = ax.legend(title=model_column.replace("_", " ").title(), loc="lower left")
+    model_legend_title = "Mean" if is_intermediate_plot else model_column.replace("_", " ").title()
+    model_legend = ax.legend(
+        title=model_legend_title,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0) if raw_results is not None and not raw_results.empty else None,
+    )
     if model_legend is not None:
         ax.add_artist(model_legend)
     if raw_results is not None and not raw_results.empty:
-        _add_permutation_marker_legend(ax)
+        _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
     fig.tight_layout()
-    fig.savefig(output_path, dpi=160)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -509,20 +611,22 @@ def plot_ablation_results(
 
     fig, axis = plt.subplots(figsize=(8, 5))
     ax = _as_axes(axis)
+    grid_handles = []
     for tile_label, group in aggregated.groupby("_tile_label", sort=False):
         sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "ablation_name")
         x_values = [
             x_positions[str(ablation_name)] + tile_offsets.get(str(tile_label), 0.0)
             for ablation_name in sorted_group["ablation_name"]
         ]
-        ax.errorbar(
+        scatter = ax.scatter(
             x_values,
             sorted_group[y_column],
-            yerr=cast(Any, sorted_group)["std_best_epoch_val_accuracy"].fillna(0.0),
-            fmt="o",
-            linestyle="None",
+            marker="o",
+            s=58,
+            alpha=0.85,
             label=str(tile_label),
         )
+        grid_handles.append((scatter, str(tile_label)))
 
     if raw_results is not None and not raw_results.empty:
         raw = raw_results.copy()
@@ -543,12 +647,7 @@ def plot_ablation_results(
             ax.scatter(
                 x_value,
                 row[raw_y_column],
-                marker=PERMUTATION_MARKERS[marker_name],
-                s=42 if marker_name != "baseline" else 24,
-                alpha=0.65,
-                color="0.25",
-                edgecolors="none" if marker_name in {"x", "baseline"} else "black",
-                linewidths=0.4,
+                **_condition_marker_kwargs(marker_name, color="0.25", alpha=0.65),
                 label="_nolegend_",
             )
 
@@ -563,14 +662,20 @@ def plot_ablation_results(
     ax.set_title(title or _plot_title("Ablations vs Matched Grid Baseline", frame=aggregated))
     ax.set_xticks(list(x_positions.values()), ablation_names)
     ax.grid(True, axis="y", alpha=0.3)
-    grid_legend = ax.legend(title="Grid", loc="lower left")
+    grid_legend = ax.legend(
+        [handle for handle, _ in grid_handles],
+        [label for _, label in grid_handles],
+        title="Grid",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0) if raw_results is not None and not raw_results.empty else None,
+    )
     if grid_legend is not None:
         ax.add_artist(grid_legend)
     if raw_results is not None and not raw_results.empty:
-        _add_permutation_marker_legend(ax)
+        _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
     fig.autofmt_xdate(rotation=20)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=160)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
