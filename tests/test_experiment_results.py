@@ -237,7 +237,12 @@ def test_plot_accuracy_vs_tiles_title_and_ylim_for_intermediate_model(monkeypatc
         ]
     )
 
-    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
 
     assert titles[-1] == "Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18"
     assert (0.50, 1.00) in y_limits
@@ -309,7 +314,12 @@ def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(
         ]
     )
 
-    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
 
     assert PERMUTATION_MARKERS["easy"] in markers
     assert PERMUTATION_MARKERS["medium"] in markers
@@ -353,7 +363,12 @@ def test_plot_accuracy_vs_tiles_intermediate_legends_include_mean_and_conditions
         ]
     )
 
-    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
 
     assert "Mean" in legend_titles
     assert "Condition" in legend_titles
@@ -439,6 +454,49 @@ def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_hardness_conditio
     assert "easy" in legend_labels
     assert "hard" in legend_labels
     assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+
+
+def test_plot_accuracy_vs_tiles_single_model_final_plot_keeps_final_title(monkeypatch, tmp_path):
+    titles = []
+    legend_titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    def fake_legend(self, *args, **kwargs):
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
+                "best_val_accuracy": 0.72,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+    assert "Model Name" in legend_titles
+    assert "Condition" in legend_titles
 
 
 def test_plot_accuracy_vs_tiles_uses_equal_categorical_tile_spacing(monkeypatch, tmp_path):

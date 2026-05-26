@@ -198,6 +198,7 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
 
 def test_local_testing_preserves_configured_tile_scope():
     config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.model_names = ["resnet18", "deit_tiny", "mlp_mixer_base"]
     config.tiles_per_side_values = [1, 4, 7, 10]
     config.num_tile_permutations = 3
 
@@ -205,6 +206,7 @@ def test_local_testing_preserves_configured_tile_scope():
 
     assert config.sample_data is True
     assert config.sample_limit == 256
+    assert config.model_names == ["resnet18", "deit_tiny", "mlp_mixer_base"]
     assert config.tiles_per_side_values == [1, 4, 7, 10]
     assert config.num_tile_permutations == 3
     assert config.epochs == 1

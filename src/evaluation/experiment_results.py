@@ -204,6 +204,12 @@ def _tile_axis_positions(values: Sequence[object]) -> dict[int, int]:
     return {value: index for index, value in enumerate(tick_values)}
 
 
+def _is_intermediate_accuracy_plot(output_path: str, title: str | None) -> bool:
+    if title is not None:
+        return title.startswith("Intermediate Model Plot:")
+    return f"{os.sep}intermediate{os.sep}" in output_path
+
+
 def _set_tile_axis_ticks(ax: Axes, values: Sequence[object]) -> dict[int, int]:
     tile_positions = _tile_axis_positions(values)
     tick_values = list(tile_positions)
@@ -223,9 +229,7 @@ def _condition_marker_kwargs(marker_name: str, *, color: str | None, alpha: floa
         "color": color,
         "linewidths": 1.1,
     }
-    if marker == "x":
-        kwargs["edgecolors"] = color
-    else:
+    if marker != "x":
         kwargs["edgecolors"] = "black"
     return kwargs
 
@@ -313,7 +317,7 @@ def _add_permutation_marker_legend(
     *,
     loc: str = "best",
     bbox_to_anchor: tuple[float, float] | None = None,
-) -> None:
+) -> Any | None:
     """Add a compact legend for raw permutation marker shapes."""
 
     marker_legend = ax.legend(
@@ -324,6 +328,7 @@ def _add_permutation_marker_legend(
     )
     if marker_legend is not None:
         ax.add_artist(marker_legend)
+    return marker_legend
 
 
 def add_part2_grid_baseline_deltas(
@@ -574,7 +579,7 @@ def plot_accuracy_vs_tiles(
     raw_results = None if raw_results is None else _with_num_tiles(raw_results)
     model_values = _model_values(aggregated, model_column)
     color_by_model = _color_by_model(model_values)
-    is_intermediate_plot = len(model_values) == 1 and raw_results is not None and not raw_results.empty
+    is_intermediate_plot = _is_intermediate_accuracy_plot(output_path, title)
 
     fig, axis = plt.subplots(figsize=(9, 5.5))
     ax = _as_axes(axis)
@@ -623,11 +628,19 @@ def plot_accuracy_vs_tiles(
     )
     if model_legend is not None:
         ax.add_artist(model_legend)
+    extra_artists = []
+    if model_legend is not None:
+        extra_artists.append(model_legend)
     if raw_results is not None and not raw_results.empty:
-        _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
-    fig.tight_layout()
+        marker_legend = _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
+        if marker_legend is not None:
+            extra_artists.append(marker_legend)
+    if raw_results is not None and not raw_results.empty:
+        fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
+    else:
+        fig.tight_layout()
     _archive_existing_figure(output_path)
-    fig.savefig(output_path, dpi=160, bbox_inches="tight")
+    fig.savefig(output_path, dpi=160, bbox_inches="tight", bbox_extra_artists=extra_artists)
     plt.close(fig)
 
 
