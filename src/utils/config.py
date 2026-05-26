@@ -256,7 +256,7 @@ class CVExperimentConfig:
         self.model_names = ["resnet18"]
         if not getattr(self, "tiles_per_side_values", None):
             self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
-        self.num_tile_permutations = min(2, int(getattr(self, "num_tile_permutations", 3)))
+        self.num_tile_permutations = int(getattr(self, "num_tile_permutations", 3))
         self.epochs = 1
         self.plot_samples = True
 

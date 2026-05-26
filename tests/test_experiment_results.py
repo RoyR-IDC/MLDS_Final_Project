@@ -146,6 +146,28 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     assert output_path.exists()
 
 
+def test_plot_accuracy_vs_tiles_archives_existing_figure_before_saving(tmp_path):
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    output_path = tmp_path / "accuracy_vs_tiles.png"
+    output_path.write_text("old figure bytes", encoding="utf-8")
+
+    plot_accuracy_vs_tiles(aggregated, str(output_path))
+
+    archived = list(tmp_path.glob("accuracy_vs_tiles_*.png"))
+    assert output_path.exists()
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding="utf-8") == "old figure bytes"
+
+
 def test_plot_accuracy_vs_tiles_uses_mean_lines_without_error_bars(monkeypatch, tmp_path):
     plot_calls = []
 

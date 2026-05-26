@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import random
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Sequence, cast
 
 import matplotlib.pyplot as plt
@@ -95,6 +97,23 @@ def _reset_dataframe_index(frame: pd.DataFrame) -> pd.DataFrame:
     """Return a DataFrame with a reset index and a narrowed static type."""
 
     return cast(pd.DataFrame, frame.reset_index(drop=True))
+
+
+def _archive_existing_figure(output_path: str) -> str | None:
+    """Rename an existing figure with a timestamp before writing a fresh one."""
+
+    path = Path(output_path)
+    if not path.exists():
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_path = path.with_name(f"{path.stem}_{timestamp}{path.suffix}")
+    suffix_index = 1
+    while archive_path.exists():
+        archive_path = path.with_name(f"{path.stem}_{timestamp}_{suffix_index}{path.suffix}")
+        suffix_index += 1
+    path.rename(archive_path)
+    return str(archive_path)
 
 
 def _permutation_marker_name(value: object) -> str:
@@ -574,6 +593,7 @@ def plot_accuracy_vs_tiles(
     if raw_results is not None and not raw_results.empty:
         _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
     fig.tight_layout()
+    _archive_existing_figure(output_path)
     fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
@@ -675,6 +695,7 @@ def plot_ablation_results(
         _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
     fig.autofmt_xdate(rotation=20)
     fig.tight_layout()
+    _archive_existing_figure(output_path)
     fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
@@ -954,6 +975,7 @@ def plot_part3_metric_vs_accuracy(
     ax.grid(True, alpha=0.3)
     ax.legend(title="Permutation")
     fig.tight_layout()
+    _archive_existing_figure(output_path)
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
     return output_path
@@ -992,7 +1014,9 @@ def plot_part3_metrics_vs_accuracy(
         ax.add_artist(metric_legend)
     _add_permutation_marker_legend(ax)
     fig.tight_layout()
-    fig.savefig(os.path.join(figures_dir, "part3_metrics_vs_accuracy.png"), dpi=160)
+    output_path = os.path.join(figures_dir, "part3_metrics_vs_accuracy.png")
+    _archive_existing_figure(output_path)
+    fig.savefig(output_path, dpi=160)
     plt.close(fig)
 
 

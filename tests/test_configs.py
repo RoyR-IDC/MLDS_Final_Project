@@ -206,7 +206,7 @@ def test_local_testing_preserves_configured_tile_scope():
     assert config.sample_data is True
     assert config.sample_limit == 256
     assert config.tiles_per_side_values == [1, 4, 7, 10]
-    assert config.num_tile_permutations == 2
+    assert config.num_tile_permutations == 3
     assert config.epochs == 1
     assert config.plot_samples is True
 

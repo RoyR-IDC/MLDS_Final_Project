@@ -208,5 +208,6 @@ __marimo__/
 
 data/
 outputs/
+outputs_*/
 src/notebooks/backups/
 *.icloud
