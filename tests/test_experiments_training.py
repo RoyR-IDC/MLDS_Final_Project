@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import builtins
 
 import pandas as pd
 import pytest
@@ -375,6 +376,54 @@ def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):
     assert [bar.updated for bar in batch_bars] == [len(loader), len(loader)]
     assert all(bar.kwargs["position"] == 1 for bar in batch_bars)
     assert all(bar.kwargs["leave"] is False for bar in batch_bars)
+
+
+def test_model_trainer_prints_first_batch_before_progress_bar(monkeypatch):
+    features = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    labels = torch.tensor([0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="linear",
+        model=nn.Linear(2, 2),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
+        checkpoint_config=CheckpointConfig(save_best=False, save_last=False),
+        progress_leave=False,
+    )
+    events = []
+    original_print = builtins.print
+
+    class FakeTqdm:
+        def __init__(self, *args, **kwargs):
+            events.append(f"tqdm:{kwargs['unit']}")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def update(self, amount=1):
+            pass
+
+        def set_postfix(self, **kwargs):
+            pass
+
+    def tracked_print(*args, **kwargs):
+        message = " ".join(str(arg) for arg in args)
+        if message.startswith("First batch:"):
+            events.append("first_batch")
+        original_print(*args, **kwargs)
+
+    monkeypatch.setattr(trainer_module, "tqdm", FakeTqdm)
+    monkeypatch.setattr(builtins, "print", tracked_print)
+
+    ModelTrainer(spec).fit()
+
+    assert events.index("first_batch") < events.index("tqdm:epoch")
 
 
 def test_model_trainer_validates_expected_image_shape():

@@ -146,6 +146,29 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     assert output_path.exists()
 
 
+def test_plot_accuracy_vs_tiles_title_includes_single_model(monkeypatch, tmp_path):
+    titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+
+    assert titles[-1] == "resnet18: Accuracy vs Number of Tiles"
+
+
 def test_plot_accuracy_vs_tiles_overlays_permutation_markers(monkeypatch, tmp_path):
     markers = []
 
@@ -223,6 +246,34 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
     assert calls
     assert calls[0]["fmt"] == "o"
     assert calls[0]["linestyle"] == "None"
+
+
+def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeypatch, tmp_path):
+    titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        title="resnet18 / patch_shuffle: Ablations vs Matched Grid Baseline",
+    )
+
+    assert titles[-1] == "resnet18 / patch_shuffle: Ablations vs Matched Grid Baseline"
 
 
 def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_path):

@@ -107,6 +107,20 @@ def _tile_grid_label(value: object) -> str:
     return f"{tiles_per_side}x{tiles_per_side}"
 
 
+def _single_value_label(frame: pd.DataFrame, column: str) -> str | None:
+    if column not in frame.columns:
+        return None
+    values = [str(value) for value in frame[column].dropna().unique()]
+    return values[0] if len(values) == 1 else None
+
+
+def _plot_title(base_title: str, *, frame: pd.DataFrame, model_column: str = "model_name") -> str:
+    model_name = _single_value_label(frame, model_column)
+    ablation_name = _single_value_label(frame, "ablation_name")
+    context = " / ".join(value for value in [model_name, ablation_name] if value)
+    return f"{context}: {base_title}" if context else base_title
+
+
 def _raw_accuracy_column(raw_results: pd.DataFrame) -> str:
     if "best_val_accuracy" in raw_results.columns:
         return "best_val_accuracy"
@@ -423,6 +437,7 @@ def plot_accuracy_vs_tiles(
     output_path: str,
     model_column: str = "model_name",
     raw_results: pd.DataFrame | None = None,
+    title: str | None = None,
 ) -> None:
     """Save an accuracy-vs-number-of-tiles plot.
 
@@ -431,6 +446,7 @@ def plot_accuracy_vs_tiles(
         output_path: Destination path for the figure.
         model_column: Column used to split one curve per model.
         raw_results: Optional raw result table to overlay individual permutations.
+        title: Optional explicit plot title.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -448,7 +464,7 @@ def plot_accuracy_vs_tiles(
     _scatter_raw_accuracy_vs_tiles(ax, raw_results, model_column=model_column)
     ax.set_xlabel("Number of tiles")
     ax.set_ylabel("Best validation accuracy")
-    ax.set_title("Accuracy vs Number of Tiles")
+    ax.set_title(title or _plot_title("Accuracy vs Number of Tiles", frame=aggregated, model_column=model_column))
     ax.grid(True, alpha=0.3)
     model_legend = ax.legend(title=model_column.replace("_", " ").title(), loc="lower left")
     if model_legend is not None:
@@ -464,6 +480,7 @@ def plot_ablation_results(
     aggregated: pd.DataFrame,
     output_path: str,
     raw_results: pd.DataFrame | None = None,
+    title: str | None = None,
 ) -> None:
     """Save a baseline-vs-improvement ablation plot.
 
@@ -471,6 +488,7 @@ def plot_ablation_results(
         aggregated: Aggregated Part 2 result table.
         output_path: Destination path for the figure.
         raw_results: Optional raw result table to overlay individual permutations.
+        title: Optional explicit plot title.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -542,7 +560,7 @@ def plot_ablation_results(
         if y_column == "delta_vs_grid_baseline"
         else "Best validation accuracy"
     )
-    ax.set_title("Ablations vs Matched Grid Baseline")
+    ax.set_title(title or _plot_title("Ablations vs Matched Grid Baseline", frame=aggregated))
     ax.set_xticks(list(x_positions.values()), ablation_names)
     ax.grid(True, axis="y", alpha=0.3)
     grid_legend = ax.legend(title="Grid", loc="lower left")
@@ -797,7 +815,12 @@ def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "r
     return pd.DataFrame(rows)
 
 
-def plot_part3_metric_vs_accuracy(joined: pd.DataFrame, figures_dir: str, metric: str) -> str:
+def plot_part3_metric_vs_accuracy(
+    joined: pd.DataFrame,
+    figures_dir: str,
+    metric: str,
+    title: str | None = None,
+) -> str:
     """Save one Part 3 metric-vs-accuracy scatter plot."""
 
     if metric not in PART3_METRIC_COLUMNS:
@@ -821,7 +844,8 @@ def plot_part3_metric_vs_accuracy(joined: pd.DataFrame, figures_dir: str, metric
         )
     ax.set_xlabel(metric.replace("_", " ").title())
     ax.set_ylabel("Best validation accuracy")
-    ax.set_title(f"{metric.replace('_', ' ').title()} vs Accuracy")
+    base_title = f"{metric.replace('_', ' ').title()} vs Accuracy"
+    ax.set_title(title or _plot_title(base_title, frame=joined))
     ax.grid(True, alpha=0.3)
     ax.legend(title="Permutation")
     fig.tight_layout()
@@ -830,7 +854,11 @@ def plot_part3_metric_vs_accuracy(joined: pd.DataFrame, figures_dir: str, metric
     return output_path
 
 
-def plot_part3_metrics_vs_accuracy(joined: pd.DataFrame, figures_dir: str) -> None:
+def plot_part3_metrics_vs_accuracy(
+    joined: pd.DataFrame,
+    figures_dir: str,
+    title: str | None = None,
+) -> None:
     """Save one combined Part 3 hardness metric-vs-accuracy scatter plot."""
 
     ensure_dir(figures_dir)
@@ -852,7 +880,7 @@ def plot_part3_metrics_vs_accuracy(joined: pd.DataFrame, figures_dir: str) -> No
             )
     ax.set_xlabel("Hardness metric value")
     ax.set_ylabel("Best validation accuracy")
-    ax.set_title("Part 3 Hardness Metrics vs Accuracy")
+    ax.set_title(title or _plot_title("Part 3 Hardness Metrics vs Accuracy", frame=joined))
     ax.grid(True, alpha=0.3)
     metric_legend = ax.legend(title="Metric", loc="lower left")
     if metric_legend is not None:

@@ -91,6 +91,7 @@ class ModelTrainer:
 
             result.mark_running()
             self._notify(on_progress, result)
+            self._validate_first_training_batch(stages, start_epoch=start_epoch)
             with tqdm(
                 total=planned_total_epochs,
                 initial=start_epoch,
@@ -282,6 +283,25 @@ class ModelTrainer:
         )
         if self.spec.device.type == "cuda" and model_device.type != "cuda":
             raise RuntimeError(f"CUDA was selected, but model is on {model_device}.")
+
+    def _validate_first_training_batch(self, stages: list[TrainingStage], *, start_epoch: int) -> None:
+        if self._validated_input_batch:
+            return
+
+        epoch = 0
+        for stage in stages:
+            for _ in range(stage.epochs):
+                epoch += 1
+                if epoch <= start_epoch:
+                    continue
+                iterator = iter(stage.train_loader)
+                try:
+                    images, _ = next(iterator)
+                except StopIteration:
+                    return
+                images = images.to(self.spec.device, non_blocking=True)
+                self._validate_runtime_batch(images)
+                return
 
     def _model_device(self) -> torch.device:
         try:

@@ -630,6 +630,7 @@ def train_part2_ablation_experiments(
                     aggregated_ablation_results,
                     figure_path,
                     raw_results=raw_ablation_results,
+                    title=f"{model_name} / {ablation_name}: Ablations vs Matched Grid Baseline",
                 )
                 print(f"Saved intermediate ablation plot: {figure_path}")
     return rows
