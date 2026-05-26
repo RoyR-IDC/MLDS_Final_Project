@@ -632,6 +632,8 @@ def train_part2_ablation_experiments(
                     figure_path,
                     raw_results=raw_ablation_results,
                     title=f"{model_name} / {ablation_name}: Ablations vs Matched Grid Baseline",
+                    show_raw_points=True,
+                    show_aggregate_points=False,
                 )
                 print(f"Saved intermediate ablation plot: {figure_path}")
                 if intermediate_figure_callback is not None:
@@ -701,6 +703,12 @@ def run_part2_improvement_experiments(
         aggregated_results = pd.concat([part1_baseline_aggregated, aggregated_results], ignore_index=True, sort=False)
         aggregated_results.to_csv(output_paths["aggregated_results"], index=False)
 
-    plot_ablation_results(aggregated_results, output_paths["figure"], raw_results=raw_results)
+    plot_ablation_results(
+        aggregated_results,
+        output_paths["figure"],
+        raw_results=raw_results,
+        show_raw_points=False,
+        show_aggregate_points=True,
+    )
     aggregated_with_delta, _ = add_part2_grid_baseline_deltas(aggregated_results)
     return aggregated_with_delta

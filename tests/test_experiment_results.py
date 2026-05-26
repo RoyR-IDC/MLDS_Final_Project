@@ -571,7 +571,7 @@ def test_plot_ablation_results_uses_aggregate_points_without_error_bars(monkeypa
 
     plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
 
-    assert markers == ["o", "o"]
+    assert markers == ["o"]
 
 
 def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeypatch, tmp_path):
@@ -635,10 +635,11 @@ def test_plot_ablation_results_default_title_wraps_to_two_lines(monkeypatch, tmp
     assert titles[-1] == "resnet18\nAblations vs Matched Grid Baseline"
 
 
-def test_plot_ablation_results_uses_grid_axis_and_ablation_condition_legends(monkeypatch, tmp_path):
+def test_plot_ablation_results_uses_grid_axis_and_filters_baseline_legends(monkeypatch, tmp_path):
     tick_calls = []
     legend_labels = []
     legend_titles = []
+    hlines = []
 
     def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
         tick_calls.append((list(ticks), list(labels or [])))
@@ -650,8 +651,12 @@ def test_plot_ablation_results_uses_grid_axis_and_ablation_condition_legends(mon
         legend_titles.append(kwargs.get("title"))
         return None
 
+    def fake_axhline(self, y, *args, **kwargs):
+        hlines.append(y)
+
     monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
     monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    monkeypatch.setattr("matplotlib.axes.Axes.axhline", fake_axhline)
     aggregated = pd.DataFrame(
         [
             {
@@ -701,6 +706,15 @@ def test_plot_ablation_results_uses_grid_axis_and_ablation_condition_legends(mon
             },
             {
                 "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
                 "ablation_name": "patch_shuffle",
                 "tiles_per_side": 4,
                 "num_tiles": 16,
@@ -717,8 +731,175 @@ def test_plot_ablation_results_uses_grid_axis_and_ablation_condition_legends(mon
     assert "Ablation" in legend_titles
     assert "Condition" in legend_titles
     assert "patch_shuffle" in legend_labels
-    assert "regular_part1" in legend_labels
-    assert "Baseline: no permutation" in legend_labels
+    assert "regular_part1" not in legend_labels
+    assert "Baseline: no permutation" not in legend_labels
+    assert 0.0 in hlines
+
+
+def test_plot_ablation_results_intermediate_mode_hides_aggregate_points(monkeypatch, tmp_path):
+    markers = []
+    legend_labels = []
+    legend_titles = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "tile_permutation_name": "medium",
+                "best_val_accuracy": 0.74,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 3,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.73,
+            },
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        raw_results=raw_results,
+        show_raw_points=True,
+        show_aggregate_points=False,
+    )
+
+    assert markers == [
+        PERMUTATION_MARKERS["easy"],
+        PERMUTATION_MARKERS["medium"],
+        PERMUTATION_MARKERS["hard"],
+    ]
+    assert "Ablation" not in legend_titles
+    assert "Condition" in legend_titles
+    assert "Baseline: no permutation" not in legend_labels
+
+
+def test_plot_ablation_results_final_mode_hides_raw_condition_points(monkeypatch, tmp_path):
+    markers = []
+    legend_labels = []
+    legend_titles = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_augmentations",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.76,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        raw_results=raw_results,
+        show_raw_points=False,
+        show_aggregate_points=True,
+    )
+
+    assert markers == ["o", "o"]
+    assert "Ablation" in legend_titles
+    assert "Condition" not in legend_titles
+    assert "patch_shuffle" in legend_labels
+    assert "regular_augmentations" in legend_labels
+    assert "regular_part1" not in legend_labels
 
 
 def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_path):

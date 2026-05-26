@@ -303,9 +303,9 @@ def _scatter_raw_accuracy_vs_tiles(
         )
 
 
-def _condition_legend_handles() -> list[plt.Line2D]:
+def _condition_legend_handles(marker_names: Sequence[str] = ("easy", "medium", "hard", "baseline")) -> list[plt.Line2D]:
     handles = []
-    for name in ("easy", "medium", "hard", "baseline"):
+    for name in marker_names:
         marker = PERMUTATION_MARKERS[name]
         handles.append(
             plt.Line2D(
@@ -327,11 +327,14 @@ def _add_permutation_marker_legend(
     *,
     loc: str = "best",
     bbox_to_anchor: tuple[float, float] | None = None,
+    marker_names: Sequence[str] = ("easy", "medium", "hard", "baseline"),
 ) -> Any | None:
     """Add a compact legend for raw permutation marker shapes."""
 
+    if not marker_names:
+        return None
     marker_legend = ax.legend(
-        handles=_condition_legend_handles(),
+        handles=_condition_legend_handles(marker_names),
         title="Condition",
         loc=loc,
         bbox_to_anchor=bbox_to_anchor,
@@ -398,6 +401,14 @@ def add_part2_grid_baseline_deltas(
         raw_with_delta[accuracy_column] - raw_with_delta["_matched_baseline_best_val_accuracy"]
     )
     return aggregated_with_delta, raw_with_delta
+
+
+def _is_part2_baseline_ablation(frame: pd.DataFrame, baseline_name: str = "regular_part1") -> pd.Series:
+    """Return a mask for Part 2 rows that represent the matched Part 1 baseline."""
+
+    if "ablation_name" not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    return frame["ablation_name"].astype(str) == baseline_name
 
 
 def _part3_metric_slug(metric: str) -> str:
@@ -669,6 +680,8 @@ def plot_ablation_results(
     output_path: str,
     raw_results: pd.DataFrame | None = None,
     title: str | None = None,
+    show_raw_points: bool = True,
+    show_aggregate_points: bool = True,
 ) -> None:
     """Save a baseline-vs-improvement ablation plot.
 
@@ -677,6 +690,8 @@ def plot_ablation_results(
         output_path: Destination path for the figure.
         raw_results: Optional raw result table to overlay individual permutations.
         title: Optional explicit plot title.
+        show_raw_points: Whether to overlay individual permutation-condition runs.
+        show_aggregate_points: Whether to draw aggregate ablation points.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -686,13 +701,34 @@ def plot_ablation_results(
         if "delta_vs_grid_baseline" in aggregated.columns and aggregated["delta_vs_grid_baseline"].notna().any()
         else "mean_best_epoch_val_accuracy"
     )
-    ablation_names = sorted(str(name) for name in aggregated["ablation_name"].dropna().unique())
     aggregated = _with_num_tiles(aggregated)
     raw_results = None if raw_results is None else _with_num_tiles(raw_results)
-    x_values = list(aggregated["num_tiles"])
+    axis_x_values = list(aggregated["num_tiles"])
     if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
-        x_values.extend(list(raw_results["num_tiles"]))
-    tile_positions = _tile_axis_positions(x_values)
+        axis_x_values.extend(list(raw_results["num_tiles"]))
+    plot_aggregated = aggregated.copy()
+    plot_raw = None if raw_results is None else raw_results.copy()
+    if y_column == "delta_vs_grid_baseline":
+        plot_aggregated = plot_aggregated[~_is_part2_baseline_ablation(plot_aggregated)]
+        if plot_raw is not None:
+            plot_raw = plot_raw[~_is_part2_baseline_ablation(plot_raw)]
+    if not show_aggregate_points:
+        plot_aggregated = plot_aggregated.iloc[0:0]
+    if not show_raw_points:
+        plot_raw = None
+
+    ablation_source_frames = [plot_aggregated]
+    if plot_raw is not None:
+        ablation_source_frames.append(plot_raw)
+    ablation_names = sorted(
+        {
+            str(name)
+            for frame in ablation_source_frames
+            if "ablation_name" in frame.columns
+            for name in frame["ablation_name"].dropna().unique()
+        }
+    )
+    tile_positions = _tile_axis_positions(axis_x_values)
     ablation_offsets = {
         ablation_name: (index - (len(ablation_names) - 1) / 2.0) * 0.12
         for index, ablation_name in enumerate(ablation_names)
@@ -706,7 +742,7 @@ def plot_ablation_results(
     fig, axis = plt.subplots(figsize=(9, 5.5))
     ax = _as_axes(axis)
     ablation_handles = []
-    for ablation_name, group in aggregated.groupby("ablation_name", sort=True):
+    for ablation_name, group in plot_aggregated.groupby("ablation_name", sort=True):
         ablation_name = str(ablation_name)
         sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
         x_values = [
@@ -724,8 +760,9 @@ def plot_ablation_results(
         )
         ablation_handles.append((scatter, ablation_name))
 
-    if raw_results is not None and not raw_results.empty:
-        raw = raw_results.copy()
+    marker_names_used: list[str] = []
+    if plot_raw is not None and not plot_raw.empty:
+        raw = plot_raw.copy()
         raw_y_column = "delta_vs_grid_baseline" if y_column == "delta_vs_grid_baseline" else _raw_accuracy_column(raw)
         if "tile_permutation_name" not in raw.columns:
             raw["tile_permutation_name"] = None
@@ -741,6 +778,8 @@ def plot_ablation_results(
             ):
                 continue
             marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
+            if marker_name not in marker_names_used:
+                marker_names_used.append(marker_name)
             x_value = (
                 tile_positions[int(num_tiles)]
                 + ablation_offsets.get(ablation_name, 0.0)
@@ -772,23 +811,32 @@ def plot_ablation_results(
         [_tile_axis_label(value) for value in tick_values],
     )
     ax.grid(True, axis="y", alpha=0.3)
-    ablation_legend = ax.legend(
-        [handle for handle, _ in ablation_handles],
-        [label for _, label in ablation_handles],
-        title="Ablation",
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1.0) if raw_results is not None and not raw_results.empty else None,
-    )
+    has_raw_points = plot_raw is not None and not plot_raw.empty
+    ablation_legend = None
+    if ablation_handles:
+        ablation_legend = ax.legend(
+            [handle for handle, _ in ablation_handles],
+            [label for _, label in ablation_handles],
+            title="Ablation",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0) if has_raw_points else None,
+        )
     if ablation_legend is not None:
         ax.add_artist(ablation_legend)
     extra_artists = []
     if ablation_legend is not None:
         extra_artists.append(ablation_legend)
-    if raw_results is not None and not raw_results.empty:
-        marker_legend = _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
+    if has_raw_points:
+        marker_order = [name for name in ("easy", "medium", "hard", "baseline", "unknown") if name in marker_names_used]
+        marker_legend = _add_permutation_marker_legend(
+            ax,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0 if ablation_legend is None else 0.66),
+            marker_names=marker_order,
+        )
         if marker_legend is not None:
             extra_artists.append(marker_legend)
-    if raw_results is not None and not raw_results.empty:
+    if has_raw_points:
         fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
     else:
         fig.tight_layout()
