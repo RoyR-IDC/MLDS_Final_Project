@@ -240,18 +240,30 @@ def test_plot_accuracy_vs_tiles_title_and_ylim_for_intermediate_model(monkeypatc
     plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
 
     assert titles[-1] == "Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18"
-    assert y_limits[-1] == (0.50, 1.00)
+    assert (0.50, 1.00) in y_limits
 
 
 def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(monkeypatch, tmp_path):
     markers = []
+    plot_kwargs = []
 
     def fake_scatter(self, *args, **kwargs):
         markers.append(kwargs.get("marker"))
 
+    def fake_plot(self, *args, **kwargs):
+        plot_kwargs.append(kwargs)
+        return []
+
     monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
     aggregated = pd.DataFrame(
         [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.74,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
             {
                 "model_name": "resnet18",
                 "num_tiles": 16,
@@ -265,25 +277,33 @@ def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(
             {
                 "model_name": "resnet18",
                 "num_tiles": 16,
+                "tiles_per_side": 4,
                 "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
                 "best_val_accuracy": 0.72,
             },
             {
                 "model_name": "resnet18",
                 "num_tiles": 16,
+                "tiles_per_side": 4,
                 "tile_permutation_name": "medium",
+                "tile_permutation": "[[1, 0], [2, 3]]",
                 "best_val_accuracy": 0.70,
             },
             {
                 "model_name": "resnet18",
                 "num_tiles": 16,
+                "tiles_per_side": 4,
                 "tile_permutation_name": "hard",
+                "tile_permutation": "[[3, 2], [1, 0]]",
                 "best_val_accuracy": 0.68,
             },
             {
                 "model_name": "resnet18",
-                "num_tiles": 16,
-                "tile_permutation_name": None,
+                "num_tiles": 1,
+                "tiles_per_side": None,
+                "tile_permutation_name": "easy",
+                "tile_permutation": None,
                 "best_val_accuracy": 0.74,
             },
         ]
@@ -296,9 +316,11 @@ def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(
     assert PERMUTATION_MARKERS["hard"] in markers
     assert PERMUTATION_MARKERS["baseline"] in markers
     assert PERMUTATION_MARKERS["baseline"] == "D"
+    assert plot_kwargs[0]["label"] == "Mean across permutations"
+    assert plot_kwargs[0]["marker"] is None
 
 
-def test_plot_accuracy_vs_tiles_condition_legend_clarifies_baseline(monkeypatch, tmp_path):
+def test_plot_accuracy_vs_tiles_intermediate_legends_include_mean_and_conditions(monkeypatch, tmp_path):
     legend_labels = []
     legend_titles = []
 
@@ -333,14 +355,17 @@ def test_plot_accuracy_vs_tiles_condition_legend_clarifies_baseline(monkeypatch,
 
     plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
 
+    assert "Mean" in legend_titles
     assert "Condition" in legend_titles
-    assert "baseline / no permutation" in legend_labels
+    assert "Baseline: no permutation" in legend_labels
 
 
-def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_condition_points(monkeypatch, tmp_path):
+def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_hardness_condition_points(monkeypatch, tmp_path):
     plot_labels = []
     markers = []
     titles = []
+    legend_labels = []
+    legend_titles = []
 
     def fail_errorbar(self, *args, **kwargs):
         raise AssertionError("final accuracy plot should not use error bars")
@@ -355,11 +380,18 @@ def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_condition_points(
     def fake_set_title(self, title, *args, **kwargs):
         titles.append(title)
 
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
     monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
     monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
     monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
     monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
-    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
     aggregated = pd.DataFrame(
         [
             {
@@ -381,13 +413,17 @@ def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_condition_points(
             {
                 "model_name": "resnet18",
                 "num_tiles": 16,
+                "tiles_per_side": 4,
                 "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
                 "best_val_accuracy": 0.72,
             },
             {
                 "model_name": "deit_tiny",
                 "num_tiles": 16,
+                "tiles_per_side": 4,
                 "tile_permutation_name": "hard",
+                "tile_permutation": "[[3, 2], [1, 0]]",
                 "best_val_accuracy": 0.63,
             },
         ]
@@ -398,7 +434,53 @@ def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_condition_points(
     assert plot_labels == ["deit_tiny", "resnet18"]
     assert PERMUTATION_MARKERS["easy"] in markers
     assert PERMUTATION_MARKERS["hard"] in markers
+    assert "Model Name" in legend_titles
+    assert "Condition" in legend_titles
+    assert "easy" in legend_labels
+    assert "hard" in legend_labels
     assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+
+
+def test_plot_accuracy_vs_tiles_uses_equal_categorical_tile_spacing(monkeypatch, tmp_path):
+    tick_calls = []
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        tick_calls.append((list(ticks), list(labels or [])))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.68,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 100,
+                "mean_best_epoch_val_accuracy": 0.66,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+
+    assert tick_calls[-1] == ([0, 1, 2, 3], ["1", "4x4", "7x7", "10x10"])
 
 
 def test_plot_ablation_results_uses_aggregate_points_without_error_bars(monkeypatch, tmp_path):

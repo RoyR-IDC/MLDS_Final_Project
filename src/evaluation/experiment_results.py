@@ -70,7 +70,7 @@ CONDITION_LABELS = {
     "easy": "easy",
     "medium": "medium",
     "hard": "hard",
-    "baseline": "baseline / no permutation",
+    "baseline": "Baseline: no permutation",
     "unknown": "unknown",
 }
 
@@ -123,6 +123,25 @@ def _permutation_marker_name(value: object) -> str:
         return "baseline"
     name = str(value).strip().lower()
     return name if name in PERMUTATION_MARKERS else "unknown"
+
+
+def _is_missing_scalar(value: object) -> bool:
+    return value is None or (isinstance(value, float) and bool(pd.isna(value)))
+
+
+def _accuracy_plot_marker_name(row: pd.Series) -> str:
+    """Return the marker key for accuracy-vs-tiles raw condition points."""
+
+    num_tiles = row.get("num_tiles")
+    tiles_per_side = row.get("tiles_per_side")
+    tile_permutation = row.get("tile_permutation")
+    if (
+        (num_tiles is not None and not pd.isna(num_tiles) and int(num_tiles) == 1)
+        or _is_missing_scalar(tiles_per_side)
+        or _is_missing_scalar(tile_permutation)
+    ):
+        return "baseline"
+    return _permutation_marker_name(row.get("tile_permutation_name"))
 
 
 def _tile_grid_label(value: object) -> str:
@@ -180,9 +199,19 @@ def _tile_axis_label(value: object) -> str:
     return str(num_tiles)
 
 
-def _set_tile_axis_ticks(ax: Axes, values: Sequence[object]) -> None:
+def _tile_axis_positions(values: Sequence[object]) -> dict[int, int]:
     tick_values = sorted({int(value) for value in values if not pd.isna(value)})
-    ax.set_xticks(tick_values, [_tile_axis_label(value) for value in tick_values])
+    return {value: index for index, value in enumerate(tick_values)}
+
+
+def _set_tile_axis_ticks(ax: Axes, values: Sequence[object]) -> dict[int, int]:
+    tile_positions = _tile_axis_positions(values)
+    tick_values = list(tile_positions)
+    ax.set_xticks(
+        [tile_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+    return tile_positions
 
 
 def _condition_marker_kwargs(marker_name: str, *, color: str | None, alpha: float = 0.78) -> dict[str, Any]:
@@ -228,6 +257,7 @@ def _scatter_raw_accuracy_vs_tiles(
     *,
     model_column: str,
     color_by_model: dict[str, str],
+    tile_positions: dict[int, int],
     alpha: float = 0.78,
 ) -> None:
     """Overlay raw permutation results on an accuracy-vs-tiles axis."""
@@ -241,12 +271,14 @@ def _scatter_raw_accuracy_vs_tiles(
         raw["tile_permutation_name"] = None
 
     for _, row in raw.iterrows():
-        marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
-        num_tiles = float(row["num_tiles"])
-        offset = PERMUTATION_X_OFFSETS[marker_name] * max(0.08, num_tiles * 0.015)
+        num_tiles = int(row["num_tiles"])
+        if num_tiles not in tile_positions:
+            continue
+        marker_name = _accuracy_plot_marker_name(row)
+        offset = PERMUTATION_X_OFFSETS[marker_name] * 0.045
         model_name = str(row.get(model_column, "raw"))
         ax.scatter(
-            num_tiles + offset,
+            tile_positions[num_tiles] + offset,
             row[accuracy_column],
             **_condition_marker_kwargs(
                 marker_name,
@@ -543,17 +575,21 @@ def plot_accuracy_vs_tiles(
     model_values = _model_values(aggregated, model_column)
     color_by_model = _color_by_model(model_values)
     is_intermediate_plot = len(model_values) == 1 and raw_results is not None and not raw_results.empty
-    has_multiple_models = len(model_values) > 1
 
     fig, axis = plt.subplots(figsize=(9, 5.5))
     ax = _as_axes(axis)
+    x_values = list(aggregated["num_tiles"])
+    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
+        x_values.extend(list(raw_results["num_tiles"]))
+    tile_positions = _set_tile_axis_ticks(ax, x_values)
     for model_name, group in aggregated.groupby(model_column):
         group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
         line_label = "Mean across permutations" if is_intermediate_plot else str(model_name)
+        line_x_values = [tile_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
         ax.plot(
-            group["num_tiles"],
+            line_x_values,
             group["mean_best_epoch_val_accuracy"],
-            marker="o",
+            marker=None if is_intermediate_plot else "o",
             linewidth=2.0,
             color=color_by_model.get(str(model_name)),
             label=line_label,
@@ -565,13 +601,10 @@ def plot_accuracy_vs_tiles(
             raw_results,
             model_column=model_column,
             color_by_model=color_by_model,
-            alpha=0.62 if has_multiple_models else 0.82,
+            tile_positions=tile_positions,
+            alpha=0.82 if is_intermediate_plot else 0.56,
         )
 
-    x_values = list(aggregated["num_tiles"])
-    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
-        x_values.extend(list(raw_results["num_tiles"]))
-    _set_tile_axis_ticks(ax, x_values)
     ax.set_ylim(*ACCURACY_Y_LIMITS)
     ax.set_xlabel("Number of image tiles after splitting")
     ax.set_ylabel("Best validation accuracy")
