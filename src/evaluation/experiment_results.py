@@ -167,6 +167,16 @@ def _plot_title(base_title: str, *, frame: pd.DataFrame, model_column: str = "mo
     return f"{context}: {base_title}" if context else base_title
 
 
+def _two_line_plot_title(title: str) -> str:
+    """Split contextual plot titles across two lines for readability."""
+
+    if ": " in title:
+        return title.replace(": ", "\n", 1)
+    if " vs " in title:
+        return title.replace(" vs ", "\nvs ", 1)
+    return title
+
+
 def _model_values(frame: pd.DataFrame, model_column: str) -> list[str]:
     if model_column not in frame.columns:
         return []
@@ -677,22 +687,31 @@ def plot_ablation_results(
         else "mean_best_epoch_val_accuracy"
     )
     ablation_names = sorted(str(name) for name in aggregated["ablation_name"].dropna().unique())
-    x_positions = {ablation_name: index for index, ablation_name in enumerate(ablation_names)}
-    aggregated["_tile_label"] = aggregated["tiles_per_side"].map(_tile_grid_label)
-    tile_values = list(aggregated["_tile_label"].drop_duplicates())
-    tile_offsets = {
-        tile_value: (index - (len(tile_values) - 1) / 2.0) * 0.12
-        for index, tile_value in enumerate(tile_values)
+    aggregated = _with_num_tiles(aggregated)
+    raw_results = None if raw_results is None else _with_num_tiles(raw_results)
+    x_values = list(aggregated["num_tiles"])
+    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
+        x_values.extend(list(raw_results["num_tiles"]))
+    tile_positions = _tile_axis_positions(x_values)
+    ablation_offsets = {
+        ablation_name: (index - (len(ablation_names) - 1) / 2.0) * 0.12
+        for index, ablation_name in enumerate(ablation_names)
+    }
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    color_by_ablation = {
+        ablation_name: color_cycle[index % len(color_cycle)] if color_cycle else None
+        for index, ablation_name in enumerate(ablation_names)
     }
 
-    fig, axis = plt.subplots(figsize=(8, 5))
+    fig, axis = plt.subplots(figsize=(9, 5.5))
     ax = _as_axes(axis)
-    grid_handles = []
-    for tile_label, group in aggregated.groupby("_tile_label", sort=False):
-        sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "ablation_name")
+    ablation_handles = []
+    for ablation_name, group in aggregated.groupby("ablation_name", sort=True):
+        ablation_name = str(ablation_name)
+        sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
         x_values = [
-            x_positions[str(ablation_name)] + tile_offsets.get(str(tile_label), 0.0)
-            for ablation_name in sorted_group["ablation_name"]
+            tile_positions[int(num_tiles)] + ablation_offsets.get(ablation_name, 0.0)
+            for num_tiles in sorted_group["num_tiles"]
         ]
         scatter = ax.scatter(
             x_values,
@@ -700,9 +719,10 @@ def plot_ablation_results(
             marker="o",
             s=58,
             alpha=0.85,
-            label=str(tile_label),
+            color=color_by_ablation.get(ablation_name),
+            label=ablation_name,
         )
-        grid_handles.append((scatter, str(tile_label)))
+        ablation_handles.append((scatter, ablation_name))
 
     if raw_results is not None and not raw_results.empty:
         raw = raw_results.copy()
@@ -711,48 +731,69 @@ def plot_ablation_results(
             raw["tile_permutation_name"] = None
         for _, row in raw.iterrows():
             ablation_name = str(row.get("ablation_name"))
-            if ablation_name not in x_positions or raw_y_column not in row or pd.isna(row[raw_y_column]):
+            num_tiles = row.get("num_tiles")
+            if (
+                ablation_name not in ablation_offsets
+                or raw_y_column not in row
+                or pd.isna(row[raw_y_column])
+                or pd.isna(num_tiles)
+                or int(num_tiles) not in tile_positions
+            ):
                 continue
             marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
-            tile_label = _tile_grid_label(row.get("tiles_per_side"))
             x_value = (
-                x_positions[ablation_name]
-                + tile_offsets.get(tile_label, 0.0)
+                tile_positions[int(num_tiles)]
+                + ablation_offsets.get(ablation_name, 0.0)
                 + PERMUTATION_X_OFFSETS[marker_name] * 0.035
             )
             ax.scatter(
                 x_value,
                 row[raw_y_column],
-                **_condition_marker_kwargs(marker_name, color="0.25", alpha=0.65),
+                **_condition_marker_kwargs(
+                    marker_name,
+                    color=color_by_ablation.get(ablation_name),
+                    alpha=0.65,
+                ),
                 label="_nolegend_",
             )
 
     if y_column == "delta_vs_grid_baseline":
         ax.axhline(0.0, color="0.25", linewidth=1.0, linestyle="--", alpha=0.8)
-    ax.set_xlabel("Ablation")
+    ax.set_xlabel("Grid size")
     ax.set_ylabel(
         "Best validation accuracy - matched Part 1 grid baseline"
         if y_column == "delta_vs_grid_baseline"
         else "Best validation accuracy"
     )
-    ax.set_title(title or _plot_title("Ablations vs Matched Grid Baseline", frame=aggregated))
-    ax.set_xticks(list(x_positions.values()), ablation_names)
+    ax.set_title(_two_line_plot_title(title or _plot_title("Ablations vs Matched Grid Baseline", frame=aggregated)))
+    tick_values = list(tile_positions)
+    ax.set_xticks(
+        [tile_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
     ax.grid(True, axis="y", alpha=0.3)
-    grid_legend = ax.legend(
-        [handle for handle, _ in grid_handles],
-        [label for _, label in grid_handles],
-        title="Grid",
+    ablation_legend = ax.legend(
+        [handle for handle, _ in ablation_handles],
+        [label for _, label in ablation_handles],
+        title="Ablation",
         loc="upper left",
         bbox_to_anchor=(1.02, 1.0) if raw_results is not None and not raw_results.empty else None,
     )
-    if grid_legend is not None:
-        ax.add_artist(grid_legend)
+    if ablation_legend is not None:
+        ax.add_artist(ablation_legend)
+    extra_artists = []
+    if ablation_legend is not None:
+        extra_artists.append(ablation_legend)
     if raw_results is not None and not raw_results.empty:
-        _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
-    fig.autofmt_xdate(rotation=20)
-    fig.tight_layout()
+        marker_legend = _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
+        if marker_legend is not None:
+            extra_artists.append(marker_legend)
+    if raw_results is not None and not raw_results.empty:
+        fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
+    else:
+        fig.tight_layout()
     _archive_existing_figure(output_path)
-    fig.savefig(output_path, dpi=160, bbox_inches="tight")
+    fig.savefig(output_path, dpi=160, bbox_inches="tight", bbox_extra_artists=extra_artists)
     plt.close(fig)
 
 

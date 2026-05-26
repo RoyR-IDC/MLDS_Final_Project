@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from time import perf_counter
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 import pandas as pd
 from torch.utils.data import DataLoader
@@ -559,6 +559,7 @@ def train_part2_ablation_experiments(
     raw_results_output_path: Optional[str] = None,
     baseline_rows: Sequence[Mapping[str, Any]] = (),
     intermediate_figures_dir: Optional[str] = None,
+    intermediate_figure_callback: Optional[Callable[[str], None]] = None,
 ) -> list[dict[str, Any]]:
     """Train all Part 2 ablations across tile-permutation records."""
 
@@ -633,12 +634,15 @@ def train_part2_ablation_experiments(
                     title=f"{model_name} / {ablation_name}: Ablations vs Matched Grid Baseline",
                 )
                 print(f"Saved intermediate ablation plot: {figure_path}")
+                if intermediate_figure_callback is not None:
+                    intermediate_figure_callback(figure_path)
     return rows
 
 
 def run_part2_improvement_experiments(
     config: CVExperimentConfig,
     device: Optional[TorchDevice] = None,
+    intermediate_figure_callback: Optional[Callable[[str], None]] = None,
 ) -> pd.DataFrame:
     """Run Part 2 ablations, save raw/aggregated results, and write the comparison plot."""
 
@@ -676,6 +680,7 @@ def run_part2_improvement_experiments(
             raw_results_output_path=output_paths["raw_results"],
             baseline_rows=baseline_rows,
             intermediate_figures_dir=config.figures_dir,
+            intermediate_figure_callback=intermediate_figure_callback,
         )
     )
 

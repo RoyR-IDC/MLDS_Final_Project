@@ -571,7 +571,7 @@ def test_plot_ablation_results_uses_aggregate_points_without_error_bars(monkeypa
 
     plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
 
-    assert markers == ["o"]
+    assert markers == ["o", "o"]
 
 
 def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeypatch, tmp_path):
@@ -599,7 +599,126 @@ def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeyp
         title="resnet18 / patch_shuffle: Ablations vs Matched Grid Baseline",
     )
 
-    assert titles[-1] == "resnet18 / patch_shuffle: Ablations vs Matched Grid Baseline"
+    assert titles[-1] == "resnet18 / patch_shuffle\nAblations vs Matched Grid Baseline"
+
+
+def test_plot_ablation_results_default_title_wraps_to_two_lines(monkeypatch, tmp_path):
+    titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
+
+    assert titles[-1] == "resnet18\nAblations vs Matched Grid Baseline"
+
+
+def test_plot_ablation_results_uses_grid_axis_and_ablation_condition_legends(monkeypatch, tmp_path):
+    tick_calls = []
+    legend_labels = []
+    legend_titles = []
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        tick_calls.append((list(ticks), list(labels or [])))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.72,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 7,
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.74,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 10,
+                "num_tiles": 100,
+                "mean_best_epoch_val_accuracy": 0.73,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"), raw_results=raw_results)
+
+    assert tick_calls[-1] == ([0, 1, 2, 3], ["1", "4x4", "7x7", "10x10"])
+    assert "Ablation" in legend_titles
+    assert "Condition" in legend_titles
+    assert "patch_shuffle" in legend_labels
+    assert "regular_part1" in legend_labels
+    assert "Baseline: no permutation" in legend_labels
 
 
 def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_path):

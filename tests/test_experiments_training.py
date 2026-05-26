@@ -735,6 +735,8 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     ]
     progress_descriptions = []
     spec_kwargs = []
+    plotted_paths = []
+    callback_paths = []
 
     class FakeLoader:
         dataset = [None]
@@ -760,6 +762,7 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
 
     monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
     monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(part2, "plot_ablation_results", lambda aggregated, path, **kwargs: plotted_paths.append(path))
     monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
     raw_results_path = tmp_path / "part2_raw_results.csv"
@@ -772,6 +775,8 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
         device="cpu",
         run_id="part2_run",
         raw_results_output_path=str(raw_results_path),
+        intermediate_figures_dir=str(tmp_path / "figures"),
+        intermediate_figure_callback=callback_paths.append,
     )
 
     assert progress_descriptions == ["resnet18 [augmentation_patch_shuffle] 2x2 permutation #0. epochs progress"]
@@ -781,6 +786,8 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     assert spec_kwargs[0]["metadata_overrides"]["epochs"] == 1
     assert rows[0]["run_status"] == "completed"
     assert rows[0]["ablation_name"] == "augmentation_patch_shuffle"
+    assert plotted_paths == [str(tmp_path / "figures" / "intermediate" / "part2_ablation_augmentation_patch_shuffle.png")]
+    assert callback_paths == plotted_paths
 
 
 def test_part2_regular_augmentations_use_train_only_image_augmentation(monkeypatch):
