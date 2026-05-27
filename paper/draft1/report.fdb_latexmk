@@ -1,9 +1,10 @@
 # Fdb version 4
-["pdflatex"] 1779719793.68363 "report.tex" "report.pdf" "report" 1779719797.40543 0
+["pdflatex"] 1779738707.51815 "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/paper/draft1/report.tex" "report.pdf" "report" 1779738710.48246 0
   "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779647260 106357 1405fd86eaa7ec41b9503c99c41a01b5 ""
   "../../outputs/figures/part2_ablation_comparison.png" 1779656198 107253 cf49d6e756c1997c92ad947acf42ad52 ""
   "../../outputs/figures/part3_metrics_vs_accuracy.png" 1779680652 88073 409e78d71a7d6fedafd349286be5502e ""
   "../template/images/runi_logo.png" 1778560389.49127 70164 8693916a2b159cd0d90b1f4671a8235e ""
+  "/Users/royrubin/Documents/GitHub/MLDS_Final_Project/paper/draft1/report.tex" 1779738706.96566 43234 2d36ef0fd953e12228eb88ebe228a5fc ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1246382020 1004 54797486969f23fa377b128694d548df ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1246382020 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1136768653 1328 c834bbb027764024c09d3d2bf908b5f0 ""
@@ -96,9 +97,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1779719796.69654 9010 ddcb56dd21919243956ed4f972b59c51 "pdflatex"
-  "report.out" 1779719796.70454 3965 b96bd400841c175f27c0e2654148dcf7 "pdflatex"
-  "report.tex" 1779719785.56673 41984 2510ba9ef096b1a1f35da0a23755efc3 ""
+  "report.aux" 1779738710.13441 9926 0062a2740a3c124a1a1ec9c3ef0e762a "pdflatex"
+  "report.out" 1779738710.13661 4204 442a77335f8bc88abf67b97bafeae6d7 "pdflatex"
+  "report.tex" 1779738706.96566 43234 2d36ef0fd953e12228eb88ebe228a5fc ""
   (generated)
   "report.aux"
   "report.log"

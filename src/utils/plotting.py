@@ -47,19 +47,20 @@ def plot_tile_permutation_samples(
     samples: Sequence[Sample],
     tile_permutation_records: Sequence[TilePermutationRecord],
     image_size: int,
-    samples_per_class: int = 2,
+    samples_per_class: int = 1,
     max_records: int = 4,
 ) -> Figure:
-    """Plot original samples next to selected tile-reordered variants.
+    """Plot selected samples above tile-reordered variants.
 
-    The original image column represents the unpermuted 1x1 case, so 1x1
-    tile-permutation records are intentionally skipped to avoid duplicate columns.
+    The first row represents the unpermuted 1x1 case, so 1x1 tile-permutation
+    records are intentionally skipped to avoid duplicate rows.
 
     Args:
         samples: Labeled ``(path, label)`` image samples.
         tile_permutation_records: Candidate tile-permutation records to visualize.
         image_size: Base image size used by the experiment config.
-        samples_per_class: Number of cat and dog samples to display.
+        samples_per_class: Number of cat and dog samples to display. Defaults to
+            one cat and one dog.
         max_records: Maximum non-1x1 tile-permutation records to display.
 
     Returns:
@@ -71,23 +72,24 @@ def plot_tile_permutation_samples(
         raise ValueError("No samples available to plot")
 
     display_records = _select_display_tile_permutation_records(tile_permutation_records, max_records)
-    n_columns = 1 + len(display_records)
+    n_rows = 1 + len(display_records)
+    n_columns = len(sample_pairs)
     fig, axes = plt.subplots(
-        len(sample_pairs),
+        n_rows,
         n_columns,
-        figsize=(4 * n_columns, 4 * len(sample_pairs)),
+        figsize=(4 * n_columns, 3.6 * n_rows),
         squeeze=False,
     )
 
-    for row_index, (path, label) in enumerate(sample_pairs):
+    for col_index, (path, label) in enumerate(sample_pairs):
         label_name = _class_name(label)
         with PILImage.open(path) as image:
             image = image.convert("RGB")
-            axes[row_index, 0].imshow(image)
-            axes[row_index, 0].set_title(f"{label_name} regular")
-            axes[row_index, 0].axis("off")
+            axes[0, col_index].imshow(image)
+            axes[0, col_index].set_title(f"{label_name} regular")
+            axes[0, col_index].axis("off")
 
-            for col_index, record in enumerate(display_records, start=1):
+            for row_index, record in enumerate(display_records, start=1):
                 assert record.tiles_per_side is not None
                 assert record.tile_permutation is not None
                 tile_image_size = make_tile_compatible_image_size(image_size, record.tiles_per_side)
@@ -108,7 +110,8 @@ def plot_tile_permutation_samples(
                 ).clip(0.0, 1.0)
                 axes[row_index, col_index].imshow(reordered_image)
                 axes[row_index, col_index].set_title(
-                    f"{label_name} {record.tiles_per_side}x{record.tiles_per_side} permutation {record.tile_permutation_id}"
+                    f"{label_name} {record.tiles_per_side}x{record.tiles_per_side} "
+                    f"{record.tile_permutation_name or record.tile_permutation_id}"
                 )
                 axes[row_index, col_index].axis("off")
 

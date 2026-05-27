@@ -40,3 +40,17 @@ def test_part_notebooks_bootstrap_full_project_before_src_imports():
         earlier_sources = "\n".join(cells[:setup_index])
         assert "import src." not in earlier_sources
         assert "from src." not in earlier_sources
+
+
+def test_part1_notebook_keeps_easy_medium_hard_sample_records():
+    cells = _code_cells(ROOT / "src/notebooks/part1_solution.ipynb")
+    config_source = next(
+        source
+        for source in cells
+        if "part1_setup = notebook_setup.setup_part1_config()" in source
+    )
+    sample_source = next(source for source in cells if "plot_tile_permutation_samples(" in source)
+
+    assert "configs.num_tile_permutations = 3" in config_source
+    assert "num_tile_permutations=configs.num_tile_permutations" in sample_source
+    assert "max_records=sum(1 for record in tile_permutation_records if record.tile_permutation is not None)" in sample_source

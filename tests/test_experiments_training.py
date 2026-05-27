@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import builtins
 
 import pandas as pd
 import pytest
@@ -15,9 +16,8 @@ from src.experiments.part2 import (
     build_curriculum_schedule,
     train_part2_ablation_experiments,
 )
-from src.preprocessing.tile_permutations import TilePermutationRecord, identity_tile_permutation, random_tile_permutation
+from src.preprocessing.tile_permutations import TilePermutationRecord, deterministic_tile_permutation, identity_tile_permutation
 from src.training.checkpoints import load_checkpoint, save_checkpoint
-from src.training.losses import FocalLoss
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
 
@@ -29,7 +29,7 @@ def test_executable_tile_permutation_records_returns_records():
             tiles_per_side=2,
             tile_permutation_id=1,
             tile_permutation_seed=42,
-            tile_permutation=random_tile_permutation(2, seed=42),
+            tile_permutation=deterministic_tile_permutation(2, "medium"),
         ),
     ]
 
@@ -295,7 +295,7 @@ def test_build_training_run_spec_distinguishes_auto_from_disabled_expected_input
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
 
     auto_spec = training_runs.build_training_run_spec(
@@ -376,6 +376,54 @@ def test_model_trainer_shows_training_batch_progress_per_epoch(monkeypatch):
     assert [bar.updated for bar in batch_bars] == [len(loader), len(loader)]
     assert all(bar.kwargs["position"] == 1 for bar in batch_bars)
     assert all(bar.kwargs["leave"] is False for bar in batch_bars)
+
+
+def test_model_trainer_prints_first_batch_before_progress_bar(monkeypatch):
+    features = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    labels = torch.tensor([0, 1])
+    loader = DataLoader(TensorDataset(features, labels), batch_size=2)
+    spec = TrainingRunSpec(
+        model_name="linear",
+        model=nn.Linear(2, 2),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
+        checkpoint_config=CheckpointConfig(save_best=False, save_last=False),
+        progress_leave=False,
+    )
+    events = []
+    original_print = builtins.print
+
+    class FakeTqdm:
+        def __init__(self, *args, **kwargs):
+            events.append(f"tqdm:{kwargs['unit']}")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def update(self, amount=1):
+            pass
+
+        def set_postfix(self, **kwargs):
+            pass
+
+    def tracked_print(*args, **kwargs):
+        message = " ".join(str(arg) for arg in args)
+        if message.startswith("First batch:"):
+            events.append("first_batch")
+        original_print(*args, **kwargs)
+
+    monkeypatch.setattr(trainer_module, "tqdm", FakeTqdm)
+    monkeypatch.setattr(builtins, "print", tracked_print)
+
+    ModelTrainer(spec).fit()
+
+    assert events.index("first_batch") < events.index("tqdm:epoch")
 
 
 def test_model_trainer_validates_expected_image_shape():
@@ -534,7 +582,7 @@ def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch
             tiles_per_side=2,
             tile_permutation_id=1,
             tile_permutation_seed=100,
-            tile_permutation=random_tile_permutation(2, seed=100),
+            tile_permutation=deterministic_tile_permutation(2, "medium"),
         ),
     ]
     calls = iter(["ok", "fail"])
@@ -680,13 +728,15 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
     ]
     ablations = [
         {
-            "name": "same_label_cutmix_only",
+            "name": "augmentation_patch_shuffle",
             "use_pretrained": True,
-            "augmentation": "same_label_cutmix",
+            "augmentation": "patch_shuffle",
         }
     ]
     progress_descriptions = []
     spec_kwargs = []
+    plotted_paths = []
+    callback_paths = []
 
     class FakeLoader:
         dataset = [None]
@@ -712,6 +762,7 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
 
     monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
     monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(part2, "plot_ablation_results", lambda aggregated, path, **kwargs: plotted_paths.append(path))
     monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
     raw_results_path = tmp_path / "part2_raw_results.csv"
@@ -724,104 +775,191 @@ def test_train_part2_ablation_experiments_uses_same_trainer_core(monkeypatch, tm
         device="cpu",
         run_id="part2_run",
         raw_results_output_path=str(raw_results_path),
+        intermediate_figures_dir=str(tmp_path / "figures"),
+        intermediate_figure_callback=callback_paths.append,
     )
 
-    assert progress_descriptions == ["resnet18 [same_label_cutmix_only] 2x2 permutation #0. epochs progress"]
+    assert progress_descriptions == ["resnet18 [augmentation_patch_shuffle] 2x2 permutation #0. epochs progress"]
     assert spec_kwargs[0]["overrides"]["freeze_backbone"] is True
-    assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "same_label_cutmix"
-    assert spec_kwargs[0]["metadata_overrides"]["loss_name"] == "cross_entropy"
+    assert spec_kwargs[0]["metadata_overrides"]["augmentation_name"] == "patch_shuffle"
     assert spec_kwargs[0]["metadata_overrides"]["hardness_level"] == "baseline"
+    assert spec_kwargs[0]["metadata_overrides"]["epochs"] == 1
     assert rows[0]["run_status"] == "completed"
-    assert rows[0]["ablation_name"] == "same_label_cutmix_only"
+    assert rows[0]["ablation_name"] == "augmentation_patch_shuffle"
+    assert plotted_paths == [str(tmp_path / "figures" / "intermediate" / "part2_ablation_augmentation_patch_shuffle.png")]
+    assert callback_paths == plotted_paths
 
 
-def test_part2_focal_loss_ablation_builds_focal_criterion_and_metadata(monkeypatch, tmp_path):
+def test_part2_regular_augmentations_use_train_only_image_augmentation(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0)
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
+    )
+    captured_kwargs = {}
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        captured_kwargs.update(kwargs)
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    part2.build_ablation_dataloaders(
+        ablation={"name": "regular_augmentations", "augmentation": "regular_augmentations"},
+        record=record,
+        train_samples=[("cat.jpg", 0)],
+        validation_samples=[("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert captured_kwargs["image_augmentation"] == "regular_augmentations"
+    assert captured_kwargs["tile_permutation_probability"] == 1.0
+
+
+def test_part2_mixed_original_permuted_maps_p_original_to_training_probability(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0)
+    record = TilePermutationRecord(
+        tiles_per_side=10,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
+    )
+    captured_kwargs = {}
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        captured_kwargs.update(kwargs)
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    part2.build_ablation_dataloaders(
+        ablation={"name": "mixed_original_permuted", "p_original": 0.5},
+        record=record,
+        train_samples=[("cat.jpg", 0)],
+        validation_samples=[("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert captured_kwargs["tiles_per_side"] == 10
+    assert captured_kwargs["tile_permutation"] == record.tile_permutation
+    assert captured_kwargs["tile_permutation_probability"] == 0.5
+
+
+def test_part2_mixed_original_permuted_logs_p_original_metadata(monkeypatch):
     config = SimpleNamespace(
         part="part2",
         config_name="part2_improvement",
-        model_name="resnet18",
-        model_names=["resnet18"],
-        image_size=32,
+        image_size=224,
         batch_size=4,
         num_workers=0,
         seed=42,
         pretrained=True,
-        epochs=1,
-        outputs_dir=str(tmp_path / "outputs"),
+        freeze_backbone=True,
+        optimizer="adamw",
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        use_amp=False,
+        profile_performance=False,
+        profile_warmup_batches=0,
+        outputs_dir="outputs",
+        results_dir="outputs/results",
+        epochs=10,
     )
-    records = [
-        TilePermutationRecord(
-            tiles_per_side=3,
-            tile_permutation_id=1,
-            tile_permutation_seed=42,
-            tile_permutation=random_tile_permutation(3, seed=42),
-        )
-    ]
-    ablations = [
-        {
-            "name": "loss_focal_loss",
-            "use_pretrained": True,
-            "augmentation": "none",
-            "loss": "focal_loss",
-            "focal_gamma": 2.0,
-            "focal_alpha": 1.0,
-        }
-    ]
-    spec_kwargs = []
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
+    )
+    captured_kwargs = {}
 
     class FakeLoader:
-        dataset = [None]
-
-        def __len__(self):
-            return 1
-
-    class FakeTrainer:
-        def __init__(self, spec):
-            self.spec = spec
-
-        def fit(self, on_progress):
-            result = TrainingResult.pending(model_name=self.spec.model_name, metadata=self.spec.metadata)
-            result.best_val_accuracy = 0.75
-            result.mark_completed(2.5)
-            on_progress(result)
-            return result
+        pass
 
     def fake_build_training_run_spec(**kwargs):
-        spec_kwargs.append(kwargs)
-        metadata = {
-            "ablation_name": kwargs["ablation_name"],
-            **kwargs["metadata_overrides"],
-        }
-        return SimpleNamespace(model_name=kwargs["model_name"], metadata=metadata)
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(model_name=kwargs["model_name"])
 
-    monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
     monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
-    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
 
-    rows = train_part2_ablation_experiments(
+    part2.build_part2_training_run_spec(
         config=config,
-        ablations=ablations,
-        train_samples=[("cat.jpg", 0)],
-        validation_samples=[("dog.jpg", 1)],
-        tile_permutation_records=records,
-        device="cpu",
+        model_name="resnet18",
         run_id="part2_run",
+        ablation={"name": "mixed_original_permuted", "p_original": 0.5},
+        record=record,
+        train_loader=FakeLoader(),
+        validation_loader=FakeLoader(),
+        device="cpu",
+        batch_augmentation=None,
+        curriculum_schedule=None,
     )
 
-    criterion = spec_kwargs[0]["criterion"]
-    metadata = spec_kwargs[0]["metadata_overrides"]
-    assert isinstance(criterion, FocalLoss)
-    assert criterion.gamma == 2.0
-    assert criterion.alpha == 1.0
-    assert metadata["loss_name"] == "focal_loss"
-    assert metadata["focal_gamma"] == 2.0
-    assert metadata["focal_alpha"] == 1.0
-    assert 0.0 <= metadata["combined_hardness_score"] <= 1.0
-    assert metadata["hardness_level"] in {"low", "medium", "high"}
-    assert rows[0]["loss_name"] == "focal_loss"
-    assert rows[0]["focal_gamma"] == 2.0
-    assert rows[0]["focal_alpha"] == 1.0
-    assert rows[0]["hardness_level"] in {"low", "medium", "high"}
+    metadata = captured_kwargs["metadata_overrides"]
+    assert metadata["p_original"] == 0.5
+    assert metadata["tile_permutation_probability"] == 0.5
+
+
+def test_part2_mlp_head_ablation_sets_overrides_and_metadata(monkeypatch):
+    config = SimpleNamespace(
+        part="part2",
+        config_name="part2_improvement",
+        image_size=224,
+        batch_size=4,
+        num_workers=0,
+        seed=42,
+        pretrained=True,
+        freeze_backbone=True,
+        optimizer="adamw",
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        use_amp=False,
+        profile_performance=False,
+        profile_warmup_batches=0,
+        outputs_dir="outputs",
+        results_dir="outputs/results",
+        epochs=10,
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
+    )
+    captured_kwargs = {}
+
+    class FakeLoader:
+        pass
+
+    def fake_build_training_run_spec(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(model_name=kwargs["model_name"])
+
+    monkeypatch.setattr(part2, "build_training_run_spec", fake_build_training_run_spec)
+
+    part2.build_part2_training_run_spec(
+        config=config,
+        model_name="resnet18",
+        run_id="part2_run",
+        ablation={"name": "resnet18_mlp_head", "classification_head": "mlp"},
+        record=record,
+        train_loader=FakeLoader(),
+        validation_loader=FakeLoader(),
+        device="cpu",
+        batch_augmentation=None,
+        curriculum_schedule=None,
+    )
+
+    assert captured_kwargs["overrides"]["classification_head"] == "mlp"
+    assert captured_kwargs["metadata_overrides"]["classification_head"] == "MLP"
 
 
 def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
@@ -830,7 +968,7 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
         tiles_per_side=4,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(4, seed=42),
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
     )
 
     class FakeLoader:
@@ -850,13 +988,38 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
     assert schedule.total_epochs == 5
 
 
-def test_difficulty_curriculum_includes_large_target_stage(monkeypatch):
+def test_curriculum_ablation_epoch_override_controls_stage_total(monkeypatch):
+    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
+    )
+
+    class FakeLoader:
+        pass
+
+    monkeypatch.setattr(part2, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "permutation_difficulty", "epochs": 30},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert schedule.total_epochs == 30
+
+
+def test_difficulty_curriculum_includes_target_grid_stage(monkeypatch):
     config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
     record = TilePermutationRecord(
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
     loader_tiles = []
 
@@ -911,7 +1074,7 @@ def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatc
         tiles_per_side=10,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(10, seed=42),
+        tile_permutation=deterministic_tile_permutation(10, "medium"),
     )
     captured_kwargs = {}
 
@@ -946,7 +1109,7 @@ def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypat
         tiles_per_side=3,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=random_tile_permutation(3, seed=42),
+        tile_permutation=deterministic_tile_permutation(3, "medium"),
     )
     probabilities = []
 

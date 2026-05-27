@@ -34,6 +34,7 @@ def build_result_row(
         "tiles_per_side": record.tiles_per_side,
         "num_tiles": num_tiles,
         "tile_permutation_id": record.tile_permutation_id,
+        "tile_permutation_name": record.tile_permutation_name,
         "tile_permutation_seed": record.tile_permutation_seed,
         "tile_permutation": tile_permutation_to_jsonable(record.tile_permutation),
         "seed": seed,
@@ -68,13 +69,15 @@ def build_training_result_row(
     for key in (
         "pretrained",
         "freeze_backbone",
+        "epochs",
         "augmentation_name",
         "batch_augmentation_name",
         "curriculum_name",
         "curriculum_stages",
-        "loss_name",
-        "focal_gamma",
-        "focal_alpha",
+        "classification_head",
+        "p_original",
+        "tile_permutation_probability",
+        "tile_permutation_name",
         "global_tile_displacement",
         "adjacency_destruction_hardness",
         "spatial_permutation_entropy",
@@ -186,6 +189,14 @@ def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) 
         "aggregated_results": os.path.join(results_dir, f"{part_name}_aggregated_results.csv"),
         "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
     }
+    output_paths["intermediate_figures_dir"] = os.path.join(figures_dir, "intermediate")
     if part_name == "part1":
         output_paths["tile_permutations"] = os.path.join(results_dir, "part1_tile_permutations.csv")
     return output_paths
+
+
+def experiment_intermediate_figure_path(figures_dir: str, part_name: str, figure_slug: str) -> str:
+    """Return a stable path for a notebook intermediate figure."""
+
+    safe_slug = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in figure_slug)
+    return os.path.join(figures_dir, "intermediate", f"{part_name}_{safe_slug}.png")

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+import shutil
+import subprocess
 import sys
 
 
@@ -82,6 +84,7 @@ def setup_part2_config() -> SimpleNamespace:
         warn_if_colab_runtime_without_cuda,
     )
     from src.utils.config import Part2ExperimentConfig
+    from src.preprocessing.tile_permutations import TILE_PERMUTATION_NAMES
     from src.utils.reproducibility import seed_everything
 
     config = Part2ExperimentConfig()
@@ -98,6 +101,8 @@ def setup_part2_config() -> SimpleNamespace:
                 "model_name": config.model_name,
                 "tiles_per_side_values": config.tiles_per_side_values,
                 "num_tile_permutations": config.num_tile_permutations,
+                "tile_permutation_names": list(TILE_PERMUTATION_NAMES[: config.num_tile_permutations]),
+                "grid_x_permutation_runs": len(config.tiles_per_side_values) * config.num_tile_permutations,
                 "epochs": config.epochs,
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,
@@ -117,6 +122,7 @@ def setup_part3_config() -> SimpleNamespace:
     import pandas as pd
 
     from src.evaluation.experiment_results import part3_output_paths
+    from src.preprocessing.tile_permutations import TILE_PERMUTATION_NAMES
     from src.utils.config import Part3ExperimentConfig
 
     config = Part3ExperimentConfig()
@@ -131,6 +137,8 @@ def setup_part3_config() -> SimpleNamespace:
                 "model_name": config.model_name,
                 "tiles_per_side_values": config.tiles_per_side_values,
                 "num_tile_permutations": config.num_tile_permutations,
+                "tile_permutation_names": list(TILE_PERMUTATION_NAMES[: config.num_tile_permutations]),
+                "grid_x_permutation_records": len(config.tiles_per_side_values) * config.num_tile_permutations,
                 "seed": config.seed,
                 "batch_size": config.batch_size,
                 "num_workers": config.num_workers,
@@ -152,3 +160,113 @@ def setup_part3_config() -> SimpleNamespace:
         output_paths=output_paths,
         summary=summary,
     )
+
+
+def _command_exists(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def _ensure_colab_pdf_export_dependencies() -> None:
+    """Install the LaTeX pieces nbconvert needs in a fresh Colab runtime."""
+
+    from src.utils.colab import is_google_colab_runtime
+
+    if not is_google_colab_runtime():
+        return
+
+    try:
+        import nbconvert  # noqa: F401
+    except ImportError:
+        print("Installing nbconvert for PDF export...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "nbconvert"])
+
+    missing_latex_command = not _command_exists("xelatex")
+    missing_pandoc = not _command_exists("pandoc")
+    missing_nbconvert_tex_packages = subprocess.run(
+        ["kpsewhich", "adjustbox.sty"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode != 0
+
+    if not (missing_latex_command or missing_pandoc or missing_nbconvert_tex_packages):
+        return
+
+    if not _command_exists("apt-get"):
+        print(
+            "PDF export dependencies are missing, and apt-get is unavailable. "
+            "Install xelatex, pandoc, and the LaTeX packages required by nbconvert."
+        )
+        return
+
+    print("Installing Colab PDF export dependencies. This can take a few minutes...")
+    subprocess.check_call(["apt-get", "update", "-qq"])
+    subprocess.check_call(
+        [
+            "apt-get",
+            "install",
+            "-y",
+            "-qq",
+            "pandoc",
+            "texlive-xetex",
+            "texlive-latex-extra",
+            "texlive-fonts-recommended",
+            "texlive-plain-generic",
+        ]
+    )
+
+
+def export_notebook_to_pdf(
+    notebook_path: str | Path,
+    export_dir: str | Path | None = None,
+    *,
+    install_colab_dependencies: bool = True,
+) -> Path | None:
+    """Export a saved notebook to PDF, with Colab-friendly dependency setup."""
+
+    notebook_path = Path(notebook_path).resolve()
+    if export_dir is None:
+        export_dir = notebook_path.parent
+    export_dir = Path(export_dir).resolve()
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    if not notebook_path.exists():
+        print(f"PDF export failed. Notebook file was not found: {notebook_path}")
+        return None
+
+    if install_colab_dependencies:
+        _ensure_colab_pdf_export_dependencies()
+
+    command = [
+        sys.executable,
+        "-m",
+        "jupyter",
+        "nbconvert",
+        "--to",
+        "pdf",
+        str(notebook_path),
+        "--output-dir",
+        str(export_dir),
+    ]
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        pdf_path = export_dir / notebook_path.with_suffix(".pdf").name
+        print(f"Generated PDF: {pdf_path}")
+        return pdf_path
+
+    print("PDF export failed.")
+    print(f"Command exited with status {result.returncode}.")
+    output_lines = result.stdout.splitlines()
+    if output_lines:
+        print("Last nbconvert output lines:")
+        for line in output_lines[-25:]:
+            print(line)
+    else:
+        print("nbconvert produced no output.")
+    return None

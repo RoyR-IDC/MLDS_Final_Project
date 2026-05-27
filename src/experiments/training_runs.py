@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC, Sequence
 from datetime import datetime, timezone
+from dataclasses import replace
 import os
 from typing import Any, Mapping, Optional
 
@@ -168,6 +169,7 @@ def build_training_metadata(
         "ablation_name": ablation_name,
         "tiles_per_side": record.tiles_per_side,
         "tile_permutation_id": record.tile_permutation_id,
+        "tile_permutation_name": record.tile_permutation_name,
         "tile_permutation_seed": record.tile_permutation_seed,
         "seed": seed,
         "optimizer_name": getattr(config, "optimizer", "adamw"),
@@ -204,8 +206,11 @@ def build_training_run_spec(
 
     run_options = dict(overrides or {})
     training_config = build_training_config(config)
+    if "epochs" in run_options:
+        training_config = replace(training_config, epochs=int(run_options["epochs"]))
     requested_pretrained = bool(run_options.get("pretrained", getattr(config, "pretrained", False)))
     requested_freeze_backbone = bool(run_options.get("freeze_backbone", getattr(config, "freeze_backbone", True)))
+    classification_head = str(run_options.get("classification_head", "linear"))
     model_options = resolve_model_training_options(
         model_name,
         pretrained=requested_pretrained,
@@ -220,6 +225,7 @@ def build_training_run_spec(
         pretrained=pretrained,
         device=device,
         freeze_backbone=freeze_backbone,
+        classification_head=classification_head,
     )
     resolved_metadata_overrides = {
         "pretrained": pretrained,

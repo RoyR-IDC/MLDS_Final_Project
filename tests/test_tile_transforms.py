@@ -8,7 +8,7 @@ from src.preprocessing.tile_transforms import (  # noqa: E402
     reconstruct_from_tiles,
     split_into_tiles,
 )
-from src.preprocessing.tile_permutations import TilePermutation, identity_tile_permutation, random_tile_permutation  # noqa: E402
+from src.preprocessing.tile_permutations import TilePermutation, deterministic_tile_permutation, identity_tile_permutation  # noqa: E402
 
 
 def test_identity_tile_permutation_returns_same_tensor():
@@ -17,9 +17,9 @@ def test_identity_tile_permutation_returns_same_tensor():
     assert torch.equal(output, image)
 
 
-def test_random_tile_permutation_preserves_shape():
+def test_deterministic_tile_permutation_preserves_shape():
     image = torch.randn(3, 12, 12)
-    output = apply_tile_permutation(image, random_tile_permutation(3, seed=123))
+    output = apply_tile_permutation(image, deterministic_tile_permutation(3, "medium"))
     assert output.shape == image.shape
 
 

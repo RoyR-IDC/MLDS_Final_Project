@@ -12,16 +12,19 @@ from PIL import Image
 import pytest
 
 from src.evaluation.experiment_results import (
+    PERMUTATION_MARKERS,
+    add_part2_grid_baseline_deltas,
     aggregate_accuracy,
     compute_part3_metric_correlations,
     compute_part3_tile_permutation_metrics,
+    experiment_intermediate_figure_path,
     load_part1_model_baseline_aggregated,
     load_part1_model_baseline_raw_rows,
     load_part1_model_results,
     part3_output_paths,
     plot_ablation_results,
     plot_accuracy_vs_tiles,
-    plot_part3_metrics_vs_accuracy,
+    plot_part3_metric_grid_views,
     run_part3_hardness_analysis,
     save_rows,
 )
@@ -142,13 +145,412 @@ def test_plot_accuracy_vs_tiles_uses_best_epoch_aggregate_column(tmp_path):
     assert output_path.exists()
 
 
-def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_path):
-    calls = []
+def test_plot_accuracy_vs_tiles_archives_existing_figure_before_saving(tmp_path):
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    output_path = tmp_path / "accuracy_vs_tiles.png"
+    output_path.write_text("old figure bytes", encoding="utf-8")
 
-    def fake_errorbar(self, *args, **kwargs):
-        calls.append(kwargs)
+    plot_accuracy_vs_tiles(aggregated, str(output_path))
 
-    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fake_errorbar)
+    archived = list(tmp_path.glob("accuracy_vs_tiles_*.png"))
+    assert output_path.exists()
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding="utf-8") == "old figure bytes"
+
+
+def test_plot_accuracy_vs_tiles_uses_mean_lines_without_error_bars(monkeypatch, tmp_path):
+    plot_calls = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("accuracy plots should not use error bars")
+
+    def fake_plot(self, *args, **kwargs):
+        plot_calls.append((args, kwargs))
+        return []
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.02,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.65,
+                "std_best_epoch_val_accuracy": 0.03,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+
+    assert plot_calls
+    assert list(plot_calls[0][0][1]) == [0.75, 0.65]
+
+
+def test_plot_accuracy_vs_tiles_title_and_ylim_for_intermediate_model(monkeypatch, tmp_path):
+    titles = []
+    y_limits = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    def fake_set_ylim(self, *args, **kwargs):
+        y_limits.append(args)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_ylim", fake_set_ylim)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
+
+    assert titles[-1] == "Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18"
+    assert (0.50, 1.00) in y_limits
+
+
+def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(monkeypatch, tmp_path):
+    markers = []
+    plot_kwargs = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_plot(self, *args, **kwargs):
+        plot_kwargs.append(kwargs)
+        return []
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.74,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.01,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "medium",
+                "tile_permutation": "[[1, 0], [2, 3]]",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "hard",
+                "tile_permutation": "[[3, 2], [1, 0]]",
+                "best_val_accuracy": 0.68,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "tiles_per_side": None,
+                "tile_permutation_name": "easy",
+                "tile_permutation": None,
+                "best_val_accuracy": 0.74,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
+
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["medium"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+    assert PERMUTATION_MARKERS["baseline"] in markers
+    assert PERMUTATION_MARKERS["baseline"] == "D"
+    assert plot_kwargs[0]["label"] == "Mean across permutations"
+    assert plot_kwargs[0]["marker"] is None
+
+
+def test_plot_accuracy_vs_tiles_intermediate_legends_include_mean_and_conditions(monkeypatch, tmp_path):
+    legend_labels = []
+    legend_titles = []
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "accuracy.png"),
+        raw_results=raw_results,
+        title="Intermediate Model Plot: Validation Accuracy by Tiling Level - resnet18",
+    )
+
+    assert "Mean" in legend_titles
+    assert "Condition" in legend_titles
+    assert "Baseline: no permutation" in legend_labels
+
+
+def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_hardness_condition_points(monkeypatch, tmp_path):
+    plot_labels = []
+    markers = []
+    titles = []
+    legend_labels = []
+    legend_titles = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("final accuracy plot should not use error bars")
+
+    def fake_plot(self, *args, **kwargs):
+        plot_labels.append(kwargs.get("label"))
+        return []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "deit_tiny",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.65,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "deit_tiny",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "hard",
+                "tile_permutation": "[[3, 2], [1, 0]]",
+                "best_val_accuracy": 0.63,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert plot_labels == ["deit_tiny", "resnet18"]
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+    assert "Model Name" in legend_titles
+    assert "Condition" in legend_titles
+    assert "easy" in legend_labels
+    assert "hard" in legend_labels
+    assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+
+
+def test_plot_accuracy_vs_tiles_single_model_final_plot_keeps_final_title(monkeypatch, tmp_path):
+    titles = []
+    legend_titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    def fake_legend(self, *args, **kwargs):
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy",
+                "tile_permutation": "[[0, 1], [2, 3]]",
+                "best_val_accuracy": 0.72,
+            }
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"), raw_results=raw_results)
+
+    assert titles[-1] == "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+    assert "Model Name" in legend_titles
+    assert "Condition" in legend_titles
+
+
+def test_plot_accuracy_vs_tiles_uses_equal_categorical_tile_spacing(monkeypatch, tmp_path):
+    tick_calls = []
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        tick_calls.append((list(ticks), list(labels or [])))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.68,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "num_tiles": 100,
+                "mean_best_epoch_val_accuracy": 0.66,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(aggregated, str(tmp_path / "accuracy.png"))
+
+    assert tick_calls[-1] == ([0, 1, 2, 3], ["1", "4x4", "7x7", "10x10"])
+
+
+def test_plot_ablation_results_uses_aggregate_points_without_error_bars(monkeypatch, tmp_path):
+    markers = []
+
+    def fail_errorbar(self, *args, **kwargs):
+        raise AssertionError("ablation plots should not use error bars")
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fail_errorbar)
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
     monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
     aggregated = pd.DataFrame(
         [
@@ -159,7 +561,7 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
                 "std_best_epoch_val_accuracy": 0.0,
             },
             {
-                "ablation_name": "loss_focal_loss",
+                "ablation_name": "resnet18_mlp_head",
                 "tiles_per_side": 1,
                 "mean_best_epoch_val_accuracy": 0.80,
                 "std_best_epoch_val_accuracy": 0.0,
@@ -169,9 +571,467 @@ def test_plot_ablation_results_uses_dot_markers_without_lines(monkeypatch, tmp_p
 
     plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
 
-    assert calls
-    assert calls[0]["fmt"] == "o"
-    assert calls[0]["linestyle"] == "None"
+    assert markers == ["o"]
+
+
+def test_plot_ablation_results_title_accepts_model_and_ablation_override(monkeypatch, tmp_path):
+    titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            }
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        title="resnet18 / patch_shuffle: Ablations vs Matched Grid Baseline",
+    )
+
+    assert titles[-1] == "resnet18 / patch_shuffle\nAblations vs Matched Grid Baseline"
+
+
+def test_plot_ablation_results_default_title_wraps_to_two_lines(monkeypatch, tmp_path):
+    titles = []
+
+    def fake_set_title(self, title, *args, **kwargs):
+        titles.append(title)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_title", fake_set_title)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"))
+
+    assert titles[-1] == "resnet18\nAblations vs Matched Grid Baseline"
+
+
+def test_plot_ablation_results_uses_grid_axis_and_filters_baseline_legends(monkeypatch, tmp_path):
+    tick_calls = []
+    legend_labels = []
+    legend_titles = []
+    hlines = []
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        tick_calls.append((list(ticks), list(labels or [])))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    def fake_axhline(self, y, *args, **kwargs):
+        hlines.append(y)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    monkeypatch.setattr("matplotlib.axes.Axes.axhline", fake_axhline)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.72,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 7,
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.74,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 10,
+                "num_tiles": 100,
+                "mean_best_epoch_val_accuracy": 0.73,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation_name": None,
+                "best_val_accuracy": 0.72,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"), raw_results=raw_results)
+
+    assert tick_calls[-1] == ([0, 1, 2, 3], ["1", "4x4", "7x7", "10x10"])
+    assert "Ablation" in legend_titles
+    assert "Condition" in legend_titles
+    assert "patch_shuffle" in legend_labels
+    assert "regular_part1" not in legend_labels
+    assert "Baseline: no permutation" not in legend_labels
+    assert 0.0 in hlines
+
+
+def test_plot_ablation_results_intermediate_mode_hides_aggregate_points(monkeypatch, tmp_path):
+    markers = []
+    legend_labels = []
+    legend_titles = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "tile_permutation_name": "medium",
+                "best_val_accuracy": 0.74,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 3,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.73,
+            },
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        raw_results=raw_results,
+        show_raw_points=True,
+        show_aggregate_points=False,
+    )
+
+    assert markers == [
+        PERMUTATION_MARKERS["easy"],
+        PERMUTATION_MARKERS["medium"],
+        PERMUTATION_MARKERS["hard"],
+    ]
+    assert "Ablation" not in legend_titles
+    assert "Condition" in legend_titles
+    assert "Baseline: no permutation" not in legend_labels
+
+
+def test_plot_ablation_results_final_mode_hides_raw_condition_points(monkeypatch, tmp_path):
+    markers = []
+    legend_labels = []
+    legend_titles = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        if labels is None and handles is not None:
+            labels = [handle.get_label() for handle in handles]
+        legend_labels.extend(labels or [])
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_augmentations",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.76,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            }
+        ]
+    )
+
+    plot_ablation_results(
+        aggregated,
+        str(tmp_path / "ablation.png"),
+        raw_results=raw_results,
+        show_raw_points=False,
+        show_aggregate_points=True,
+    )
+
+    assert markers == ["o", "o"]
+    assert "Ablation" in legend_titles
+    assert "Condition" not in legend_titles
+    assert "patch_shuffle" in legend_labels
+    assert "regular_augmentations" in legend_labels
+    assert "regular_part1" not in legend_labels
+
+
+def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_path):
+    markers = []
+
+    def fake_scatter(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", lambda self, *args, **kwargs: None)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "tile_permutation_name": "hard",
+                "best_val_accuracy": 0.73,
+            },
+        ]
+    )
+
+    plot_ablation_results(aggregated, str(tmp_path / "ablation.png"), raw_results=raw_results)
+
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+
+
+def test_part2_grid_baseline_deltas_match_tile_permutation_before_grid_fallback():
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.60,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 7,
+                "num_tiles": 49,
+                "mean_best_epoch_val_accuracy": 0.80,
+            },
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.70,
+            },
+        ]
+    )
+    raw_results = pd.DataFrame(
+        [
+            {
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.50,
+            },
+            {
+                "ablation_name": "regular_part1",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.75,
+            },
+        ]
+    )
+
+    aggregated_delta, raw_delta = add_part2_grid_baseline_deltas(aggregated, raw_results)
+
+    row = aggregated_delta[aggregated_delta["ablation_name"] == "patch_shuffle"].iloc[0]
+    assert row["delta_vs_grid_baseline"] == pytest.approx(0.10)
+    raw_row = raw_delta[raw_delta["ablation_name"] == "patch_shuffle"].iloc[0]
+    assert raw_row["delta_vs_grid_baseline"] == pytest.approx(0.05)
+
+
+def test_intermediate_figure_path_uses_part_and_slug(tmp_path):
+    path = experiment_intermediate_figure_path(str(tmp_path), "part1", "accuracy vs tiles resnet18")
+
+    assert path == str(tmp_path / "intermediate" / "part1_accuracy_vs_tiles_resnet18.png")
 
 
 def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
@@ -345,6 +1205,22 @@ def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
     }
 
 
+def test_part3_metrics_rebuild_named_deterministic_records_when_csv_is_missing(tmp_path):
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=str(tmp_path / "missing_tile_permutations.csv"),
+        tiles_per_side_values=[1, 4, 7, 10],
+        num_tile_permutations=3,
+        seed=42,
+        validation_samples=[],
+        image_size=224,
+    )
+
+    assert len(metrics) == 12
+    assert metrics["tile_permutation_name"].tolist() == ["easy", "medium", "hard"] * 4
+    assert metrics.loc[:2, "global_tile_displacement"].eq(0.0).all()
+    assert set(metrics.loc[3:, "tiles_per_side"]) == {4, 7, 10}
+
+
 def test_part3_non_identity_2x2_tile_permutation_has_nonzero_metric(tmp_path):
     pd.DataFrame(
         [
@@ -441,10 +1317,63 @@ def test_part3_hardness_analysis_raises_for_all_zero_tiled_non_identity_metrics(
         )
 
 
-def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
+def test_part3_hardness_analysis_normalizes_joined_permutation_metadata(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "tiles_per_side": 2,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "hard",
+                "tile_permutation_seed": 42,
+                "tile_permutation": "[[[1, 0], [0, 1]], [[1, 1], [0, 0]]]",
+            }
+        ]
+    ).to_csv(tmp_path / "part1_tile_permutations.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "tile_permutation_seed": 7,
+                "best_val_accuracy": 0.75,
+                "val_accuracy": 0.70,
+            }
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    results = run_part3_hardness_analysis(
+        results_dir=str(tmp_path),
+        figures_dir=str(tmp_path),
+        part1_results_csv=str(tmp_path / "part1_raw_results.csv"),
+        tile_permutation_csv=str(tmp_path / "part1_tile_permutations.csv"),
+        tiles_per_side_values=[2],
+        num_tile_permutations=1,
+        seed=42,
+        validation_samples=_validation_samples(tmp_path),
+        image_size=4,
+        model_name="resnet18",
+        verbose=False,
+        show_progress=False,
+    )
+
+    assert "tile_permutation_name" in results["joined"].columns
+    assert "tile_permutation_name_x" not in results["joined"].columns
+    assert "tile_permutation_name_y" not in results["joined"].columns
+    assert results["joined"].loc[0, "tile_permutation_name"] == "hard"
+    assert results["joined"].loc[0, "tile_permutation_seed"] == 42
+
+
+def test_part3_metric_grid_plots_are_reported_by_output_paths(tmp_path):
     joined = pd.DataFrame(
         [
             {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 0,
+                "tile_permutation_name": None,
                 "best_val_accuracy": 0.70,
                 "global_tile_displacement": 0.10,
                 "adjacency_destruction_hardness": 0.30,
@@ -452,6 +1381,10 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
                 "combined_hardness_score": 0.25,
             },
             {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "hard",
                 "best_val_accuracy": 0.60,
                 "global_tile_displacement": 0.80,
                 "adjacency_destruction_hardness": 0.90,
@@ -461,11 +1394,105 @@ def test_part3_combined_plot_is_reported_by_output_paths(tmp_path):
         ]
     )
 
-    plot_part3_metrics_vs_accuracy(joined, str(tmp_path))
+    output_paths = plot_part3_metric_grid_views(joined, str(tmp_path), "combined_hardness_score")
     paths = part3_output_paths(str(tmp_path), str(tmp_path))
 
-    assert paths["plots"] == [str(tmp_path / "part3_metrics_vs_accuracy.png")]
-    assert (tmp_path / "part3_metrics_vs_accuracy.png").exists()
+    assert output_paths == {
+        "grid_hardness": str(tmp_path / "part3_combined_hardness_grid_vs_hardness.png"),
+        "grid_hardness_accuracy_3d": str(tmp_path / "part3_combined_hardness_grid_hardness_accuracy_3d.png"),
+    }
+    assert paths["plots"] == [
+        str(tmp_path / "part3_combined_hardness_grid_vs_hardness.png"),
+        str(tmp_path / "part3_combined_hardness_grid_hardness_accuracy_3d.png"),
+    ]
+    assert paths["metric_plots"]["combined_hardness_score"] == output_paths
+
+
+def test_part3_metric_grid_plots_use_condition_markers_and_grid_axes(monkeypatch, tmp_path):
+    markers = []
+    scatter_args = []
+    xtick_labels = []
+
+    def fake_scatter_2d(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+        scatter_args.append(args)
+
+    def fake_scatter_3d(self, *args, **kwargs):
+        markers.append(kwargs.get("marker"))
+        scatter_args.append(args)
+
+    def fake_set_xticks(self, ticks, labels=None, *args, **kwargs):
+        if labels is not None:
+            xtick_labels.extend(labels)
+
+    monkeypatch.setattr("matplotlib.axes.Axes.scatter", fake_scatter_2d)
+    monkeypatch.setattr("mpl_toolkits.mplot3d.axes3d.Axes3D.scatter", fake_scatter_3d)
+    monkeypatch.setattr("matplotlib.axes.Axes.set_xticks", fake_set_xticks)
+    joined = pd.DataFrame(
+        [
+            {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.70,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "easy",
+                "global_tile_displacement": 0.10,
+                "adjacency_destruction_hardness": 0.30,
+                "spatial_permutation_entropy": 0.20,
+                "combined_hardness_score": 0.25,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.65,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "easy",
+                "global_tile_displacement": 0.20,
+                "adjacency_destruction_hardness": 0.35,
+                "spatial_permutation_entropy": 0.25,
+                "combined_hardness_score": 0.30,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 2,
+                "best_val_accuracy": 0.62,
+                "tile_permutation_name_x": "hard",
+                "tile_permutation_name_y": "medium",
+                "global_tile_displacement": 0.40,
+                "adjacency_destruction_hardness": 0.50,
+                "spatial_permutation_entropy": 0.45,
+                "combined_hardness_score": 0.48,
+            },
+            {
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 3,
+                "best_val_accuracy": 0.60,
+                "tile_permutation_name_x": "easy",
+                "tile_permutation_name_y": "hard",
+                "global_tile_displacement": 0.80,
+                "adjacency_destruction_hardness": 0.90,
+                "spatial_permutation_entropy": 0.70,
+                "combined_hardness_score": 0.70,
+            },
+        ]
+    )
+
+    plot_part3_metric_grid_views(joined, str(tmp_path), "combined_hardness_score")
+
+    assert PERMUTATION_MARKERS["baseline"] in markers
+    assert PERMUTATION_MARKERS["easy"] in markers
+    assert PERMUTATION_MARKERS["medium"] in markers
+    assert PERMUTATION_MARKERS["hard"] in markers
+    assert xtick_labels[:2] == ["1", "2x2"]
+    assert list(scatter_args[0][0]) == [0]
+    assert list(scatter_args[0][1]) == [0.25]
+    assert len(scatter_args[0]) == 2
+    assert len(scatter_args[-1]) == 3
+    assert list(scatter_args[-1][2]) == [0.60]
 
 
 def test_part3_correlations_are_nan_for_constant_accuracy():

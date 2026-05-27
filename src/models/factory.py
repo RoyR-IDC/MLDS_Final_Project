@@ -75,6 +75,7 @@ def get_model(
     pretrained: bool = False,
     device: Optional[TorchDevice] = None,
     freeze_backbone: bool = True,
+    classification_head: str = "linear",
 ) -> nn.Module:
     """Create one of the three supported lightweight image classifiers.
 
@@ -87,6 +88,8 @@ def get_model(
         freeze_backbone: Whether to freeze feature extractor parameters. Defaults
             to ``True`` so experiment runs train only the classifier head unless
             explicitly opted out.
+        classification_head: ResNet-18 classifier head variant, either
+            ``"linear"`` or ``"mlp"``.
 
     Returns:
         A PyTorch model.
@@ -98,9 +101,22 @@ def get_model(
         pretrained=pretrained,
         freeze_backbone=freeze_backbone,
     )
+    head_name = str(classification_head or "linear").lower()
     if key == "resnet18":
         model = tv_models.resnet18(weights=_weights(tv_models.ResNet18_Weights, options.pretrained))
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        in_features = model.fc.in_features
+        if head_name == "linear":
+            model.fc = nn.Linear(in_features, num_classes)
+        elif head_name == "mlp":
+            model.fc = nn.Sequential(
+                nn.Linear(in_features, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=0.3),
+                nn.Linear(256, num_classes),
+            )
+        else:
+            raise ValueError(f"Unsupported ResNet-18 classification_head: {classification_head}")
     elif key in TIMM_MODEL_IDS:
         model_id = TIMM_MODEL_IDS[key]
         model = timm.create_model(model_id, pretrained=options.pretrained, num_classes=num_classes)

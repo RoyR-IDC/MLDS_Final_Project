@@ -4,6 +4,7 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from PIL import Image
+from torchvision import transforms
 
 from src.preprocessing.dataloaders import build_dataloaders
 import src.preprocessing.dataloaders as dataloaders_module
@@ -66,6 +67,34 @@ def test_dataloader_can_crop_tile_compatible_image_back_to_model_size(tmp_path):
 
     assert images.shape == (2, 3, 224, 224)
     assert targets.shape == (2,)
+
+
+def test_regular_augmentations_are_train_only(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    samples = []
+    for index in range(4):
+        label_name = "cat" if index % 2 == 0 else "dog"
+        path = data_dir / f"{label_name}.{index}.jpg"
+        _make_image(path, (index * 40 % 255, index * 70 % 255, index * 100 % 255))
+        samples.append((str(path), 0 if label_name == "cat" else 1))
+
+    train_loader, val_loader = build_dataloaders(
+        samples[:2],
+        samples[2:],
+        image_size=224,
+        batch_size=2,
+        num_workers=0,
+        image_augmentation="regular_augmentations",
+    )
+
+    train_transform_types = [type(transform) for transform in train_loader.dataset.transform.transforms]
+    val_transform_types = [type(transform) for transform in val_loader.dataset.transform.transforms]
+
+    assert transforms.RandomRotation in train_transform_types
+    assert transforms.ColorJitter in train_transform_types
+    assert transforms.RandomRotation not in val_transform_types
+    assert transforms.ColorJitter not in val_transform_types
 
 
 def test_dataloader_uses_cuda_loader_options_when_workers_enabled(tmp_path, monkeypatch):

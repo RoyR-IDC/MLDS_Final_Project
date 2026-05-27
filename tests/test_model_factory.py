@@ -1,6 +1,9 @@
 import pytest
 import timm
 
+torch = pytest.importorskip("torch")
+nn = pytest.importorskip("torch.nn")
+
 from src.models.factory import TIMM_MODEL_IDS, get_model, resolve_model_training_options
 
 
@@ -31,6 +34,34 @@ def test_model_factory_freezes_backbone_by_default_for_resnet18():
     }
 
     assert trainable_names == {"fc.weight", "fc.bias"}
+
+
+def test_model_factory_builds_trainable_resnet18_mlp_head_with_frozen_backbone():
+    model = get_model(
+        "resnet18",
+        num_classes=2,
+        pretrained=False,
+        freeze_backbone=True,
+        classification_head="mlp",
+    )
+
+    output = model(torch.zeros((2, 3, 224, 224)))
+    trainable_names = {
+        name
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+
+    assert output.shape == (2, 2)
+    assert isinstance(model.fc, nn.Sequential)
+    assert trainable_names == {
+        "fc.0.weight",
+        "fc.0.bias",
+        "fc.1.weight",
+        "fc.1.bias",
+        "fc.4.weight",
+        "fc.4.bias",
+    }
 
 
 def test_model_factory_freezes_pretrained_mlp_mixer_base_head_only():
