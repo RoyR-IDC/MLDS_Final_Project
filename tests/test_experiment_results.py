@@ -731,8 +731,10 @@ def test_plot_ablation_results_uses_grid_axis_and_filters_baseline_legends(monke
 
     assert tick_calls[-1] == ([0, 1, 2, 3], ["1", "4x4", "7x7", "10x10"])
     assert "Ablation" in legend_titles
+    assert "Reference" in legend_titles
     assert "Condition" in legend_titles
     assert "patch_shuffle" in legend_labels
+    assert "Matched Part 1 grid baseline reference" in legend_labels
     assert "regular_part1" not in legend_labels
     assert "Baseline: no permutation" not in legend_labels
     assert 0.0 in hlines

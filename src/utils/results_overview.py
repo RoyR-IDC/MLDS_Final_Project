@@ -203,11 +203,26 @@ def part3_figures(figures_dir: Path) -> list[Path]:
     return sorted(paths, key=_part3_figure_sort_key)
 
 
-def ensure_part3_hardness_examples_figure(project_root: Path) -> Path:
-    """Save the Part 3 example-image hardness plot if it is missing."""
+def _deduplicate_part3_baseline_rows(tile_permutations: pd.DataFrame) -> pd.DataFrame:
+    """Keep one no-permutation baseline row while preserving all real permutations."""
+
+    if tile_permutations.empty:
+        return tile_permutations
+
+    is_baseline = tile_permutations["tiles_per_side"].isna()
+    if "tile_permutation" in tile_permutations.columns:
+        is_baseline = is_baseline | tile_permutations["tile_permutation"].isna()
+
+    baseline_rows = tile_permutations[is_baseline].head(1)
+    permutation_rows = tile_permutations[~is_baseline]
+    return pd.concat([baseline_rows, permutation_rows], ignore_index=True)
+
+
+def ensure_part3_hardness_examples_figure(project_root: Path, *, force: bool = False) -> Path:
+    """Save the Part 3 example-image hardness plot if it is missing or forced."""
 
     output_path = overview_paths(project_root)["part3_hardness_examples"]
-    if output_path.exists():
+    if output_path.exists() and not force:
         return output_path
 
     import matplotlib.pyplot as plt
@@ -240,6 +255,7 @@ def ensure_part3_hardness_examples_figure(project_root: Path) -> Path:
         num_tile_permutations=config.num_tile_permutations,
         seed=config.seed,
     ).copy()
+    tile_permutations = _deduplicate_part3_baseline_rows(tile_permutations)
     tile_permutations["_tiles_sort"] = tile_permutations["tiles_per_side"].fillna(0).astype(int)
     tile_permutations = tile_permutations.sort_values(["_tiles_sort", "tile_permutation_id"])
 
@@ -279,7 +295,7 @@ def ensure_part3_hardness_examples_figure(project_root: Path) -> Path:
         rows.append(
             {
                 "grid": "baseline" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}",
-                "tile_permutation_name": row.get("tile_permutation_name"),
+                "tile_permutation_name": "no permutation" if tile_permutation is None else row.get("tile_permutation_name"),
                 "image_array": displayed_tensor.permute(1, 2, 0).clamp(0.0, 1.0).cpu().numpy(),
                 "adjacency_destruction_hardness": adjacency_hardness,
                 "global_tile_displacement": global_displacement,

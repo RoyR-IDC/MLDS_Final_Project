@@ -75,6 +75,7 @@ CONDITION_LABELS = {
     "baseline": "Baseline: no permutation",
     "unknown": "unknown",
 }
+PART2_DELTA_REFERENCE_LABEL = "Matched Part 1 grid baseline reference"
 
 
 def _read_csv_dataframe(path: str) -> pd.DataFrame:
@@ -366,6 +367,18 @@ def _add_permutation_marker_legend(
     if marker_legend is not None:
         ax.add_artist(marker_legend)
     return marker_legend
+
+
+def _part2_delta_reference_handle() -> plt.Line2D:
+    return plt.Line2D(
+        [0],
+        [0],
+        color="0.25",
+        linewidth=1.0,
+        linestyle="--",
+        alpha=0.8,
+        label=PART2_DELTA_REFERENCE_LABEL,
+    )
 
 
 def add_part2_grid_baseline_deltas(
@@ -822,8 +835,17 @@ def plot_ablation_results(
                 label="_nolegend_",
             )
 
+    reference_handle = None
     if y_column == "delta_vs_grid_baseline":
-        ax.axhline(0.0, color="0.25", linewidth=1.0, linestyle="--", alpha=0.8)
+        reference_handle = _part2_delta_reference_handle()
+        ax.axhline(
+            0.0,
+            color="0.25",
+            linewidth=1.0,
+            linestyle="--",
+            alpha=0.8,
+            label=PART2_DELTA_REFERENCE_LABEL,
+        )
     ax.set_xlabel("Grid size")
     ax.set_ylabel(
         "Best validation accuracy - matched Part 1 grid baseline"
@@ -852,6 +874,17 @@ def plot_ablation_results(
     extra_artists = []
     if ablation_legend is not None:
         extra_artists.append(ablation_legend)
+    reference_legend = None
+    if reference_handle is not None:
+        reference_legend = ax.legend(
+            handles=[reference_handle],
+            title="Reference",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 0.66 if ablation_legend is None else 0.42) if has_raw_points else None,
+        )
+        if reference_legend is not None:
+            ax.add_artist(reference_legend)
+            extra_artists.append(reference_legend)
     if has_raw_points:
         marker_order = [name for name in ("easy", "medium", "hard", "baseline", "unknown") if name in marker_names_used]
         marker_legend = _add_permutation_marker_legend(
