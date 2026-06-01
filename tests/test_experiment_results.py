@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Mapping
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -25,6 +26,7 @@ from src.evaluation.experiment_results import (
     plot_ablation_results,
     plot_accuracy_vs_tiles,
     plot_part3_metric_grid_views,
+    refresh_part2_ablation_comparison_figure,
     run_part3_hardness_analysis,
     save_rows,
 )
@@ -966,6 +968,107 @@ def test_plot_ablation_results_overlays_permutation_markers(monkeypatch, tmp_pat
 
     assert PERMUTATION_MARKERS["easy"] in markers
     assert PERMUTATION_MARKERS["hard"] in markers
+
+
+def test_plot_ablation_results_can_skip_archiving_existing_figure(monkeypatch, tmp_path):
+    def fail_archive(_output_path):
+        raise AssertionError("archive should not be called")
+
+    monkeypatch.setattr("src.evaluation.experiment_results._archive_existing_figure", fail_archive)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    )
+    output_path = tmp_path / "ablation.png"
+    output_path.write_bytes(b"old figure")
+
+    plot_ablation_results(aggregated, str(output_path), archive_existing=False)
+
+    assert output_path.exists()
+
+
+def test_refresh_part2_ablation_comparison_copies_original_and_passes_raw_results(monkeypatch, tmp_path):
+    results_dir = tmp_path / "results"
+    figures_dir = tmp_path / "figures"
+    results_dir.mkdir()
+    figures_dir.mkdir()
+    aggregated_path = results_dir / "part2_aggregated_results.csv"
+    raw_path = results_dir / "part2_raw_results.csv"
+    figure_path = figures_dir / "part2_ablation_comparison.png"
+    original_bytes = b"original figure bytes"
+    figure_path.write_bytes(original_bytes)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.75,
+                "std_best_epoch_val_accuracy": 0.0,
+            },
+        ]
+    ).to_csv(aggregated_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "ablation_name": "patch_shuffle",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "best_val_accuracy": 0.75,
+            },
+        ]
+    ).to_csv(raw_path, index=False)
+    captured = {}
+
+    def fake_plot_ablation_results(
+        aggregated,
+        output_path,
+        raw_results=None,
+        title=None,
+        show_raw_points=True,
+        show_aggregate_points=True,
+        archive_existing=True,
+    ):
+        del title
+        captured["aggregated"] = aggregated
+        captured["raw_results"] = raw_results
+        captured["show_raw_points"] = show_raw_points
+        captured["show_aggregate_points"] = show_aggregate_points
+        captured["archive_existing"] = archive_existing
+        Path(output_path).write_bytes(b"refreshed figure bytes")
+
+    monkeypatch.setattr(
+        "src.evaluation.experiment_results.plot_ablation_results",
+        fake_plot_ablation_results,
+    )
+
+    paths = refresh_part2_ablation_comparison_figure(
+        results_dir=str(results_dir),
+        figures_dir=str(figures_dir),
+    )
+
+    original_path = figures_dir / "part2_ablation_comparison_original.png"
+    assert original_path.read_bytes() == original_bytes
+    assert figure_path.read_bytes() == b"refreshed figure bytes"
+    assert paths["figure"] == str(figure_path)
+    assert paths["original_figure"] == str(original_path)
+    assert captured["raw_results"] is not None
+    assert captured["raw_results"]["tile_permutation_name"].tolist() == ["easy"]
+    assert captured["show_raw_points"] is True
+    assert captured["show_aggregate_points"] is True
+    assert captured["archive_existing"] is False
 
 
 def test_part2_grid_baseline_deltas_match_tile_permutation_before_grid_fallback():

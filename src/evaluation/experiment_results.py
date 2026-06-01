@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Sequence, cast
@@ -48,6 +49,7 @@ __all__ = [
     "experiment_output_paths",
     "save_aggregated_accuracy",
     "save_rows",
+    "refresh_part2_ablation_comparison_figure",
 ]
 
 
@@ -114,6 +116,28 @@ def _archive_existing_figure(output_path: str) -> str | None:
         suffix_index += 1
     path.rename(archive_path)
     return str(archive_path)
+
+
+def _copy_existing_figure_as_original(output_path: str, original_stem_suffix: str = "original") -> str | None:
+    """Copy an existing figure to a stable original-file path before overwriting it."""
+
+    path = Path(output_path)
+    if not path.exists():
+        return None
+
+    original_path = path.with_name(f"{path.stem}_{original_stem_suffix}{path.suffix}")
+    if original_path.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_path = path.with_name(f"{path.stem}_{original_stem_suffix}_{timestamp}{path.suffix}")
+        suffix_index = 1
+        while original_path.exists():
+            original_path = path.with_name(
+                f"{path.stem}_{original_stem_suffix}_{timestamp}_{suffix_index}{path.suffix}"
+            )
+            suffix_index += 1
+
+    shutil.copy2(path, original_path)
+    return str(original_path)
 
 
 def _permutation_marker_name(value: object) -> str:
@@ -682,6 +706,7 @@ def plot_ablation_results(
     title: str | None = None,
     show_raw_points: bool = True,
     show_aggregate_points: bool = True,
+    archive_existing: bool = True,
 ) -> None:
     """Save a baseline-vs-improvement ablation plot.
 
@@ -692,6 +717,7 @@ def plot_ablation_results(
         title: Optional explicit plot title.
         show_raw_points: Whether to overlay individual permutation-condition runs.
         show_aggregate_points: Whether to draw aggregate ablation points.
+        archive_existing: Whether to timestamp-rename an existing figure before saving.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
@@ -840,9 +866,51 @@ def plot_ablation_results(
         fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
     else:
         fig.tight_layout()
-    _archive_existing_figure(output_path)
+    if archive_existing:
+        _archive_existing_figure(output_path)
     fig.savefig(output_path, dpi=160, bbox_inches="tight", bbox_extra_artists=extra_artists)
     plt.close(fig)
+
+
+def refresh_part2_ablation_comparison_figure(
+    *,
+    results_dir: str = os.path.join("outputs", "results"),
+    figures_dir: str = os.path.join("outputs", "figures"),
+    aggregated_results_path: str | None = None,
+    raw_results_path: str | None = None,
+    output_path: str | None = None,
+    original_stem_suffix: str = "original",
+) -> dict[str, str | None]:
+    """Refresh the final Part 2 ablation figure while preserving the current image.
+
+    The refreshed plot uses ablation colors and raw permutation marker shapes, matching
+    the marker convention used by the final Part 1 graph.
+    """
+
+    aggregated_results_path = aggregated_results_path or os.path.join(results_dir, "part2_aggregated_results.csv")
+    raw_results_path = raw_results_path or os.path.join(results_dir, "part2_raw_results.csv")
+    output_path = output_path or os.path.join(figures_dir, "part2_ablation_comparison.png")
+
+    aggregated = _read_csv_dataframe(aggregated_results_path)
+    raw_results = _read_csv_dataframe(raw_results_path)
+    copied_original_path = _copy_existing_figure_as_original(
+        output_path,
+        original_stem_suffix=original_stem_suffix,
+    )
+    plot_ablation_results(
+        aggregated,
+        output_path,
+        raw_results=raw_results,
+        show_raw_points=True,
+        show_aggregate_points=True,
+        archive_existing=False,
+    )
+    return {
+        "figure": output_path,
+        "original_figure": copied_original_path,
+        "aggregated_results": aggregated_results_path,
+        "raw_results": raw_results_path,
+    }
 
 
 def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
