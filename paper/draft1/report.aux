@@ -3,70 +3,82 @@
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \citation{boyle2019permuted}
-\citation{boyle2019permuted}
 \citation{he2016deep}
-\citation{goodfellow2016deep}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}{section.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {2}Related Works}{2}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Data Overview}{2}{section.3}\protected@file@percent }
-\citation{he2016deep}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{3}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Training and Validation Sets by Experiment}{3}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Deterministic Permutation Functions}{3}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Spatial Structure and Convolutional Inductive Bias}{2}{subsection.2.1}\protected@file@percent }
 \citation{touvron2021deit}
 \citation{tolstikhin2021mlp}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Part 1 training and validation sets. The same split is reused for ResNet-18, DeiT-Tiny, and MLP-Mixer Base, and each remote run trains for 10 epochs.}}{4}{table.1}\protected@file@percent }
-\newlabel{tab:part1-train-validation}{{1}{4}{Part 1 training and validation sets. The same split is reused for ResNet-18, DeiT-Tiny, and MLP-Mixer Base, and each remote run trains for 10 epochs}{table.1}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Simplified MLP-Mixer flow. Token mixing exchanges information across patches, while channel mixing recombines features within each patch representation.}}{4}{figure.1}\protected@file@percent }
-\newlabel{fig:mlp-mixer-flow}{{1}{4}{Simplified MLP-Mixer flow. Token mixing exchanges information across patches, while channel mixing recombines features within each patch representation}{figure.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Architecture Comparison and Frozen Backbones}{4}{subsection.4.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Improvement Strategies}{5}{subsection.4.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.1}Regular Part 1 Baseline}{5}{subsubsection.4.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.2}Patch Shuffle}{5}{subsubsection.4.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.3}Regular Augmentations}{6}{subsubsection.4.4.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.4}Mixed Original/Permuted Training}{6}{subsubsection.4.4.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.5}ResNet-18 MLP Head}{6}{subsubsection.4.4.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.6}Corruption-Probability Curriculum}{7}{subsubsection.4.4.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.7}Permutation-Difficulty Curriculum}{7}{subsubsection.4.4.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Tile Permutation Hardness Metrics}{7}{subsection.4.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.1}Adjacency Destruction Hardness}{7}{subsubsection.4.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.2}Global Tile Displacement}{8}{subsubsection.4.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.3}Spatial Permutation Entropy}{8}{subsubsection.4.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.4}Combined Hardness Score}{8}{subsubsection.4.5.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Part 1 validation accuracy as a function of tile count for ResNet-18, DeiT-Tiny, and MLP-Mixer Base.}}{9}{figure.2}\protected@file@percent }
-\newlabel{fig:part1-accuracy}{{2}{9}{Part 1 validation accuracy as a function of tile count for ResNet-18, DeiT-Tiny, and MLP-Mixer Base}{figure.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Results}{9}{section.5}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline.}}{9}{figure.3}\protected@file@percent }
-\newlabel{fig:part2-ablation}{{3}{9}{Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline}{figure.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{10}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion and Future Work}{10}{section.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Part 2 training and validation sets by ablation. The final output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation.}}{11}{table.2}\protected@file@percent }
-\newlabel{tab:part2-train-validation}{{2}{11}{Part 2 training and validation sets by ablation. The final output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation}{table.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Part 2 ablation experiment design. Non-curriculum ablations train for 10 epochs; both curriculum ablations train for 30 epochs. None of the ablations duplicate files on disk.}}{12}{table.3}\protected@file@percent }
-\newlabel{tab:part2-ablation-design}{{3}{12}{Part 2 ablation experiment design. Non-curriculum ablations train for 10 epochs; both curriculum ablations train for 30 epochs. None of the ablations duplicate files on disk}{table.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Part 3 example permutations and model-agnostic hardness metrics for the deterministic grid and difficulty settings.}}{13}{figure.4}\protected@file@percent }
-\newlabel{fig:part3-hardness-examples}{{4}{13}{Part 3 example permutations and model-agnostic hardness metrics for the deterministic grid and difficulty settings}{figure.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits.}}{14}{table.4}\protected@file@percent }
-\newlabel{tab:part3-train-validation}{{4}{14}{Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits}{table.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Architectural comparison of the three frozen feature extractors.}}{14}{table.5}\protected@file@percent }
-\newlabel{tab:model-architecture-comparison}{{5}{14}{Architectural comparison of the three frozen feature extractors}{table.5}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}}{14}{table.6}\protected@file@percent }
-\newlabel{tab:model-parameter-comparison}{{6}{14}{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass}{table.6}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Combined hardness score by grid size and deterministic difficulty label.}}{14}{figure.5}\protected@file@percent }
-\newlabel{fig:part3-combined-hardness}{{5}{14}{Combined hardness score by grid size and deterministic difficulty label}{figure.5}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Adjacency destruction, grid size, and ResNet-18 best validation accuracy across the joined deterministic records.}}{14}{figure.6}\protected@file@percent }
-\newlabel{fig:part3-adjacency-accuracy}{{6}{14}{Adjacency destruction, grid size, and ResNet-18 best validation accuracy across the joined deterministic records}{figure.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Tile permutation hardness metrics used in the analysis.}}{15}{table.7}\protected@file@percent }
-\newlabel{tab:tile-permutation-hardness-metrics}{{7}{15}{Tile permutation hardness metrics used in the analysis}{table.7}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}}{15}{table.8}\protected@file@percent }
-\newlabel{tab:part1-results}{{8}{15}{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size}{table.8}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas.}}{15}{table.9}\protected@file@percent }
-\newlabel{tab:part2-results}{{9}{15}{Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas}{table.9}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Part 3 correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records.}}{16}{table.10}\protected@file@percent }
-\newlabel{tab:part3-correlations}{{10}{16}{Part 3 correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records}{table.10}{}}
+\citation{goodfellow2016deep}
+\citation{boyle2019permuted}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Patch-Based and Attention-Based Vision Models}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Jigsaw Tasks, Patch Shuffling, and Spatial Pretexts}{3}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Robustness, Augmentation, and Curricula}{3}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Cryptographic and Permuted-Puzzle Motivation}{3}{subsection.2.5}\protected@file@percent }
+\citation{he2016deep}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Data Overview}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{4}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Training and Validation Sets by Experiment}{4}{subsection.4.1}\protected@file@percent }
+\citation{touvron2021deit}
+\citation{tolstikhin2021mlp}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Part 1 training and validation sets. The same split is reused for ResNet-18, DeiT-Tiny, and MLP-Mixer Base, and each remote run trains for 10 epochs.}}{5}{table.1}\protected@file@percent }
+\newlabel{tab:part1-train-validation}{{1}{5}{Part 1 training and validation sets. The same split is reused for ResNet-18, DeiT-Tiny, and MLP-Mixer Base, and each remote run trains for 10 epochs}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Deterministic Permutation Functions}{5}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Architecture Comparison and Frozen Backbones}{5}{subsection.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Simplified MLP-Mixer flow. Token mixing exchanges information across patches, while channel mixing recombines features within each patch representation.}}{6}{figure.1}\protected@file@percent }
+\newlabel{fig:mlp-mixer-flow}{{1}{6}{Simplified MLP-Mixer flow. Token mixing exchanges information across patches, while channel mixing recombines features within each patch representation}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Improvement Strategies}{6}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.1}Regular Part 1 Baseline}{7}{subsubsection.4.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.2}Patch Shuffle}{7}{subsubsection.4.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.3}Regular Augmentations}{7}{subsubsection.4.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.4}Mixed Original/Permuted Training}{8}{subsubsection.4.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.5}ResNet-18 MLP Head}{8}{subsubsection.4.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.6}Corruption-Probability Curriculum}{8}{subsubsection.4.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.7}Permutation-Difficulty Curriculum}{8}{subsubsection.4.4.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Tile Permutation Hardness Metrics}{9}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.1}Adjacency Destruction Hardness}{9}{subsubsection.4.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.2}Global Tile Displacement}{9}{subsubsection.4.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.3}Spatial Permutation Entropy}{10}{subsubsection.4.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.4}Combined Hardness Score}{10}{subsubsection.4.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Reproducibility Checklist}{10}{subsection.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation Protocol}{10}{section.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption.}}{11}{figure.2}\protected@file@percent }
+\newlabel{fig:part1-accuracy}{{2}{11}{Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption}{figure.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Results}{11}{section.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset.}}{11}{figure.3}\protected@file@percent }
+\newlabel{fig:part2-ablation}{{3}{11}{Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset}{figure.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{12}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations}{13}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion and Future Work}{13}{section.9}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Part 2 training and validation sets by ablation. The final output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation.}}{14}{table.2}\protected@file@percent }
+\newlabel{tab:part2-train-validation}{{2}{14}{Part 2 training and validation sets by ablation. The final output matrix uses ResNet-18 with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Part 2 ablation experiment design. Non-curriculum ablations train for 10 epochs; both curriculum ablations train for 30 epochs. None of the ablations duplicate files on disk.}}{15}{table.3}\protected@file@percent }
+\newlabel{tab:part2-ablation-design}{{3}{15}{Part 2 ablation experiment design. Non-curriculum ablations train for 10 epochs; both curriculum ablations train for 30 epochs. None of the ablations duplicate files on disk}{table.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Part 3 example permutations and model-agnostic hardness metrics for the deterministic grid and difficulty settings. The figure is intended to make the easy, medium, and hard presets visually comparable across grid sizes.}}{16}{figure.4}\protected@file@percent }
+\newlabel{fig:part3-hardness-examples}{{4}{16}{Part 3 example permutations and model-agnostic hardness metrics for the deterministic grid and difficulty settings. The figure is intended to make the easy, medium, and hard presets visually comparable across grid sizes}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits.}}{17}{table.4}\protected@file@percent }
+\newlabel{tab:part3-train-validation}{{4}{17}{Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits}{table.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Architectural comparison of the three frozen feature extractors.}}{17}{table.5}\protected@file@percent }
+\newlabel{tab:model-architecture-comparison}{{5}{17}{Architectural comparison of the three frozen feature extractors}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}}{17}{table.6}\protected@file@percent }
+\newlabel{tab:model-parameter-comparison}{{6}{17}{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass}{table.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Combined hardness score by grid size and deterministic difficulty label. The score aggregates normalized adjacency destruction, global displacement, and spatial entropy.}}{17}{figure.5}\protected@file@percent }
+\newlabel{fig:part3-combined-hardness}{{5}{17}{Combined hardness score by grid size and deterministic difficulty label. The score aggregates normalized adjacency destruction, global displacement, and spatial entropy}{figure.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Adjacency destruction, grid size, and ResNet-18 best validation accuracy across the 12 joined deterministic records. Lower accuracy is associated with higher adjacency destruction in this exploratory matrix.}}{17}{figure.6}\protected@file@percent }
+\newlabel{fig:part3-adjacency-accuracy}{{6}{17}{Adjacency destruction, grid size, and ResNet-18 best validation accuracy across the 12 joined deterministic records. Lower accuracy is associated with higher adjacency destruction in this exploratory matrix}{figure.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Tile permutation hardness metrics used in the analysis.}}{18}{table.7}\protected@file@percent }
+\newlabel{tab:tile-permutation-hardness-metrics}{{7}{18}{Tile permutation hardness metrics used in the analysis}{table.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Reproducibility checklist. Bracketed fields mark implementation details that should be reported from the code or notebooks rather than reconstructed from memory.}}{18}{table.8}\protected@file@percent }
+\newlabel{tab:reproducibility-checklist}{{8}{18}{Reproducibility checklist. Bracketed fields mark implementation details that should be reported from the code or notebooks rather than reconstructed from memory}{table.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}}{19}{table.9}\protected@file@percent }
+\newlabel{tab:part1-results}{{9}{19}{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size}{table.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas.}}{19}{table.10}\protected@file@percent }
+\newlabel{tab:part2-results}{{10}{19}{Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas}{table.10}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Part 3 correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records.}}{20}{table.11}\protected@file@percent }
+\newlabel{tab:part3-correlations}{{11}{20}{Part 3 correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records}{table.11}{}}
 \bibcite{boyle2019permuted}{{1}{2019}{{Boyle et~al.}}{{}}}
 \bibcite{goodfellow2016deep}{{2}{2016}{{Goodfellow et~al.}}{{}}}
 \bibcite{he2016deep}{{3}{2016}{{He et~al.}}{{}}}
 \bibcite{tolstikhin2021mlp}{{4}{2021}{{Tolstikhin et~al.}}{{}}}
 \bibcite{touvron2021deit}{{5}{2021}{{Touvron et~al.}}{{}}}
-\gdef \@abspage@last{17}
+\gdef \@abspage@last{21}
