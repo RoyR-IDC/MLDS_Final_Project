@@ -65,7 +65,7 @@
 {\small \today}\\[1em]
 \begin{flushleft}
 \begin{abstract}
-Spatial structure is central to natural-image classification, but pretrained models may retain class-discriminative information even when that structure is disrupted. This report studies binary Dogs-versus-Cats classification under fixed tile-wise permutations, motivated by structured-permutation hardness questions but evaluated as an empirical computer-vision testbed. Images from the Kaggle Dogs vs Cats dataset are divided into deterministic grid permutations across four grid settings and three permutation presets. The experiments compare frozen pretrained ResNet-18, DeiT-Tiny, and MLP-Mixer backbones with trained binary classification heads; evaluate ResNet-18 ablations involving augmentation, mixed-input training, classifier-head capacity, and curriculum strategies; and compute model-agnostic permutation hardness metrics joined to validation accuracy. Across the deterministic matrix, models remain far above chance, while accuracy decreases as tile count and permutation disruption increase. DeiT-Tiny is strongest in the frozen-backbone comparison, the ResNet-18 MLP head gives the largest average ablation improvement among the tested strategies, and adjacency destruction is the strongest predictor of lower ResNet-18 best validation accuracy among the tested hardness metrics. These findings are specific to fixed deterministic permutations and frozen pretrained representations. They do not establish that the models reconstruct or invert the permutation; high accuracy may also reflect surviving local texture, object-part, background, or other class-discriminative cues.
+Spatial structure is central to natural-image classification, but pretrained models may retain class-discriminative information even when that structure is disrupted. This report studies binary Dogs-versus-Cats classification under fixed tile-wise permutations, motivated by structured-permutation hardness questions but evaluated as an empirical computer-vision testbed. Images from the Kaggle Dogs vs Cats dataset are divided into square grids and transformed by deterministic tile rearrangements across four grid settings and three permutation presets. The experiments compare frozen pretrained ResNet-18, DeiT-Tiny, and MLP-Mixer backbones with trained binary classification heads; evaluate ResNet-18 ablations involving augmentation, mixed-input training, classifier-head capacity, and curriculum strategies; and compute model-agnostic permutation hardness metrics joined to validation accuracy. Across the deterministic matrix, models remain far above chance, while accuracy decreases as tile count and permutation disruption increase. DeiT-Tiny is strongest in the frozen-backbone comparison, the ResNet-18 MLP head gives the largest average ablation improvement among the tested strategies, and adjacency destruction has the strongest negative association with ResNet-18 best validation accuracy among the tested hardness metrics. These findings are specific to fixed deterministic permutations and frozen pretrained representations. They do not establish that the models reconstruct or invert the permutation; high accuracy may also reflect surviving local texture, object-part, background, or other class-discriminative cues.
 \end{abstract}
 \end{flushleft}
 \vspace{1em}
@@ -87,7 +87,7 @@ This report makes four modest empirical contributions:
   \item A set of model-agnostic permutation hardness metrics joined to validation accuracy.
 \end{itemize}
 
-The implementation is organized as a reproducible notebook-based workflow. Part 1 trains model baselines on unpermuted images and deterministic tile-wise permutations at $4$-by-$4$, $7$-by-$7$, and $10$-by-$10$ resolution. Part 2 tests improvement strategies for the same permuted setting, including patch shuffle, regular image augmentation, mixed original/permuted training, a larger ResNet-18 classification head, and two curricula. Part 3 computes permutation hardness metrics and joins them to validation accuracy so that image-independent permutation properties can be compared against model performance.
+The implementation is organized as a reproducible notebook-based workflow: notebooks define the executed experiment sequence, while supporting Python modules implement shared data loading, transformations, training, and result aggregation. Part 1 trains model baselines on the one-tile/no-permutation baseline and deterministic tile-wise permutations at $4$-by-$4$, $7$-by-$7$, and $10$-by-$10$ resolution. Part 2 tests improvement strategies for the same permuted setting, including patch shuffle, regular image augmentation, mixed original/permuted training, a larger ResNet-18 classification head, and two curricula. Part 3 computes permutation hardness metrics and joins them to validation accuracy so that image-independent permutation properties can be compared against model performance.
 
 \section{Related Works}
 
@@ -101,11 +101,11 @@ DeiT-Tiny and MLP-Mixer provide complementary comparisons because both operate o
 
 \subsection{Jigsaw Tasks, Patch Shuffling, and Spatial Pretexts}
 
-The experiment also relates to jigsaw-style and patch-shuffling vision tasks, where spatial rearrangement is used either as a corruption or as a self-supervised pretext objective [add citation]. In those settings, a model may be trained to infer correct spatial order or to learn representations from corrupted views. The present work is different: the goal is supervised Dogs-versus-Cats classification under a fixed deterministic tile-wise permutation, not explicit reconstruction of the original image or prediction of the permutation. This distinction matters because high classification accuracy does not imply that the model has recovered the original layout.
+The experiment also relates to jigsaw-style and patch-shuffling vision tasks, where spatial rearrangement is used either as a corruption or as a self-supervised pretext objective [add citation: jigsaw/self-supervised spatial pretext tasks]. In those settings, a model may be trained to infer correct spatial order or to learn representations from corrupted views. The present work is different: the goal is supervised Dogs-versus-Cats classification under a fixed deterministic tile-wise permutation, not explicit reconstruction of the original image or prediction of the permutation. This distinction matters because high classification accuracy does not imply that the model has recovered the original layout.
 
 \subsection{Robustness, Augmentation, and Curricula}
 
-The ResNet-18 ablations connect to broader regularization and robustness ideas in deep learning \citep{goodfellow2016deep}. Patch shuffle and regular image augmentations introduce additional stochastic variation during training. Mixed original/permuted training tests whether clean-layout examples help the classifier head learn cues that transfer to the permuted validation distribution. Curriculum learning variants test whether staged exposure to increasing corruption probability or increasing permutation difficulty improves optimization [add citation]. In this report, these methods are evaluated as practical interventions for a frozen pretrained ResNet-18, not as general claims about robustness under all spatial corruptions.
+The ResNet-18 ablations connect to broader regularization and robustness ideas in deep learning \citep{goodfellow2016deep}. Patch shuffle and regular image augmentations introduce additional stochastic variation during training. Mixed original/permuted training tests whether clean-layout examples help the classifier head learn cues that transfer to the permuted validation distribution. Curriculum learning variants test whether staged exposure to increasing corruption probability or increasing permutation difficulty improves optimization [add citation: curriculum learning]. In this report, these methods are evaluated as practical interventions for a frozen pretrained ResNet-18, not as general claims about robustness under all spatial corruptions.
 
 \subsection{Cryptographic and Permuted-Puzzle Motivation}
 
@@ -115,7 +115,7 @@ The motivating proposal cites permuted puzzles as a source of cryptographic hard
 
 The dataset is Kaggle's Dogs vs Cats image dataset, with labels inferred from filenames such as \texttt{cat.123.jpg} and \texttt{dog.456.jpg}. The repository expects labeled training images under \texttt{data/dogs-vs-cats/train}; the unlabeled Kaggle test folder is not used for validation accuracy. The supervised split is stratified and class-balanced, and the task is evaluated with validation accuracy on held-out labeled images.
 
-For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile-wise permutation is applied across images for a run. The final grid settings are one tile / none, 16 tiles, 49 tiles, and 100 tiles. The one-tile/no-permutation baseline is repeated under the easy, medium, and hard labels only so that all parts use the same $4 \times 3$ grid-permutation matrix. Aggregate summaries should account for the fact that these three records correspond to the same unpermuted condition rather than three distinct permutations.
+For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile-wise permutation is applied across images for a run. The final grid settings are one tile/no permutation, 16 tiles, 49 tiles, and 100 tiles. The one-tile/no-permutation baseline is repeated under the easy, medium, and hard labels only so that all parts use the same $4 \times 3$ grid-permutation matrix. Aggregate summaries should account for the fact that these three records correspond to the same unpermuted condition rather than three distinct permutations.
 
 \section{Methodology}
 
@@ -497,7 +497,7 @@ The current report provides the main split sizes, validation protocol, model fam
     Model configuration & Model checkpoint names; frozen versus trainable parameter policy; classification-head definitions; MLP-head architecture [specify from implementation where not already stated]. \\
     Augmentation and curricula & Patch-shuffle definition; regular augmentation definitions; mixed-input probability; curriculum stage definitions and stage epoch allocation [specify from implementation where not already stated]. \\
     Compute environment & Hardware, software versions, and deterministic settings [specify from implementation]. \\
-    Artifacts & Code repository or notebook paths; output CSV locations; output figure locations; checkpoint paths [specify from implementation]. \\
+    Artifacts & Notebooks: \texttt{src/notebooks/part1\_solution.ipynb}, \texttt{src/notebooks/part2\_solution.ipynb}, \texttt{src/notebooks/part3\_solution.ipynb}, and \texttt{src/notebooks/final\_results\_overview.ipynb}; scripts: \texttt{src/experiments/part1.py}, \texttt{src/experiments/part2.py}, and result utilities under \texttt{src/evaluation}; CSV outputs: \texttt{outputs/results/part1\_raw\_results.csv}, \texttt{outputs/results/part1\_aggregated\_results.csv}, \texttt{outputs/results/part2\_raw\_results.csv}, \texttt{outputs/results/part2\_aggregated\_results.csv}, \texttt{outputs/results/tile\_permutation\_metrics.csv}, \texttt{outputs/results/metric\_accuracy\_joined.csv}, and \texttt{outputs/results/metric\_accuracy\_correlations.csv}; figures under \texttt{outputs/figures}; checkpoint paths [specify from implementation]. \\
     \bottomrule
   \end{tabular}
   }
@@ -529,16 +529,16 @@ Table~\ref{tab:part1-results} summarizes the frozen-backbone architecture compar
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}
+  \caption{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size. The one-tile records are repeated no-permutation baselines included for matrix consistency.}
   \label{tab:part1-results}
 \end{table*}
 
-Part 1 shows that all three frozen-backbone models remain far above chance under deterministic tile-wise permutations, but performance decreases as the grid becomes more disruptive. DeiT-Tiny is strongest under this frozen-pretrained setting, with mean best validation accuracy of 92.97\% even at 100 tiles. MLP-Mixer Base is usually second, while ResNet-18 degrades most sharply as the easy, medium, and hard records are averaged at larger grids. The 100-tile mean best accuracy falls to 87.87\% for ResNet-18, compared with 89.42\% for MLP-Mixer Base and 92.97\% for DeiT-Tiny.
+Part 1 shows that all three frozen-backbone models remain far above chance under deterministic tile-wise permutations, but performance decreases as the grid becomes more disruptive. DeiT-Tiny is strongest under this frozen-pretrained setting, with mean best validation accuracy of 92.97\% even at 100 tiles. MLP-Mixer Base is usually second, while ResNet-18 degrades most sharply as the easy, medium, and hard records are averaged at larger grids. The 100-tile mean best accuracy falls to 87.87\% for ResNet-18, compared with 89.42\% for MLP-Mixer Base and 92.97\% for DeiT-Tiny. These values describe the frozen-backbone protocol only and should not be generalized to fully fine-tuned versions of the same architectures.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{part1_accuracy_vs_tiles.png}
-  \caption{Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption.}
+  \caption{Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption; the plotted values average over deterministic difficulty presets at each grid size.}
   \label{fig:part1-accuracy}
 \end{figure}
 
@@ -562,16 +562,16 @@ Table~\ref{tab:part2-results} reports the ResNet-18 ablation summary over the 12
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas.}
+  \caption{Part 2 ResNet-18 ablation summary over the 12 deterministic records. The delta column compares each record's best validation accuracy against the matched regular Part 1 ResNet-18 baseline and then averages those deltas; curriculum deltas should be read with the training-duration caveat described in the text.}
   \label{tab:part2-results}
 \end{table*}
 
-Part 2 gives a more selective picture than the earlier exploratory ablations. The ResNet-18 MLP head is the strongest improvement, adding 0.86 percentage points of mean best validation accuracy over the matched baseline. Corruption-probability curriculum is the next-best strategy at +0.39 percentage points. Permutation-difficulty curriculum is approximately neutral on average, while mixed original/permuted training and regular augmentations are slightly below baseline. Patch shuffle is clearly harmful in this final matrix, losing 2.40 percentage points on mean best validation accuracy.
+Part 2 gives a more selective picture than the earlier exploratory ablations. The ResNet-18 MLP head is the strongest tested improvement, adding 0.86 percentage points of mean best validation accuracy over the matched baseline. Corruption-probability curriculum is the next-best strategy at +0.39 percentage points, although it is not directly comparable to the 10-epoch non-curriculum runs because it trains for 30 epochs. Permutation-difficulty curriculum is approximately neutral on average, while mixed original/permuted training and regular augmentations are slightly below baseline. Patch shuffle is harmful in this final matrix, losing 2.40 percentage points on mean best validation accuracy.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{part2_ablation_comparison.png}
-  \caption{Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset.}
+  \caption{Part 2 best-validation-accuracy delta from the matched ResNet-18 baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}
   \label{fig:part2-ablation}
 \end{figure}
 
@@ -592,11 +592,11 @@ Table~\ref{tab:part3-correlations} reports exploratory correlations between dete
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 3 correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records.}
+  \caption{Part 3 exploratory correlations between ResNet-18 best validation accuracy and permutation metrics over the 12 deterministic records. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
   \label{tab:part3-correlations}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. All four hardness metrics are negatively correlated with ResNet-18 best validation accuracy over the 12 joined records. Adjacency destruction is the strongest single metric, with Pearson correlation -0.9044 and Spearman correlation -0.9736, suggesting that broken local tile-neighborhood structure is especially predictive of lower validation accuracy within this matrix. The combined hardness score is also strongly negative, but it does not exceed adjacency destruction on this run matrix. Because only 12 deterministic records are joined, these correlations should be treated as exploratory rather than definitive.
+Part 3 provides a ranking lens for the deterministic permutations. All four hardness metrics are negatively correlated with ResNet-18 best validation accuracy over the 12 joined records. Adjacency destruction is the strongest single metric, with Pearson correlation -0.9044 and Spearman correlation -0.9736, suggesting that broken local tile-neighborhood structure is especially associated with lower validation accuracy within this matrix. The combined hardness score is also strongly negative, but it does not exceed adjacency destruction on this run matrix. Because only 12 deterministic records are joined, these correlations should be treated as exploratory rather than definitive.
 
 \begin{figure*}[t]
   \centering
@@ -623,7 +623,7 @@ Part 3 provides a ranking lens for the deterministic permutations. All four hard
 
 The proposal asks whether a neural network can classify post-permutation images and whether performance depends on tile resolution and permutation choice. The final deterministic matrix answers the first question affirmatively for this setting: every model and every ResNet-18 ablation remains well above chance, including the hard 10-by-10 cases. At the same time, the results show that the task is not trivial. Accuracy drops with stronger deterministic disruption, and the drop is largest for the frozen convolutional ResNet-18 baseline.
 
-The architecture comparison suggests that patch-based pretrained representations remain effective under this specific corruption. DeiT-Tiny has the best aggregate performance, and MLP-Mixer Base also exceeds ResNet-18 at larger tile counts. This does not show that DeiT-Tiny is generally superior for permuted images, nor that attention or token mixing solves permutation hardness. The backbones are frozen, pretrained on natural images, and differ in several ways beyond architecture. A cautious interpretation is that class-discriminative information survives the deterministic tile-wise permutations and can be accessed by pretrained patch-based features plus a small classification head.
+The architecture comparison suggests that patch-based pretrained representations remain effective under this specific corruption. DeiT-Tiny has the highest mean best validation accuracy in this matrix, and MLP-Mixer Base also exceeds ResNet-18 at larger tile counts. This does not show that DeiT-Tiny is generally superior for permuted images, nor that attention or token mixing solves permutation hardness. The backbones are frozen, pretrained on natural images, and differ in several ways beyond architecture. A cautious interpretation is that class-discriminative information survives the deterministic tile-wise permutations and can be accessed by pretrained patch-based features plus a small classification head.
 
 The Part 2 ablations show that simply adding spatial noise is not enough. Patch shuffle hurts the final matrix, possibly because the validation task uses one fixed deterministic permutation rather than arbitrary extra shuffling. The MLP head improves most consistently, suggesting that the frozen ResNet-18 features may contain useful information that is not optimally separated by a linear head. The corruption-probability curriculum gives a smaller positive gain, while the permutation-difficulty curriculum is nearly neutral; however, curriculum runs also use a longer training duration, so their gains cannot be attributed solely to curriculum design.
 
@@ -639,7 +639,7 @@ The experimental matrix is also limited. Curriculum results are partly confounde
 
 \section{Conclusion and Future Work}
 
-This project implements a reproducible Dogs-versus-Cats testbed for studying fixed tile-wise image permutations. The concrete empirical findings are that fixed permutations reduce performance but do not eliminate class-discriminative signal; frozen pretrained DeiT-Tiny is most robust among the compared backbones in the final matrix; the ResNet-18 MLP head is the strongest tested ablation; and adjacency destruction is the most predictive hardness metric among the tested metrics.
+This report presents a reproducible Dogs-versus-Cats testbed for studying fixed tile-wise image permutations. The concrete empirical findings are that fixed permutations reduce performance but do not eliminate class-discriminative signal; frozen pretrained DeiT-Tiny is most robust among the compared backbones in the final matrix; the ResNet-18 MLP head is the strongest tested ablation; and adjacency destruction is the most predictive hardness metric among the tested metrics.
 
 Within the scope of the experiments, these results imply that pretrained visual representations can preserve useful dog/cat information even when global image layout is disrupted by deterministic tile-wise permutations. They also suggest that local adjacency destruction is a useful model-agnostic descriptor of permutation difficulty for frozen ResNet-18. The results do not prove that models reconstruct, invert, or explicitly learn the permutation, and they do not establish general robustness to unseen permutations or cryptographic hardness.
 
