@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1780368863.1973 "report.tex" "report.pdf" "report" 1780368867.15799 0
+["pdflatex"] 1781035329.28271 "report.tex" "report.pdf" "report" 1781035332.77443 0
   "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779861272 99671 dde125809bf2adc7f1c913d73cf56bc1 ""
   "../../outputs/figures/part2_ablation_comparison.png" 1780343088.21435 137091 fdd16a5c76f2e928f3cea5e0775c477f ""
   "../../outputs/figures/part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png" 1779874998 203353 0750d62634c9625d8f6a638392d6e3df ""
@@ -12,6 +12,7 @@
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1246382020 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1136768653 1328 c834bbb027764024c09d3d2bf908b5f0 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm" 1136768653 1324 c910af8c371558dc20f2d7822f66fe64 ""
+  "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmbx8.tfm" 1136768653 1332 1fde11373e221473104d6cc5993f046e ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmex10.tfm" 1136768653 992 662f679a0b3d2d53c1b94050fdaa3f50 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi10.tfm" 1136768653 1528 abec98dbc43e172678c11b3b9031252a ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi12.tfm" 1136768653 1524 4414a8315f39513458b80dfc63bff03a ""
@@ -30,6 +31,7 @@
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmtt12.tfm" 1136768653 772 9a936b7f5e2ff0557fce0f62822f0bbf ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb" 1248133631 34811 78b52f49e893bcba91bd7581cdc144c0 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb" 1248133631 32080 340ef9bf63678554ee606688e7b5339d ""
+  "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb" 1248133631 32166 b0c356b15f19587482a9217ce1d8fa67 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb" 1248133631 30251 6afa5cb1d0204815a708a080681d4674 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb" 1248133631 36299 5f9df58c2139e7edcf37c8fca4bd384d ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb" 1248133631 36741 fa121aac0049305630cf160b86157ee4 ""
@@ -101,9 +103,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1780368866.76581 14278 9009aa7260bad09e77836f6e31547606 "pdflatex"
-  "report.out" 1780368866.76946 6104 a4daffb96be56682b246c610da384ce6 "pdflatex"
-  "report.tex" 1780368301.67607 58153 0c5e701e4126327638226f9758a1d74b ""
+  "report.aux" 1781035332.40598 17310 d3159c02fadf3d42762857974539276f "pdflatex"
+  "report.out" 1781035332.41021 7302 f31d641f05555391184efbe0400544f5 "pdflatex"
+  "report.tex" 1781035322.7633 65600 ff52afbdb04e6cb7486b61818bb1809d ""
   (generated)
   "report.aux"
   "report.log"
