@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1781035329.28271 "report.tex" "report.pdf" "report" 1781035332.77443 0
+["pdflatex"] 1781038922.67713 "report.tex" "report.pdf" "report" 1781038929.5692 0
   "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779861272 99671 dde125809bf2adc7f1c913d73cf56bc1 ""
   "../../outputs/figures/part2_ablation_comparison.png" 1780343088.21435 137091 fdd16a5c76f2e928f3cea5e0775c477f ""
   "../../outputs/figures/part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png" 1779874998 203353 0750d62634c9625d8f6a638392d6e3df ""
@@ -103,9 +103,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1781035332.40598 17310 d3159c02fadf3d42762857974539276f "pdflatex"
-  "report.out" 1781035332.41021 7302 f31d641f05555391184efbe0400544f5 "pdflatex"
-  "report.tex" 1781035322.7633 65600 ff52afbdb04e6cb7486b61818bb1809d ""
+  "report.aux" 1781038928.6903 17442 c5d8c05b512638f9a28fd5b57dfb2bb7 "pdflatex"
+  "report.out" 1781038928.70032 7302 afacc51ce198944ceabe28223d5bf4e5 "pdflatex"
+  "report.tex" 1781038862.23451 67264 b48e57c1df880cf08d77eb5aaf5b77ce ""
   (generated)
   "report.aux"
   "report.log"
