@@ -1,9 +1,8 @@
-\documentclass[12pt,twocolumn]{article}
+\documentclass[12pt]{article}
 
 % Packages
 \usepackage{graphicx}
 \graphicspath{{../template/}{../template/images/}{../../outputs/figures/}}
-\usepackage{sectsty}
 \usepackage{titlesec}
 \usepackage{fancyhdr}
 \usepackage{geometry}
@@ -21,6 +20,10 @@
   left=1in,
   right=1in
 }
+\raggedbottom
+\sloppy
+\hbadness=10000
+\vbadness=10000
 
 % Header & Footer
 \pagestyle{fancy}
@@ -51,25 +54,31 @@
 
 \begin{document}
 
-\twocolumn[{
+\begin{center}
 \centering
-\includegraphics[width=0.3\textwidth]{images/runi_logo.png}\\[0.5em]
-{\LARGE Reichman University}\\[0.75em]
-{\large Efi Arazi School of Computer Science}\\[0.75em]
-{\large M.Sc. Program in Machine Learning and Data Science}\\[0.75em]
-\vspace{0.75em}
-{\Huge Final Project Report}\\[1em]
-{\Large Permuted Dogs versus Cats}\\[0.75em]
+\includegraphics[width=0.22\textwidth]{images/runi_logo.png}\\[0.35em]
+{\Large Reichman University}\\[0.45em]
+{\large Efi Arazi School of Computer Science}\\[0.45em]
+{\large M.Sc. Program in Machine Learning and Data Science}\\[0.45em]
+\vspace{0.35em}
+{\huge Final Project Report}\\[0.6em]
+{\Large Permuted Dogs versus Cats}\\[0.5em]
 {\small \textbf{Student 1} \quad \texttt{ID: 123456789} \quad \textbf{Student 2} \quad \texttt{ID: 987654321}}\\[0.75em]
-{\small \textbf{Advisors:} Shuli Finley (Reichman University) \space --- \space Alon Oring (Reichman University)}\\[0.75em]
-{\small \today}\\[0.75em]
+{\small \textbf{Advisors:} Shuli Finley (Reichman University) \space --- \space Alon Oring (Reichman University)}\\[0.5em]
+{\small \today}\\[0.5em]
+\end{center}
 \begin{flushleft}
 \begin{abstract}
-Natural-image classifiers usually benefit from coherent spatial layout, yet class evidence may survive even when that layout is systematically disrupted. This report studies binary Dogs-versus-Cats classification under fixed tile-wise image permutations. The task is motivated by structured-permutation hardness questions, but is evaluated here as an empirical computer-vision benchmark rather than as a cryptographic claim. Images from the Kaggle Dogs vs Cats dataset are divided into square grids and transformed by deterministic tile rearrangements across four grid settings and three permutation presets. The experiments compare frozen pretrained ResNet-18, DeiT-Tiny, and MLP-Mixer backbones with trained binary classification heads; evaluate ResNet-18 ablations involving augmentation, mixed-input training, classifier-head capacity, and curriculum strategies; and compute model-agnostic permutation hardness metrics joined to validation accuracy. Performance remains well above chance across the deterministic matrix, but degrades as the grid becomes finer and the permutation preset becomes more disruptive. DeiT-Tiny is strongest in the frozen-backbone comparison, the ResNet-18 MLP head gives the largest average ablation improvement among the tested strategies, and adjacency destruction has the strongest negative association with ResNet-18 best validation accuracy among the tested hardness metrics. The findings are limited to fixed deterministic permutations and frozen pretrained representations, and should be interpreted as evidence that useful class cues survive the transformations rather than as evidence that the models reconstruct or invert the original layout.
+\noindent Image classifiers are usually trained and evaluated on images whose spatial layout is intact. This report studies how much binary Dogs-versus-Cats classification performance survives when that layout is disrupted by fixed tile-wise image permutations. Each image from the Kaggle Dogs vs Cats dataset is divided into a square grid, its tiles are rearranged by a deterministic permutation, and the same permutation is applied to both the training and validation images for a given run. The study treats this setting as an empirical computer-vision benchmark motivated by structured-permutation hardness, not as a cryptographic security experiment.
+
+\par\smallskip\noindent The experiments are organized into three parts. First, frozen ImageNet-pretrained ResNet-18, DeiT-Tiny, and MLP-Mixer Base backbones are compared using trained binary classification heads over one unpermuted baseline and deterministic 4 × 4, 7 × 7, and 10 × 10 tile grids, each paired with easy, medium, and hard permutation presets. Second, several ResNet-18 improvement strategies are evaluated against matched baselines, including patch shuffle, regular image augmentation, mixed original/permuted training, a nonlinear MLP classification head, and two curriculum variants. Third, model-agnostic permutation hardness metrics are computed and joined to the saved ResNet-18 validation results; this part does not train additional models.
+
+\par\smallskip\noindent The results show that classification remains well above chance under all tested deterministic permutations, but performance decreases as the grid becomes finer and the permutation becomes more disruptive. In the frozen-backbone comparison, DeiT-Tiny achieves the strongest validation performance. Among the ResNet-18 ablations, the MLP classification head gives the largest average improvement, while patch shuffle hurts performance in the final matrix. The hardness analysis suggests that adjacency destruction has the strongest negative association with ResNet-18 best validation accuracy. These findings are limited to fixed deterministic permutations, a single train/validation split, frozen pretrained backbones, and exploratory hardness correlations. Therefore, they show that useful dog/cat cues survive the tested transformations, but they do not show that the models reconstruct, invert, or explicitly learn the original image layout.
 \end{abstract}
 \end{flushleft}
-\vspace{0em}
-}]
+
+\clearpage
+\twocolumn
 
 \section{Introduction}
 
@@ -182,6 +191,7 @@ The three models differ in how they exchange information across the image. ResNe
   \centering
   \setlength{\tabcolsep}{3pt}
   \renewcommand{\arraystretch}{1.25}
+  \scriptsize
   \resizebox{\linewidth}{!}{%
   \begin{tabular}{>{\centering\arraybackslash}p{0.18\linewidth}
                   >{\centering\arraybackslash}p{0.18\linewidth}
@@ -197,15 +207,15 @@ The three models differ in how they exchange information across the image. ResNe
     \end{minipage}}
     &
     \fbox{\begin{minipage}{0.80\linewidth}
-      \centering Residual\\stages\\64--512 channels
+      \centering Residual\\stages\\64--512
     \end{minipage}}
     &
     \fbox{\begin{minipage}{0.80\linewidth}
-      \centering Global\\average\\pool
+      \centering Avg.\\pool
     \end{minipage}}
     &
     \fbox{\begin{minipage}{0.80\linewidth}
-      \centering Trainable\\binary\\head
+      \centering Binary\\head
     \end{minipage}}
     \\
     & $\longrightarrow$ & $\longrightarrow$ & $\longrightarrow$ & $\longrightarrow$
