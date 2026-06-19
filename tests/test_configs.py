@@ -5,6 +5,7 @@ from src.utils.config import (
     COLAB_BATCH_SIZE,
     COLAB_NUM_WORKERS,
     CVExperimentConfig,
+    DEFAULT_CNN_MODEL_NAME,
     PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES,
     Part2ExperimentConfig,
     Part3ExperimentConfig,
@@ -18,7 +19,7 @@ def test_grouped_config_normalizes_to_runner_keys():
         "general": {"part": "part1", "seeds": [0]},
         "input_output": {"data_dir": "data/dogs-vs-cats/train", "results_dir": "outputs/results"},
         "data": {"batch_size": 8, "image_size": 224},
-        "models": {"model_names": ["resnet18"], "num_classes": 2},
+        "models": {"model_names": ["mobilenetv3_small"], "num_classes": 2},
         "experiment": {"tiles_per_side_values": [1, 2], "num_tile_permutations": 1},
     }
 
@@ -27,22 +28,22 @@ def test_grouped_config_normalizes_to_runner_keys():
     assert normalized_config["part"] == "part1"
     assert normalized_config["data_dir"] == "data/dogs-vs-cats/train"
     assert normalized_config["batch_size"] == 8
-    assert normalized_config["model_names"] == ["resnet18"]
-    assert normalized_config["model_name"] == "resnet18"
+    assert normalized_config["model_names"] == ["mobilenetv3_small"]
+    assert normalized_config["model_name"] == "mobilenetv3_small"
     assert normalized_config["tiles_per_side_values"] == [1, 2]
 
 
 def test_config_normalization_rejects_models_outside_supported_trio():
     raw_config = {
         "part": "part1",
-        "model_names": ["resnet18", "resnet50"],
+        "model_names": ["mobilenetv3_small", "resnet50"],
     }
 
     try:
         normalize_config(raw_config)
     except ValueError as exc:
         assert "Unsupported model_name='resnet50'" in str(exc)
-        assert "resnet18, deit_tiny, mlp_mixer_base, mlp_mixer_small" in str(exc)
+        assert "mobilenetv3_small, deit_tiny, gmlp_s16, resnet18" in str(exc)
     else:
         raise AssertionError("Expected unsupported model_name to raise")
 
@@ -71,7 +72,7 @@ def test_part3_normalized_config_is_resnet18_only():
     try:
         normalize_config(raw_config)
     except ValueError as exc:
-        assert "part3 configs support only model_names=['resnet18']" in str(exc)
+        assert "part3 configs support one CNN model" in str(exc)
     else:
         raise AssertionError("Expected Part 3 config to reject non-resnet18 model")
 
@@ -96,7 +97,7 @@ def test_official_configs_are_not_duplicated():
     assert config_names == set()
 
 
-def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
+def test_part2_config_defaults_to_cnn_improvement_ablation_setup():
     dataclass_fields = Part2ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
     tiles_per_side_values = dataclass_fields["tiles_per_side_values"].default_factory()
@@ -104,14 +105,14 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
 
     assert dataclass_fields["part"].default == "part2"
     assert dataclass_fields["config_name"].default == "part2_improvement"
-    assert model_names == ["resnet18"]
+    assert model_names == [DEFAULT_CNN_MODEL_NAME]
     assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert [ablation["name"] for ablation in ablations] == [
         "augmentation_patch_shuffle",
         "regular_augmentations",
         "mixed_original_permuted",
-        "resnet18_mlp_head",
+        "cnn_mlp_head",
         "curriculum_corruption_probability",
         "curriculum_permutation_difficulty",
     ]
@@ -124,12 +125,19 @@ def test_part2_config_defaults_to_resnet18_improvement_ablation_setup():
 
 def test_part2_config_exposes_single_model_name_property():
     config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
+    config.model_names = [DEFAULT_CNN_MODEL_NAME]
+
+    assert config.model_name == DEFAULT_CNN_MODEL_NAME
+
+
+def test_part2_config_accepts_legacy_resnet18_model():
+    config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
     config.model_names = ["resnet18"]
 
     assert config.model_name == "resnet18"
 
 
-def test_part2_config_rejects_non_resnet18_supported_model():
+def test_part2_config_rejects_non_cnn_supported_model():
     config = Part2ExperimentConfig.__new__(Part2ExperimentConfig)
     config.config_name = "part2_improvement"
     config.model_names = ["deit_tiny"]
@@ -137,19 +145,19 @@ def test_part2_config_rejects_non_resnet18_supported_model():
     try:
         _ = config.model_name
     except ValueError as exc:
-        assert "supports only model_names=['resnet18']" in str(exc)
+        assert "supports one CNN model" in str(exc)
     else:
         raise AssertionError("Expected Part 2 config to reject non-resnet18 model")
 
 
-def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
+def test_part3_config_defaults_to_cnn_hardness_analysis_setup():
     dataclass_fields = Part3ExperimentConfig.__dataclass_fields__
     model_names = dataclass_fields["model_names"].default_factory()
     tiles_per_side_values = dataclass_fields["tiles_per_side_values"].default_factory()
 
     assert dataclass_fields["part"].default == "part3"
     assert dataclass_fields["config_name"].default == "part3_hardness_analysis"
-    assert model_names == ["resnet18"]
+    assert model_names == [DEFAULT_CNN_MODEL_NAME]
     assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert dataclass_fields["weight_adj"].default == 0.5
@@ -158,6 +166,13 @@ def test_part3_config_defaults_to_resnet18_hardness_analysis_setup():
 
 
 def test_part3_config_exposes_single_model_name_property():
+    config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
+    config.model_names = [DEFAULT_CNN_MODEL_NAME]
+
+    assert config.model_name == DEFAULT_CNN_MODEL_NAME
+
+
+def test_part3_config_accepts_legacy_resnet18_model():
     config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
     config.model_names = ["resnet18"]
 
@@ -189,7 +204,7 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
     model_names = dataclass_fields["model_names"].default_factory()
     tiles_per_side_values = dataclass_fields["tiles_per_side_values"].default_factory()
 
-    assert model_names == ["resnet18", "deit_tiny", "mlp_mixer_base"]
+    assert model_names == ["mobilenetv3_small", "deit_tiny", "gmlp_s16"]
     assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
     assert dataclass_fields["pretrained"].default is True
@@ -198,7 +213,7 @@ def test_part1_model_defaults_to_lightweight_pretrained_trio():
 
 def test_local_testing_preserves_configured_tile_scope():
     config = CVExperimentConfig.__new__(CVExperimentConfig)
-    config.model_names = ["resnet18", "deit_tiny", "mlp_mixer_base"]
+    config.model_names = ["mobilenetv3_small", "deit_tiny", "gmlp_s16"]
     config.tiles_per_side_values = [1, 4, 7, 10]
     config.num_tile_permutations = 3
 
@@ -206,7 +221,7 @@ def test_local_testing_preserves_configured_tile_scope():
 
     assert config.sample_data is True
     assert config.sample_limit == 256
-    assert config.model_names == ["resnet18", "deit_tiny", "mlp_mixer_base"]
+    assert config.model_names == ["mobilenetv3_small", "deit_tiny", "gmlp_s16"]
     assert config.tiles_per_side_values == [1, 4, 7, 10]
     assert config.num_tile_permutations == 3
     assert config.epochs == 1

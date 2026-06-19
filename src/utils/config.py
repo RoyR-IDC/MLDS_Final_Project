@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Mapping
 import os
 
-from src.models.registry import validate_model_name, validate_model_names
+from src.models.registry import CNN_MODEL_NAMES, validate_model_name, validate_model_names
 from src.utils.colab import (
     DEFAULT_COLAB_LOCAL_DATA_DIR,
     DEFAULT_COLAB_DRIVE_ROOT,
@@ -24,6 +24,7 @@ DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
 PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 7, 10]
 COLAB_BATCH_SIZE = 64
 COLAB_NUM_WORKERS = 4
+DEFAULT_CNN_MODEL_NAME = "mobilenetv3_small"
 
 
 def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
@@ -84,16 +85,16 @@ def _normalize_model_config(normalized: Dict[str, Any]) -> Dict[str, Any]:
 
     if normalized.get("part") in {"part2", "part3"} and "model_names" in normalized:
         model_names = normalized["model_names"]
-        if model_names != ["resnet18"]:
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
             raise ValueError(
-                f"{normalized['part']} configs support only model_names=['resnet18']; "
+                f"{normalized['part']} configs support one CNN model in {list(CNN_MODEL_NAMES)}; "
                 f"got model_names={model_names}"
             )
     if normalized.get("part") in {"part2", "part3"} and "model_name" in normalized:
         model_name = normalized["model_name"]
-        if model_name != "resnet18":
+        if model_name not in CNN_MODEL_NAMES:
             raise ValueError(
-                f"{normalized['part']} configs support only model_name='resnet18'; "
+                f"{normalized['part']} configs support one CNN model in {list(CNN_MODEL_NAMES)}; "
                 f"got model_name='{model_name}'"
             )
 
@@ -137,7 +138,7 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet18", "deit_tiny", "mlp_mixer_base"]
+        default_factory=lambda: ["mobilenetv3_small", "deit_tiny", "gmlp_s16"]
     )
     pretrained: bool = True
     freeze_backbone: bool = True
@@ -274,11 +275,11 @@ class CVExperimentConfig:
 
 @dataclass
 class Part2ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 2 ResNet-18 improvement ablations."""
+    """Notebook-owned configuration for Part 2 CNN improvement ablations."""
 
     part: str = "part2"
     config_name: str = "part2_improvement"
-    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
+    model_names: list[str] = field(default_factory=lambda: [DEFAULT_CNN_MODEL_NAME])
     tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     num_tile_permutations: int = 3
     ablations: list[dict[str, Any]] = field(
@@ -300,7 +301,7 @@ class Part2ExperimentConfig(CVExperimentConfig):
                 "p_original": 0.5,
             },
             {
-                "name": "resnet18_mlp_head",
+                "name": "cnn_mlp_head",
                 "use_pretrained": True,
                 "augmentation": "none",
                 "classification_head": "mlp",
@@ -326,19 +327,19 @@ class Part2ExperimentConfig(CVExperimentConfig):
     def model_name(self) -> str:
         """Return the single model used by the Part 2 ablation notebook."""
 
-        return self._validate_resnet18_only_model_names()[0]
+        return self._validate_single_cnn_model_names()[0]
 
     def _validate_config_model_names(self) -> None:
-        """Part 2 is a ResNet-18-only ablation setup."""
+        """Part 2 is a single-CNN ablation setup."""
 
-        self.model_names = self._validate_resnet18_only_model_names()
+        self.model_names = self._validate_single_cnn_model_names()
 
-    def _validate_resnet18_only_model_names(self) -> list[str]:
+    def _validate_single_cnn_model_names(self) -> list[str]:
         model_names = validate_model_names(self.model_names)
-        if model_names != ["resnet18"]:
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
             config_name = getattr(self, "config_name", type(self).__name__)
             raise ValueError(
-                f"{config_name} supports only model_names=['resnet18']; "
+                f"{config_name} supports one CNN model in {list(CNN_MODEL_NAMES)}; "
                 f"got model_names={model_names}"
             )
         return model_names
@@ -349,11 +350,11 @@ class Part2ExperimentConfig(CVExperimentConfig):
 
 @dataclass
 class Part3ExperimentConfig(CVExperimentConfig):
-    """Notebook-owned configuration for Part 3 ResNet-18 hardness analysis."""
+    """Notebook-owned configuration for Part 3 CNN hardness analysis."""
 
     part: str = "part3"
     config_name: str = "part3_hardness_analysis"
-    model_names: list[str] = field(default_factory=lambda: ["resnet18"])
+    model_names: list[str] = field(default_factory=lambda: [DEFAULT_CNN_MODEL_NAME])
     tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     weight_adj: float = 0.5
     weight_entropy: float = 0.3
@@ -370,19 +371,19 @@ class Part3ExperimentConfig(CVExperimentConfig):
     def model_name(self) -> str:
         """Return the single model used by the Part 3 hardness notebook."""
 
-        return self._validate_resnet18_only_model_names()[0]
+        return self._validate_single_cnn_model_names()[0]
 
     def _validate_config_model_names(self) -> None:
-        """Part 3 is a ResNet-18-only hardness analysis setup."""
+        """Part 3 is a single-CNN hardness analysis setup."""
 
-        self.model_names = self._validate_resnet18_only_model_names()
+        self.model_names = self._validate_single_cnn_model_names()
 
-    def _validate_resnet18_only_model_names(self) -> list[str]:
+    def _validate_single_cnn_model_names(self) -> list[str]:
         model_names = validate_model_names(self.model_names)
-        if model_names != ["resnet18"]:
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
             config_name = getattr(self, "config_name", type(self).__name__)
             raise ValueError(
-                f"{config_name} supports only model_names=['resnet18']; "
+                f"{config_name} supports one CNN model in {list(CNN_MODEL_NAMES)}; "
                 f"got model_names={model_names}"
             )
         return model_names

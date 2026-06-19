@@ -1051,8 +1051,9 @@ def test_refresh_part2_ablation_comparison_copies_original_and_passes_raw_result
         captured["archive_existing"] = archive_existing
         Path(output_path).write_bytes(b"refreshed figure bytes")
 
-    monkeypatch.setattr(
-        "src.evaluation.experiment_results.plot_ablation_results",
+    monkeypatch.setitem(
+        refresh_part2_ablation_comparison_figure.__globals__,
+        "plot_ablation_results",
         fake_plot_ablation_results,
     )
 

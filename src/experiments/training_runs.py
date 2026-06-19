@@ -267,6 +267,7 @@ def build_training_run_spec(
         batch_augmentation=batch_augmentation,
         curriculum_schedule=curriculum_schedule,
         expected_input_size=resolved_expected_input_size,
+        expected_num_classes=int(getattr(config, "num_classes", 2)),
         profile_output_path=profile_output_path(config),
     )
 

@@ -1,5 +1,6 @@
 from typing import cast
 
+import pytest
 import torch
 from torch import nn
 from torch._C import device as TorchDevice
@@ -108,6 +109,88 @@ def test_model_trainer_evaluate_uses_inference_mode(monkeypatch):
     ModelTrainer(spec).evaluate()
 
     assert entered == [True]
+
+
+def test_model_trainer_validates_first_batch_logits_shape_before_training(monkeypatch):
+    images = torch.zeros((2, 3, 8, 8))
+    labels = torch.tensor([0, 1])
+    loader = DataLoader(torch.utils.data.TensorDataset(images, labels), batch_size=2)
+    calls = []
+
+    class RecordingImageModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.zeros(1))
+
+        def forward(self, batch):
+            calls.append(tuple(batch.shape))
+            return batch.new_zeros((batch.shape[0], 2)) + self.weight
+
+    spec = TrainingRunSpec(
+        model_name="image_model",
+        model=RecordingImageModel(),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
+        expected_input_size=8,
+        expected_num_classes=2,
+        progress_leave=False,
+    )
+
+    class FakeTqdm:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def update(self, amount=1):
+            pass
+
+        def set_postfix(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(trainer_module, "tqdm", FakeTqdm)
+
+    result = ModelTrainer(spec).fit()
+
+    assert result.status == "completed"
+    assert calls[0] == (2, 3, 8, 8)
+
+
+def test_model_trainer_rejects_wrong_logits_shape_before_training():
+    images = torch.zeros((2, 3, 8, 8))
+    labels = torch.tensor([0, 1])
+    loader = DataLoader(torch.utils.data.TensorDataset(images, labels), batch_size=2)
+
+    class BadShapeModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.zeros(1))
+
+        def forward(self, batch):
+            return batch.new_zeros((batch.shape[0], 3)) + self.weight
+
+    spec = TrainingRunSpec(
+        model_name="bad_shape",
+        model=BadShapeModel(),
+        train_loader=loader,
+        val_loader=loader,
+        criterion=nn.CrossEntropyLoss(),
+        device=torch.device("cpu"),
+        config=TrainingConfig(epochs=1, optimizer_name="sgd", learning_rate=0.01),
+        expected_input_size=8,
+        expected_num_classes=2,
+        progress_leave=False,
+    )
+
+    with pytest.raises(ValueError, match="Expected model logits shape"):
+        ModelTrainer(spec).fit()
 
 
 def test_train_and_validate_moves_model_and_criterion_to_component_device(monkeypatch):

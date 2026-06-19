@@ -1,4 +1,4 @@
-"""Part 2 ResNet-18 improvement ablation experiments."""
+"""Part 2 configurable-CNN improvement ablation experiments."""
 
 from __future__ import annotations
 
@@ -221,6 +221,7 @@ def build_ablation_dataloaders(
         standard_augmentation=False,
         image_augmentation=_ablation_image_augmentation(ablation),
         tile_permutation_probability=_ablation_tile_permutation_probability(ablation),
+        output_image_size=config.image_size,
     )
 
 
@@ -309,6 +310,7 @@ def build_curriculum_schedule(
                 batch_size=config.batch_size,
                 num_workers=config.num_workers,
                 standard_augmentation=False,
+                output_image_size=config.image_size,
             )
             stage_name = "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
             stages.append(
@@ -341,6 +343,7 @@ def build_curriculum_schedule(
                 num_workers=config.num_workers,
                 standard_augmentation=False,
                 tile_permutation_probability=probability,
+                output_image_size=config.image_size,
             )
             stages.append(
                 TrainingStage(
@@ -449,11 +452,7 @@ def build_part2_training_run_spec(
         progress_desc=progress_desc,
         batch_augmentation=batch_augmentation,
         curriculum_schedule=curriculum_schedule,
-        expected_input_size=_expected_part2_input_size(
-            config=config,
-            ablation=ablation,
-            record=record,
-        ),
+        expected_input_size=config.image_size,
         metadata_overrides=_part2_metadata_overrides(
             config=config,
             ablation=ablation,

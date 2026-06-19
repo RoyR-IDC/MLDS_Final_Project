@@ -6,12 +6,16 @@ from collections.abc import Sequence
 
 
 TIMM_MODEL_IDS = {
+    "mobilenetv3_small": "mobilenetv3_small_100",
     "deit_tiny": "deit_tiny_patch16_224.fb_in1k",
-    "mlp_mixer_base": "mixer_b16_224.goog_in21k_ft_in1k",
-    "mlp_mixer_small": "mixer_s16_224",
+    "gmlp_s16": "gmlp_s16_224.ra3_in1k",
+    "resnet18": "resnet18",
 }
 
-SUPPORTED_MODEL_NAMES = ("resnet18", *TIMM_MODEL_IDS.keys())
+ACTIVE_MODEL_NAMES = ("mobilenetv3_small", "deit_tiny", "gmlp_s16")
+LEGACY_MODEL_NAMES = ("resnet18",)
+CNN_MODEL_NAMES = ("mobilenetv3_small", "resnet18")
+SUPPORTED_MODEL_NAMES = (*ACTIVE_MODEL_NAMES, *LEGACY_MODEL_NAMES)
 
 
 def format_supported_model_names() -> str:
