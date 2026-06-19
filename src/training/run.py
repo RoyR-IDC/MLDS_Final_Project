@@ -75,6 +75,7 @@ class TrainingRunSpec:
     batch_augmentation: Optional[BatchAugmentation] = None
     curriculum_schedule: Optional[CurriculumSchedule] = None
     expected_input_size: Optional[int] = None
+    expected_num_classes: Optional[int] = None
     profile_output_path: Optional[str] = None
 
 

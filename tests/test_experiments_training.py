@@ -9,8 +9,16 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.experiments import part1, part2, training_runs
+from src.experiments.results import save_run_rows
 import src.training.trainer as trainer_module
-from src.experiments.part1 import get_executable_tile_permutation_records, train_model_on_tile_permutation_records
+from src.experiments.part1 import (
+    IMAGENET1K_DOMESTIC_CAT_CLASS_INDICES,
+    IMAGENET1K_DOG_CLASS_INDICES,
+    train_unfrozen_pretrained_binary_head_on_tile_permutation_records,
+    get_executable_tile_permutation_records,
+    train_model_on_tile_permutation_records,
+    zero_shot_cat_dog_predictions,
+)
 from src.experiments.part2 import (
     CORRUPTION_PROBABILITY_SCHEDULE,
     build_curriculum_schedule,
@@ -218,7 +226,7 @@ def test_model_trainer_ignores_mismatched_resume_checkpoint(tmp_path):
     assert result.skipped_from_checkpoint is None
 
 
-def test_build_training_run_spec_records_mlp_mixer_from_scratch_when_pretrained_missing(monkeypatch, tmp_path):
+def test_build_training_run_spec_rejects_missing_pretrained_weights(monkeypatch, tmp_path):
     monkeypatch.setattr(timm, "is_model_pretrained", lambda model_id: False)
     model_calls = []
 
@@ -253,10 +261,10 @@ def test_build_training_run_spec_records_mlp_mixer_from_scratch_when_pretrained_
         tile_permutation=None,
     )
 
-    with pytest.warns(RuntimeWarning, match="initialized from scratch"):
+    with pytest.raises(ValueError, match="pretrained ImageNet-1K weights"):
         spec = training_runs.build_training_run_spec(
             config=config,
-            model_name="mlp_mixer_small",
+            model_name="gmlp_s16",
             train_loader=loader,
             val_loader=loader,
             device=torch.device("cpu"),
@@ -264,11 +272,7 @@ def test_build_training_run_spec_records_mlp_mixer_from_scratch_when_pretrained_
             record=record,
             seed=42,
         )
-
-    assert model_calls[0][1]["pretrained"] is False
-    assert model_calls[0][1]["freeze_backbone"] is False
-    assert spec.metadata["pretrained"] is False
-    assert spec.metadata["freeze_backbone"] is False
+    assert model_calls == []
 
 
 def test_build_training_run_spec_distinguishes_auto_from_disabled_expected_input_size(monkeypatch):
@@ -558,6 +562,112 @@ def test_train_model_on_tile_permutation_records_saves_mid_run_updates(monkeypat
     saved = pd.read_csv(raw_results_path)
     assert saved.loc[0, "run_status"] == "completed"
     assert saved.loc[0, "training_duration_seconds"] == 2.5
+
+
+def test_save_run_rows_preserves_baseline_when_saving_ablation(tmp_path):
+    raw_results_path = tmp_path / "part1_raw_results.csv"
+    baseline_row = {
+        "run_id": "run",
+        "model_name": "resnet18",
+        "tile_permutation_id": 1,
+        "val_accuracy": 0.8,
+    }
+    ablation_row = {
+        "run_id": "run",
+        "model_name": "resnet18",
+        "ablation_name": "unfrozen_pretrained_binary_head",
+        "tile_permutation_id": 1,
+        "val_accuracy": 0.9,
+    }
+
+    save_run_rows(rows=[baseline_row], output_path=str(raw_results_path), run_id="run", model_name="resnet18")
+    save_run_rows(rows=[ablation_row], output_path=str(raw_results_path), run_id="run", model_name="resnet18")
+
+    saved = pd.read_csv(raw_results_path)
+    assert len(saved) == 2
+    assert set(saved["val_accuracy"]) == {0.8, 0.9}
+    assert saved["ablation_name"].isna().sum() == 1
+
+
+def test_unfrozen_part1_variant_sets_freeze_backbone_false(monkeypatch, tmp_path):
+    config = SimpleNamespace(
+        part="part1",
+        config_name="test_config",
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        pretrained=True,
+        epochs=1,
+        outputs_dir=str(tmp_path / "outputs"),
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=2,
+        tile_permutation_id=3,
+        tile_permutation_seed=99,
+        tile_permutation=identity_tile_permutation(2),
+    )
+    captured_kwargs = {}
+
+    class FakeLoader:
+        dataset = [None]
+
+        def __len__(self):
+            return 1
+
+    class FakeTrainer:
+        def __init__(self, spec):
+            self.spec = spec
+
+        def fit(self, on_progress):
+            result = TrainingResult.pending(model_name=self.spec.model_name, metadata={})
+            result.val_accuracy = 0.75
+            result.best_val_accuracy = 0.75
+            result.mark_completed(1.0)
+            on_progress(result)
+            return result
+
+    def fake_build_training_run_spec(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(model_name=kwargs["model_name"])
+
+    monkeypatch.setattr(part1, "build_dataloaders", lambda **kwargs: (FakeLoader(), FakeLoader()))
+    monkeypatch.setattr(part1, "build_training_run_spec", fake_build_training_run_spec)
+    monkeypatch.setattr(training_runs, "ModelTrainer", FakeTrainer)
+
+    rows = train_unfrozen_pretrained_binary_head_on_tile_permutation_records(
+        config=config,
+        model_name="resnet18",
+        run_id="run",
+        train_samples=[("cat.jpg", 0)],
+        validation_samples=[("dog.jpg", 1)],
+        tile_permutation_records=[record],
+        seed=42,
+        device="cpu",
+    )
+
+    assert captured_kwargs["overrides"]["pretrained"] is True
+    assert captured_kwargs["overrides"]["freeze_backbone"] is False
+    assert captured_kwargs["ablation_name"] == "unfrozen_pretrained_binary_head"
+    assert rows[0]["ablation_name"] == "unfrozen_pretrained_binary_head"
+
+
+def test_zero_shot_cat_dog_predictions_sum_imagenet_probabilities():
+    logits = torch.full((3, 1000), -20.0)
+    logits[0, IMAGENET1K_DOG_CLASS_INDICES[0]] = 8.0
+    logits[0, IMAGENET1K_DOMESTIC_CAT_CLASS_INDICES[0]] = 2.0
+    logits[1, IMAGENET1K_DOG_CLASS_INDICES[0]] = 1.0
+    logits[1, IMAGENET1K_DOMESTIC_CAT_CLASS_INDICES[0]] = 7.0
+    logits[2, IMAGENET1K_DOG_CLASS_INDICES[0]] = 3.0
+    logits[2, IMAGENET1K_DOMESTIC_CAT_CLASS_INDICES[0]] = 3.0
+
+    predictions = zero_shot_cat_dog_predictions(logits)
+
+    assert predictions.tolist() == [1, 0, 0]
+
+
+def test_zero_shot_cat_dog_predictions_requires_full_imagenet_logits():
+    with pytest.raises(ValueError, match="ImageNet-1k logits"):
+        zero_shot_cat_dog_predictions(torch.zeros((2, 2)))
 
 
 def test_train_model_on_tile_permutation_records_saves_failed_status(monkeypatch, tmp_path):
@@ -949,7 +1059,7 @@ def test_part2_mlp_head_ablation_sets_overrides_and_metadata(monkeypatch):
         config=config,
         model_name="resnet18",
         run_id="part2_run",
-        ablation={"name": "resnet18_mlp_head", "classification_head": "mlp"},
+        ablation={"name": "cnn_mlp_head", "classification_head": "mlp"},
         record=record,
         train_loader=FakeLoader(),
         validation_loader=FakeLoader(),
@@ -1100,7 +1210,7 @@ def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatc
         curriculum_schedule=SimpleNamespace(stage_names=["original", "10x10_permutation"]),
     )
 
-    assert captured_kwargs["expected_input_size"] is None
+    assert captured_kwargs["expected_input_size"] == 224
 
 
 def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypatch):

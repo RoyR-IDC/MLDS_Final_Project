@@ -114,6 +114,7 @@ def test_prepare_project_imports_removes_stale_src_modules(tmp_path, monkeypatch
     project_root = tmp_path / "MLDS_Final_Project"
     stale_root = tmp_path / "stale"
     write_minimal_project(project_root)
+    original_sys_path = list(sys.path)
     (stale_root / "src").mkdir(parents=True)
     (stale_root / "src" / "__init__.py").write_text("")
     stale_src = ModuleType("src")
@@ -123,21 +124,28 @@ def test_prepare_project_imports_removes_stale_src_modules(tmp_path, monkeypatch
     monkeypatch.setitem(sys.modules, "src", stale_src)
     monkeypatch.setitem(sys.modules, "src.evaluation", stale_child)
 
-    prepare_project_imports(project_root)
+    try:
+        prepare_project_imports(project_root)
 
-    assert "src" not in sys.modules
-    assert "src.evaluation" not in sys.modules
+        assert "src" not in sys.modules
+        assert "src.evaluation" not in sys.modules
+    finally:
+        sys.path[:] = original_sys_path
 
 
 def test_prepare_project_imports_invalidates_import_caches(tmp_path, monkeypatch):
     project_root = tmp_path / "MLDS_Final_Project"
     write_minimal_project(project_root)
     calls = []
+    original_sys_path = list(sys.path)
     monkeypatch.setattr(colab, "invalidate_caches", lambda: calls.append(True))
 
-    prepare_project_imports(project_root)
+    try:
+        prepare_project_imports(project_root)
 
-    assert calls == [True]
+        assert calls == [True]
+    finally:
+        sys.path[:] = original_sys_path
 
 
 def test_prepare_project_imports_rejects_partial_project_copy(tmp_path):

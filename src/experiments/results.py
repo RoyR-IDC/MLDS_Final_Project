@@ -149,6 +149,21 @@ def save_run_rows(
             mask = existing_results["run_id"].astype(str) == str(run_id)
             if model_name is not None and "model_name" in existing_results.columns:
                 mask &= existing_results["model_name"].astype(str) == str(model_name)
+            if rows and any("ablation_name" in row for row in rows):
+                incoming_ablations = {
+                    str(row.get("ablation_name"))
+                    for row in rows
+                    if row.get("ablation_name") is not None
+                }
+                if incoming_ablations:
+                    if "ablation_name" not in existing_results.columns:
+                        mask &= False
+                    else:
+                        mask &= existing_results["ablation_name"].astype(str).isin(incoming_ablations)
+                elif "ablation_name" in existing_results.columns:
+                    mask &= existing_results["ablation_name"].isna()
+            elif "ablation_name" in existing_results.columns:
+                mask &= existing_results["ablation_name"].isna()
             existing_results = existing_results[~mask]
         existing_rows = existing_results.to_dict("records")
 

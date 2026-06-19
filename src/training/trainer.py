@@ -301,6 +301,7 @@ class ModelTrainer:
                     return
                 images = images.to(self.spec.device, non_blocking=True)
                 self._validate_runtime_batch(images)
+                self._validate_forward_logits(images)
                 return
 
     def _model_device(self) -> torch.device:
@@ -389,6 +390,25 @@ class ModelTrainer:
         if self.spec.curriculum_schedule is not None:
             return list(self.spec.curriculum_schedule.stages)
         return [TrainingStage(name="standard", epochs=self.spec.config.epochs, train_loader=self.spec.train_loader)]
+
+    def _validate_forward_logits(self, images: torch.Tensor) -> None:
+        expected_num_classes = self.spec.expected_num_classes
+        if expected_num_classes is None:
+            return
+        was_training = self.spec.model.training
+        self.spec.model.eval()
+        with torch.inference_mode():
+            logits = self.spec.model(images)
+        if was_training:
+            self.spec.model.train()
+        expected_shape = (int(images.shape[0]), int(expected_num_classes))
+        actual_shape = tuple(int(value) for value in logits.shape)
+        print(f"Sanity forward: logits_shape={actual_shape}, expected_shape={expected_shape}")
+        if actual_shape != expected_shape:
+            raise ValueError(
+                f"Expected model logits shape {expected_shape}, got {actual_shape} "
+                f"for model '{self.spec.model_name}'."
+            )
 
     def _load_resume_checkpoint(self, planned_total_epochs: int) -> dict[str, Any] | None:
         checkpoint_config = self.spec.checkpoint_config
