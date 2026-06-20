@@ -21,11 +21,13 @@ from src.experiments.part1 import (
 )
 from src.experiments.part2 import (
     CORRUPTION_PROBABILITY_SCHEDULE,
+    _ablation_epochs,
+    _part2_metadata_overrides,
     build_curriculum_schedule,
     train_part2_ablation_experiments,
 )
 from src.preprocessing.tile_permutations import TilePermutationRecord, deterministic_tile_permutation, identity_tile_permutation
-from src.training.checkpoints import load_checkpoint, save_checkpoint
+from src.training.checkpoints import load_checkpoint, save_checkpoint, validate_checkpoint_metadata
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
 
@@ -1242,3 +1244,91 @@ def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypat
     assert schedule is not None
     assert probabilities == CORRUPTION_PROBABILITY_SCHEDULE
     assert schedule.total_epochs == 4
+
+
+def test_part2_default_ablation_epochs_are_uniform_and_curriculum_checkpoint_compatible():
+    config = SimpleNamespace(epochs=30)
+    ablations = [
+        {
+            "name": "augmentation_patch_shuffle",
+            "use_pretrained": True,
+            "augmentation": "patch_shuffle",
+        },
+        {
+            "name": "regular_augmentations",
+            "use_pretrained": True,
+            "augmentation": "regular_augmentations",
+        },
+        {
+            "name": "mixed_original_permuted",
+            "use_pretrained": True,
+            "augmentation": "none",
+            "p_original": 0.5,
+        },
+        {
+            "name": "cnn_mlp_head",
+            "use_pretrained": True,
+            "augmentation": "none",
+            "classification_head": "mlp",
+        },
+        {
+            "name": "curriculum_corruption_probability",
+            "use_pretrained": True,
+            "augmentation": "none",
+            "curriculum": "corruption_probability",
+        },
+        {
+            "name": "curriculum_permutation_difficulty",
+            "use_pretrained": True,
+            "augmentation": "none",
+            "curriculum": "permutation_difficulty",
+        },
+    ]
+
+    assert [_ablation_epochs(ablation, config) for ablation in ablations] == [30] * len(ablations)
+
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
+        tile_permutation_name="medium",
+    )
+    curriculum_schedule = SimpleNamespace(
+        stage_names=["original", "2x2_permutation", "3x3_permutation", "4x4_permutation"]
+    )
+    ablation = ablations[-1]
+    expected_metadata = {
+        "part": "part2",
+        "config_name": "part2_improvement",
+        "run_id": "part2_part2_improvement_seed_42",
+        "model_name": "mobilenetv3_small",
+        "ablation_name": ablation["name"],
+        "tiles_per_side": record.tiles_per_side,
+        "tile_permutation_id": record.tile_permutation_id,
+        "tile_permutation_seed": record.tile_permutation_seed,
+        "seed": 42,
+        "optimizer_name": "adamw",
+        "learning_rate": 0.0003,
+        "weight_decay": 0.0001,
+        "use_amp": True,
+        "pretrained": True,
+        "freeze_backbone": True,
+        **_part2_metadata_overrides(
+            config=config,
+            ablation=ablation,
+            record=record,
+            batch_augmentation=None,
+            curriculum_schedule=curriculum_schedule,
+        ),
+    }
+    existing_curriculum_checkpoint = {
+        "metadata": dict(expected_metadata),
+        "planned_total_epochs": 30,
+    }
+
+    assert validate_checkpoint_metadata(
+        existing_curriculum_checkpoint,
+        expected_metadata=expected_metadata,
+        planned_total_epochs=30,
+    )

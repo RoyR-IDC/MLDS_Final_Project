@@ -105,6 +105,7 @@ def test_part2_config_defaults_to_cnn_improvement_ablation_setup():
 
     assert dataclass_fields["part"].default == "part2"
     assert dataclass_fields["config_name"].default == "part2_improvement"
+    assert dataclass_fields["epochs"].default == 30
     assert model_names == [DEFAULT_CNN_MODEL_NAME]
     assert tiles_per_side_values == PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
     assert dataclass_fields["num_tile_permutations"].default == 3
@@ -119,8 +120,7 @@ def test_part2_config_defaults_to_cnn_improvement_ablation_setup():
     assert ablations[1]["augmentation"] == "regular_augmentations"
     assert ablations[2]["p_original"] == 0.5
     assert ablations[3]["classification_head"] == "mlp"
-    assert ablations[4]["epochs"] == 30
-    assert ablations[5]["epochs"] == 30
+    assert all("epochs" not in ablation for ablation in ablations)
 
 
 def test_part2_config_exposes_single_model_name_property():

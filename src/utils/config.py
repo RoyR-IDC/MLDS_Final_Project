@@ -279,6 +279,7 @@ class Part2ExperimentConfig(CVExperimentConfig):
 
     part: str = "part2"
     config_name: str = "part2_improvement"
+    epochs: int = 30
     model_names: list[str] = field(default_factory=lambda: [DEFAULT_CNN_MODEL_NAME])
     tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
     num_tile_permutations: int = 3
@@ -311,14 +312,12 @@ class Part2ExperimentConfig(CVExperimentConfig):
                 "use_pretrained": True,
                 "augmentation": "none",
                 "curriculum": "corruption_probability",
-                "epochs": 30,
             },
             {
                 "name": "curriculum_permutation_difficulty",
                 "use_pretrained": True,
                 "augmentation": "none",
                 "curriculum": "permutation_difficulty",
-                "epochs": 30,
             },
         ]
     )
