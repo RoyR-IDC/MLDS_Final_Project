@@ -657,7 +657,11 @@ def plot_accuracy_vs_tiles(
     tile_positions = _set_tile_axis_ticks(ax, x_values)
     for model_name, group in aggregated.groupby(model_column):
         group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
-        line_label = "Mean across permutations" if is_intermediate_plot else str(model_name)
+        line_label = (
+            "Mean across permutations"
+            if is_intermediate_plot and model_column == "model_name"
+            else str(model_name)
+        )
         line_x_values = [tile_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
         ax.plot(
             line_x_values,
@@ -688,7 +692,11 @@ def plot_accuracy_vs_tiles(
     )
     ax.set_title(title or default_title)
     ax.grid(True, alpha=0.3)
-    model_legend_title = "Mean" if is_intermediate_plot else model_column.replace("_", " ").title()
+    model_legend_title = (
+        "Mean"
+        if is_intermediate_plot and model_column == "model_name"
+        else model_column.replace("_", " ").title()
+    )
     model_legend = ax.legend(
         title=model_legend_title,
         loc="upper left",

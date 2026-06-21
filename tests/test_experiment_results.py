@@ -376,6 +376,59 @@ def test_plot_accuracy_vs_tiles_intermediate_legends_include_mean_and_conditions
     assert "Baseline: no permutation" in legend_labels
 
 
+def test_plot_accuracy_vs_tiles_intermediate_experiment_condition_lines(monkeypatch, tmp_path):
+    plot_labels = []
+    legend_titles = []
+
+    def fake_plot(self, *args, **kwargs):
+        plot_labels.append(kwargs.get("label"))
+        return []
+
+    def fake_legend(self, handles=None, labels=None, *args, **kwargs):
+        legend_titles.append(kwargs.get("title"))
+        return None
+
+    monkeypatch.setattr("matplotlib.axes.Axes.plot", fake_plot)
+    monkeypatch.setattr("matplotlib.axes.Axes.legend", fake_legend)
+    aggregated = pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "experiment_condition": "frozen_pretrained_binary_head",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.75,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "experiment_condition": "unfrozen_pretrained_binary_head",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.78,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "experiment_condition": "zero_shot_full_pretrained_head",
+                "num_tiles": 1,
+                "mean_best_epoch_val_accuracy": 0.65,
+            },
+        ]
+    )
+
+    plot_accuracy_vs_tiles(
+        aggregated,
+        str(tmp_path / "intermediate" / "part1_accuracy_vs_tiles_mobilenetv3_small_experiments.png"),
+        model_column="experiment_condition",
+        title="Intermediate Model Plot: Experiment Comparison by Tiling Level - mobilenetv3_small",
+    )
+
+    assert plot_labels == [
+        "frozen_pretrained_binary_head",
+        "unfrozen_pretrained_binary_head",
+        "zero_shot_full_pretrained_head",
+    ]
+    assert "Experiment Condition" in legend_titles
+    assert "Mean" not in legend_titles
+
+
 def test_plot_accuracy_vs_tiles_final_plot_has_model_lines_and_hardness_condition_points(monkeypatch, tmp_path):
     plot_labels = []
     markers = []

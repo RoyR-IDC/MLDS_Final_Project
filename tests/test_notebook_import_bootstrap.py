@@ -54,3 +54,39 @@ def test_part1_notebook_keeps_easy_medium_hard_sample_records():
     assert "configs.num_tile_permutations = 3" in config_source
     assert "num_tile_permutations=configs.num_tile_permutations" in sample_source
     assert "max_records=sum(1 for record in tile_permutation_records if record.tile_permutation is not None)" in sample_source
+
+
+def test_part1_training_loop_saves_without_inline_image_display():
+    cells = _code_cells(ROOT / "src/notebooks/part1_solution.ipynb")
+    training_source = next(
+        source
+        for source in cells
+        if "train_model_on_tile_permutation_records(" in source
+        and "for model_name in configs.model_names" in source
+    )
+    display_source = next(
+        source
+        for source in cells
+        if "part1_generated_figure_paths" in source
+        and "display(Image(filename=figure_path))" in source
+    )
+
+    assert "display(Image(filename=intermediate_figure_path))" not in training_source
+    assert "Saved intermediate model plot" in training_source
+    assert "part1_final_figure_paths" in display_source
+    assert "part1_intermediate_experiment_figure_paths" in display_source
+
+
+def test_part1_plotting_filters_to_configured_models_and_conditions():
+    cells = _code_cells(ROOT / "src/notebooks/part1_solution.ipynb")
+    plotting_source = next(
+        source
+        for source in cells
+        if "PART1_EXPERIMENT_CONDITIONS" in source
+        and "part1_final_figure_paths" in source
+    )
+
+    assert "part1_all_raw['model_name'].isin(configs.model_names)" in plotting_source
+    assert "experiment_condition" in plotting_source
+    assert "frozen_pretrained_binary_head" in plotting_source
+    assert "model_column='experiment_condition'" in plotting_source
