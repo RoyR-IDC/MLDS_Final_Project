@@ -66,10 +66,10 @@ from src.preprocessing.tile_permutations import (
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
 from src.training.run import TrainingRunSpec
-from src.utils.config import CVExperimentConfig
+from src.utils.config import CVExperimentConfig, PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
 
 
-PATCH_SHUFFLE_DEFAULT_TILES = 3
+PATCH_SHUFFLE_BASELINE_TILES = 1
 CORRUPTION_PROBABILITY_SCHEDULE = [0.1, 0.3, 0.5, 0.8]
 
 
@@ -135,7 +135,7 @@ def _part2_hardness_metadata(record: TilePermutationRecord) -> dict[str, Any]:
 
 
 def _patch_shuffle_tiles(record: TilePermutationRecord) -> int:
-    return int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES)
+    return int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
 
 
 def _expected_part2_input_size(
@@ -151,7 +151,7 @@ def _expected_part2_input_size(
     if augmentation_name == "patch_shuffle":
         tiles_per_side = _patch_shuffle_tiles(record)
     elif curriculum_name == "corruption_probability":
-        tiles_per_side = max(int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES), PATCH_SHUFFLE_DEFAULT_TILES)
+        tiles_per_side = int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
     else:
         tiles_per_side = int(record.tiles_per_side or 1)
     return make_tile_compatible_image_size(config.image_size, tiles_per_side)
@@ -237,11 +237,21 @@ def _permutation_for_stage(
     return deterministic_tile_permutation(tiles_per_side, permutation_name)
 
 
-def _difficulty_stage_tiles(record: TilePermutationRecord) -> list[int | None]:
+def _difficulty_stage_tiles(
+    record: TilePermutationRecord,
+    config: CVExperimentConfig,
+) -> list[int | None]:
     target = int(record.tiles_per_side or 1)
     if target <= 1:
         return [None]
-    stage_tiles = [tiles for tiles in (2, 3, 4) if tiles <= target]
+    configured_tiles = sorted(
+        {
+            int(tiles)
+            for tiles in getattr(config, "tiles_per_side_values", PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES)
+            if int(tiles) > 1
+        }
+    )
+    stage_tiles = [tiles for tiles in configured_tiles if tiles <= target]
     if target not in stage_tiles:
         stage_tiles.append(target)
     return [None, *stage_tiles]
@@ -261,7 +271,7 @@ def _planned_stage_items(
         return [("standard", total_epochs)]
 
     if curriculum_name == "permutation_difficulty":
-        stage_tiles = _difficulty_stage_tiles(record)
+        stage_tiles = _difficulty_stage_tiles(record, config)
         epochs = _stage_epochs(total_epochs, len(stage_tiles))
         names = [
             "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
@@ -292,7 +302,7 @@ def build_curriculum_schedule(
     total_epochs = _ablation_epochs(ablation, config)
 
     if curriculum_name == "permutation_difficulty":
-        stage_tiles = _difficulty_stage_tiles(record)
+        stage_tiles = _difficulty_stage_tiles(record, config)
         epochs = _stage_epochs(total_epochs, len(stage_tiles))
         stages: list[TrainingStage] = []
         for stage_epochs, tiles_per_side in zip(epochs, stage_tiles):
@@ -324,7 +334,7 @@ def build_curriculum_schedule(
         return CurriculumSchedule(stages)
 
     if curriculum_name == "corruption_probability":
-        target_tiles = max(int(record.tiles_per_side or PATCH_SHUFFLE_DEFAULT_TILES), PATCH_SHUFFLE_DEFAULT_TILES)
+        target_tiles = int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
         tile_permutation = record.tile_permutation or _permutation_for_stage(
             tiles_per_side=target_tiles,
             record=record,

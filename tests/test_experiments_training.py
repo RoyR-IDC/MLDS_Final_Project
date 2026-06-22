@@ -1075,7 +1075,14 @@ def test_part2_mlp_head_ablation_sets_overrides_and_metadata(monkeypatch):
 
 
 def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
-    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=5, seed=42)
+    config = SimpleNamespace(
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        epochs=5,
+        seed=42,
+        tiles_per_side_values=[1, 4, 7, 10],
+    )
     record = TilePermutationRecord(
         tiles_per_side=4,
         tile_permutation_id=1,
@@ -1096,12 +1103,19 @@ def test_difficulty_curriculum_builds_stages_up_to_target(monkeypatch):
     )
 
     assert schedule is not None
-    assert schedule.stage_names == ["original", "2x2_permutation", "3x3_permutation", "4x4_permutation"]
+    assert schedule.stage_names == ["original", "4x4_permutation"]
     assert schedule.total_epochs == 5
 
 
 def test_curriculum_ablation_epoch_override_controls_stage_total(monkeypatch):
-    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
+    config = SimpleNamespace(
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        epochs=10,
+        seed=42,
+        tiles_per_side_values=[1, 4, 7, 10],
+    )
     record = TilePermutationRecord(
         tiles_per_side=4,
         tile_permutation_id=1,
@@ -1126,7 +1140,14 @@ def test_curriculum_ablation_epoch_override_controls_stage_total(monkeypatch):
 
 
 def test_difficulty_curriculum_includes_target_grid_stage(monkeypatch):
-    config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=10, seed=42)
+    config = SimpleNamespace(
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        epochs=10,
+        seed=42,
+        tiles_per_side_values=[1, 4, 7, 10],
+    )
     record = TilePermutationRecord(
         tiles_per_side=10,
         tile_permutation_id=1,
@@ -1154,12 +1175,11 @@ def test_difficulty_curriculum_includes_target_grid_stage(monkeypatch):
     assert schedule is not None
     assert schedule.stage_names == [
         "original",
-        "2x2_permutation",
-        "3x3_permutation",
         "4x4_permutation",
+        "7x7_permutation",
         "10x10_permutation",
     ]
-    assert loader_tiles == [1, 2, 3, 4, 10]
+    assert loader_tiles == [1, 4, 7, 10]
     assert schedule.total_epochs == 10
 
 
@@ -1218,10 +1238,10 @@ def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatc
 def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypatch):
     config = SimpleNamespace(image_size=32, batch_size=4, num_workers=0, epochs=4, seed=42)
     record = TilePermutationRecord(
-        tiles_per_side=3,
+        tiles_per_side=4,
         tile_permutation_id=1,
         tile_permutation_seed=42,
-        tile_permutation=deterministic_tile_permutation(3, "medium"),
+        tile_permutation=deterministic_tile_permutation(4, "medium"),
     )
     probabilities = []
 
@@ -1244,6 +1264,74 @@ def test_corruption_probability_curriculum_uses_expected_probabilities(monkeypat
     assert schedule is not None
     assert probabilities == CORRUPTION_PROBABILITY_SCHEDULE
     assert schedule.total_epochs == 4
+
+
+def test_part2_baseline_patch_shuffle_keeps_original_grid(monkeypatch):
+    config = SimpleNamespace(image_size=224, batch_size=4, num_workers=0)
+    record = TilePermutationRecord(
+        tiles_per_side=None,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=None,
+        tile_permutation_name="easy",
+    )
+    captured_tiles = []
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        captured_tiles.append(kwargs["tiles_per_side"])
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    batch_augmentation = part2.build_ablation_batch_augmentation(
+        {"augmentation": "patch_shuffle"},
+        record,
+    )
+    part2.build_ablation_dataloaders(
+        ablation={"augmentation": "patch_shuffle"},
+        record=record,
+        train_samples=[("cat.jpg", 0)],
+        validation_samples=[("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert batch_augmentation is not None
+    assert batch_augmentation.tiles_per_side == 1
+    assert captured_tiles == [1]
+
+
+def test_corruption_probability_baseline_keeps_original_grid(monkeypatch):
+    config = SimpleNamespace(image_size=224, batch_size=4, num_workers=0, epochs=4, seed=42)
+    record = TilePermutationRecord(
+        tiles_per_side=None,
+        tile_permutation_id=1,
+        tile_permutation_seed=42,
+        tile_permutation=None,
+        tile_permutation_name="easy",
+    )
+    captured_tiles = []
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        captured_tiles.append(kwargs["tiles_per_side"])
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "corruption_probability"},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert captured_tiles == [1, 1, 1, 1]
 
 
 def test_part2_default_ablation_epochs_are_uniform_and_curriculum_checkpoint_compatible():
@@ -1295,7 +1383,7 @@ def test_part2_default_ablation_epochs_are_uniform_and_curriculum_checkpoint_com
         tile_permutation_name="medium",
     )
     curriculum_schedule = SimpleNamespace(
-        stage_names=["original", "2x2_permutation", "3x3_permutation", "4x4_permutation"]
+        stage_names=["original", "4x4_permutation"]
     )
     ablation = ablations[-1]
     expected_metadata = {
