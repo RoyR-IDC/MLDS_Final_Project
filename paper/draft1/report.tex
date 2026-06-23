@@ -73,7 +73,7 @@
 
 \par\smallskip\noindent The experiments are organized into three parts. First, frozen ImageNet-1k-pretrained MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 backbones are compared using trained binary classification heads over one unpermuted baseline and deterministic 4 × 4, 7 × 7, and 10 × 10 tile grids, each paired with easy, medium, and hard permutation presets. Part 1 also includes two reviewer-requested controls: full fine-tuning of the pretrained binary-head models and zero-shot evaluation of each native ImageNet-1k head by comparing summed dog-class and cat-class probabilities. Second, several configurable CNN-backbone improvement strategies are evaluated against matched baselines, including patch shuffle, regular image augmentation, mixed original/permuted training, a nonlinear MLP classification head, and two curriculum variants. Third, model-agnostic permutation hardness metrics are computed and joined to the saved configurable-CNN validation results; this part does not train additional models.
 
-\par\smallskip\noindent The prior run matrix suggested that classification remains well above chance under all tested deterministic permutations, but that performance decreases as the grid becomes finer and the permutation becomes more disruptive. The implementation now standardizes the active backbones to ImageNet-1k-only timm checkpoints, replacing the earlier ResNet-18 and ImageNet-21k-derived MLP-Mixer choices with MobileNetV3-Small and gMLP-S16 while keeping DeiT-Tiny. The earlier numeric results should therefore be read as historical baseline results until the new MobileNetV3-Small/DeiT-Tiny/gMLP-S16 matrix is executed. These findings are limited to fixed deterministic permutations, a single train/validation split, one main seed, frozen pretrained backbones, no independent test set, and exploratory hardness correlations over 12 deterministic records. Best validation accuracy is also optimistic because it selects the best epoch on the validation set. Therefore, the report provides preliminary evidence that useful dog/cat cues survive the tested transformations, but it does not show that the models reconstruct, invert, transfer across, or explicitly learn the original image layout.
+\par\smallskip\noindent The prior run matrix suggested that classification remains well above chance under all tested deterministic permutations, but that performance decreases as the grid becomes finer and the permutation becomes more disruptive. The implementation now standardizes the active backbones to ImageNet-1k-only timm checkpoints, replacing the earlier ResNet-18 and ImageNet-21k-derived MLP-Mixer choices with MobileNetV3-Small and gMLP-S16 while keeping DeiT-Tiny. The earlier numeric results should therefore be read as historical baseline results until the new MobileNetV3-Small/DeiT-Tiny/gMLP-S16 matrix is executed. These findings are limited to fixed deterministic permutations, a single train/validation split, one main seed, frozen pretrained backbones, no independent test set, and exploratory hardness correlations over a small deterministic matrix whose primary analysis collapses the repeated clean baseline to one row. Best validation accuracy is also optimistic because it selects the best epoch on the validation set. Therefore, the report provides preliminary evidence that useful dog/cat cues survive the tested transformations, but it does not show that the models reconstruct, invert, transfer across, or explicitly learn the original image layout.
 \end{abstract}
 \end{flushleft}
 
@@ -609,7 +609,7 @@ Non-curriculum Part 2 ablations train for 10 epochs, whereas both curriculum abl
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it can be optimistic as a final performance estimate because it selects the best epoch on the validation set.
 
-For Part 3, the hardness-correlation analysis is based on the 12 deterministic records in the final configurable-CNN matrix. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No p-values, confidence intervals, repeated-seed variability estimates, or independent test-set measurements are reported.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The primary pooled correlation analysis collapses the repeated one-tile/no-permutation baseline to one row, giving 10 rows; the original 12-row view and a 9-row non-baseline-only view are retained as sensitivity checks. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No p-values, confidence intervals, repeated-seed variability estimates, or independent test-set measurements are reported.
 
 \section{Results}
 
@@ -690,28 +690,28 @@ The historical Part 2 matrix gave a selective picture of the earlier CNN ablatio
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
 
-Table~\ref{tab:part3-correlations} reports exploratory correlations between deterministic hardness metrics and historical CNN best validation accuracy. Figures~\ref{fig:part3-hardness-examples}--\ref{fig:part3-adjacency-accuracy} visualize the metric values and their relationship to grid size, difficulty label, and accuracy.
+Table~\ref{tab:part3-correlations} reports exploratory correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy under the primary one-baseline-row scope. Figures~\ref{fig:part3-hardness-examples}--\ref{fig:part3-adjacency-accuracy} visualize the metric values and their relationship to grid size, difficulty label, and accuracy.
 
 \begin{table}[t]
   \centering
   \small
   \resizebox{\linewidth}{!}{%
-  \begin{tabular}{lrr}
+  \begin{tabular}{lrrr}
     \toprule
-    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} \\
+    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} & \textbf{N} \\
     \midrule
-    Global displacement & -0.7607 & -0.8169 \\
-    Adjacency destruction & -0.9044 & -0.9736 \\
-    Spatial entropy & -0.6942 & -0.8310 \\
-    Combined hardness & -0.8477 & -0.9296 \\
+    Global displacement & -0.7463 & -0.6970 & 10 \\
+    Adjacency destruction & -0.9120 & -0.9423 & 10 \\
+    Spatial entropy & -0.6650 & -0.7212 & 10 \\
+    Combined hardness & -0.8481 & -0.8909 & 10 \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Historical Part 3 exploratory correlations between CNN best validation accuracy and permutation metrics over the 12 deterministic records. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
+  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics after collapsing the repeated one-tile/no-permutation baseline to one row. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
   \label{tab:part3-correlations}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. In the historical joined records, all four hardness metrics were negatively correlated with CNN best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9044 and Spearman correlation -0.9736. These correlations should be regenerated for the new MobileNetV3-Small default before drawing conclusions about the active matrix.
+Part 3 provides a ranking lens for the deterministic permutations. In the primary one-baseline-row scope, all four hardness metrics were negatively correlated with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9120 and Spearman correlation -0.9423. The retained 12-row historical-comparability scope gives similar but baseline-weighted correlations, while the 9-row non-baseline-only scope checks that the association is not solely driven by the clean baseline.
 
 \begin{figure*}[t]
   \centering
@@ -730,7 +730,7 @@ Part 3 provides a ranking lens for the deterministic permutations. In the histor
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png}
-  \caption{Adjacency destruction, grid size, and historical CNN best validation accuracy across the 12 joined deterministic records. Lower accuracy is associated with higher adjacency destruction in this exploratory matrix.}
+  \caption{Adjacency destruction, grid size, and MobileNetV3-Small best validation accuracy across the joined deterministic records. Lower accuracy is associated with higher adjacency destruction in this exploratory matrix.}
   \label{fig:part3-adjacency-accuracy}
 \end{figure}
 
@@ -744,7 +744,7 @@ The historical architecture comparison suggested that patch-based pretrained rep
 
 The historical Part 2 ablations suggested that simply adding spatial noise was not enough in this matrix. Patch shuffle underperformed in the earlier final matrix, possibly because the validation task uses one fixed deterministic permutation rather than arbitrary extra shuffling. The MLP head gave the largest average improvement among the tested strategies in the earlier CNN run. The active MobileNetV3-Small default should be rerun before treating these relative deltas as current findings.
 
-The hardness metrics address the proposal's third objective: ranking permutations with the same tile count. The historical negative correlations suggest that geometry-only permutation descriptors can capture meaningful variation in CNN performance within the deterministic matrix. Adjacency destruction was particularly associated with validation accuracy, which is consistent with the intuition that destroying local tile neighborhoods can be difficult for a frozen convolutional model. Because the analysis uses only 12 deterministic records, it should be viewed as a hypothesis-generating result for future experiments with more permutation samples.
+The hardness metrics address the proposal's third objective: ranking permutations with the same tile count. The negative correlations suggest that geometry-only permutation descriptors can capture meaningful variation in MobileNetV3-Small performance within the deterministic matrix. Adjacency destruction was particularly associated with validation accuracy, which is consistent with the intuition that destroying local tile neighborhoods can be difficult for a frozen convolutional model. Because the primary analysis uses only 10 rows after collapsing the repeated clean baseline, it should be viewed as a hypothesis-generating result for future experiments with more permutation samples.
 
 Finally, high accuracy should not be interpreted as evidence that the models learned to undo the permutation. The experiments do not directly distinguish spatial reconstruction, compensation for a fixed mapping, and exploitation of surviving class-discriminative cues. One possible explanation is that local texture, object parts, background statistics, or other cues persist even when global shape is disrupted; the current experiments cannot distinguish this explanation from compensation for the fixed mapping.
 
@@ -752,7 +752,7 @@ Finally, high accuracy should not be interpreted as evidence that the models lea
 
 Several limitations constrain the strength and scope of the conclusions. First, no repeated training seeds are reported, so run-to-run variation is not quantified. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch on the validation set. Third, the architecture comparison is confounded by pretraining, parameter counts, patch sizes, tokenization behavior, and model-specific feature representations. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
 
-The experimental matrix is also limited. Curriculum results are partly confounded by longer training duration, since curriculum ablations train for 30 epochs while non-curriculum ablations train for 10 epochs. The deterministic matrix contains only three permutation presets per grid size, and the hardness-correlation analysis uses only 12 records. The study does not test full fine-tuning, unseen permutations, transfer across permutations, cryptographic recovery, reconstruction, inversion, or explicit learning of the original layout. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
+The experimental matrix is also limited. Curriculum results are partly confounded by longer training duration, since curriculum ablations train for 30 epochs while non-curriculum ablations train for 10 epochs. The deterministic matrix contains only three permutation presets per grid size, and the primary hardness-correlation analysis uses only 10 rows after collapsing the repeated one-tile baseline. The study does not test full fine-tuning, unseen permutations, transfer across permutations, cryptographic recovery, reconstruction, inversion, or explicit learning of the original layout. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
 
 \section{Conclusion and Future Work}
 

@@ -977,6 +977,7 @@ def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
     return {
         "metrics": os.path.join(results_dir, "tile_permutation_metrics.csv"),
         "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
+        "correlation_input": os.path.join(results_dir, "metric_accuracy_correlation_input.csv"),
         "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
         "metric_plots": metric_plots,
         "plots": existing_plots,
@@ -1028,6 +1029,53 @@ PART3_METRIC_COLUMNS = [
     "spatial_permutation_entropy",
     "combined_hardness_score",
 ]
+PART3_CORRELATION_SCOPES = ("all_rows", "one_baseline_row", "non_baseline_rows")
+PART3_JOIN_KEY_COLUMNS = ["tiles_per_side", "num_tiles", "tile_permutation_id"]
+
+
+def _part3_baseline_mask(frame: pd.DataFrame) -> pd.Series:
+    """Return rows that represent the no-permutation Part 3 baseline."""
+
+    mask = pd.Series(False, index=frame.index)
+    if "tiles_per_side" in frame.columns:
+        mask = mask | frame["tiles_per_side"].isna()
+    if "num_tiles" in frame.columns:
+        mask = mask | frame["num_tiles"].fillna(-1).astype(float).eq(1.0)
+    if "tile_permutation_id" in frame.columns:
+        mask = mask | frame["tile_permutation_id"].fillna(-1).astype(float).eq(0.0)
+    return mask
+
+
+def _part3_correlation_input_frame(joined: pd.DataFrame, analysis_scope: str) -> pd.DataFrame:
+    """Return the joined rows used for one Part 3 correlation scope."""
+
+    if analysis_scope not in PART3_CORRELATION_SCOPES:
+        raise ValueError(f"Unsupported Part 3 correlation analysis_scope: {analysis_scope}")
+
+    frame = _normalize_part3_joined_columns(joined)
+    baseline_mask = _part3_baseline_mask(frame)
+    if analysis_scope == "non_baseline_rows":
+        frame = frame[~baseline_mask].copy()
+    elif analysis_scope == "one_baseline_row":
+        baseline_rows = frame[baseline_mask].head(1).copy()
+        if not baseline_rows.empty:
+            baseline_rows.loc[:, "tile_permutation_name"] = "baseline"
+            baseline_rows.loc[:, "tile_permutation_id"] = 0
+        frame = pd.concat([baseline_rows, frame[~baseline_mask]], ignore_index=True)
+    else:
+        frame = frame.copy()
+
+    frame["analysis_scope"] = analysis_scope
+    return _reset_dataframe_index(frame)
+
+
+def build_part3_correlation_input(joined: pd.DataFrame) -> pd.DataFrame:
+    """Return the exact joined rows used by all Part 3 correlation scopes."""
+
+    return pd.concat(
+        [_part3_correlation_input_frame(joined, analysis_scope) for analysis_scope in PART3_CORRELATION_SCOPES],
+        ignore_index=True,
+    )
 
 
 def _add_combined_hardness_scores(
@@ -1161,8 +1209,48 @@ def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
     )
 
 
-def load_part1_model_results(part1_results_csv: str, model_name: str) -> pd.DataFrame:
-    """Load Part 1 raw results filtered to one trained model."""
+def _filter_nullable_column(frame: pd.DataFrame, column: str, expected: object) -> pd.DataFrame:
+    """Filter a column when present, treating ``None`` as missing/null."""
+
+    if column not in frame.columns:
+        return frame
+    if expected is None:
+        return cast(pd.DataFrame, frame[frame[column].isna()].copy())
+    return cast(pd.DataFrame, frame[frame[column] == expected].copy())
+
+
+def _validate_part3_unique_result_keys(model_results: pd.DataFrame, model_name: str) -> None:
+    """Raise if a selected Part 1 result table has duplicate Part 3 join keys."""
+
+    missing = [column for column in PART3_JOIN_KEY_COLUMNS if column not in model_results.columns]
+    if missing:
+        raise ValueError(f"Part 1 results for model_name='{model_name}' are missing columns: {missing}")
+
+    duplicate_mask = model_results.duplicated(PART3_JOIN_KEY_COLUMNS, keep=False)
+    if not duplicate_mask.any():
+        return
+
+    duplicate_keys = (
+        model_results.loc[duplicate_mask, PART3_JOIN_KEY_COLUMNS]
+        .drop_duplicates()
+        .to_dict("records")
+    )
+    raise ValueError(
+        f"Part 1 rows for model_name='{model_name}' are not unique by {PART3_JOIN_KEY_COLUMNS}: "
+        f"{duplicate_keys[:3]}"
+    )
+
+
+def load_part1_model_results(
+    part1_results_csv: str,
+    model_name: str,
+    *,
+    ablation_name: str | None = None,
+    freeze_backbone: bool | None = True,
+    classification_head: str | None = None,
+    validate_unique_keys: bool = True,
+) -> pd.DataFrame:
+    """Load Part 1 raw results for one Part 3 model/condition."""
 
     model_name = validate_model_name(model_name)
     raw_results = _read_csv_dataframe(part1_results_csv)
@@ -1171,8 +1259,17 @@ def load_part1_model_results(part1_results_csv: str, model_name: str) -> pd.Data
 
     raw_results_any = cast(Any, raw_results)
     model_results = cast(pd.DataFrame, raw_results_any[raw_results_any["model_name"] == model_name].copy())
+    model_results = _filter_nullable_column(model_results, "ablation_name", ablation_name)
+    model_results = _filter_nullable_column(model_results, "freeze_backbone", freeze_backbone)
+    model_results = _filter_nullable_column(model_results, "classification_head", classification_head)
     if model_results.empty:
-        raise ValueError(f"No Part 1 rows found for model_name='{model_name}'")
+        raise ValueError(
+            f"No Part 1 rows found for model_name='{model_name}' with "
+            f"ablation_name={ablation_name!r}, freeze_backbone={freeze_backbone!r}, "
+            f"classification_head={classification_head!r}"
+        )
+    if validate_unique_keys:
+        _validate_part3_unique_result_keys(model_results, model_name)
     return model_results
 
 
@@ -1180,24 +1277,27 @@ def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "r
     """Compute accuracy correlations for each Part 3 hardness metric."""
 
     rows: list[dict[str, Any]] = []
-    for metric in PART3_METRIC_COLUMNS:
-        frame = cast(pd.DataFrame, joined.dropna(subset=[metric, "best_val_accuracy"]))
-        frame_any = cast(Any, frame)
-        if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
-            pearson = float("nan")
-            spearman = float("nan")
-        else:
-            pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
-            spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
-        rows.append(
-            {
-                "group": group_name,
-                "metric": metric,
-                "pearson": pearson,
-                "spearman": spearman,
-                "n": len(frame),
-            }
-        )
+    for analysis_scope in PART3_CORRELATION_SCOPES:
+        scoped = _part3_correlation_input_frame(joined, analysis_scope)
+        for metric in PART3_METRIC_COLUMNS:
+            frame = cast(pd.DataFrame, scoped.dropna(subset=[metric, "best_val_accuracy"]))
+            frame_any = cast(Any, frame)
+            if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
+                pearson = float("nan")
+                spearman = float("nan")
+            else:
+                pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
+                spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
+            rows.append(
+                {
+                    "group": group_name,
+                    "analysis_scope": analysis_scope,
+                    "metric": metric,
+                    "pearson": pearson,
+                    "spearman": spearman,
+                    "n": len(frame),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -1327,11 +1427,15 @@ def plot_part3_metric_grid_views(
 def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
     """Load saved Part 3 metric, joined, and correlation tables."""
 
-    return {
+    results = {
         "metrics": _read_csv_dataframe(os.path.join(results_dir, "tile_permutation_metrics.csv")),
         "joined": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_joined.csv")),
         "correlations": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
     }
+    correlation_input_path = os.path.join(results_dir, "metric_accuracy_correlation_input.csv")
+    if os.path.exists(correlation_input_path):
+        results["correlation_input"] = _read_csv_dataframe(correlation_input_path)
+    return results
 
 
 def run_part3_hardness_analysis(
@@ -1346,6 +1450,9 @@ def run_part3_hardness_analysis(
     validation_samples: Sequence[Sample],
     image_size: int,
     model_name: str = "resnet18",
+    ablation_name: str | None = None,
+    freeze_backbone: bool | None = True,
+    classification_head: str | None = None,
     weight_adj: float = 0.5,
     weight_entropy: float = 0.3,
     weight_dist: float = 0.2,
@@ -1380,9 +1487,15 @@ def run_part3_hardness_analysis(
     save_csv(metrics, os.path.join(results_dir, "tile_permutation_metrics.csv"))
 
     log(f"Loading Part 1 {model_name} results...")
-    raw_results = load_part1_model_results(part1_results_csv, model_name)
+    raw_results = load_part1_model_results(
+        part1_results_csv,
+        model_name,
+        ablation_name=ablation_name,
+        freeze_backbone=freeze_backbone,
+        classification_head=classification_head,
+    )
     log(f"Joining hardness metrics with {model_name} accuracy...")
-    joined = raw_results.merge(metrics, on=["tiles_per_side", "num_tiles", "tile_permutation_id"], how="left")
+    joined = raw_results.merge(metrics, on=PART3_JOIN_KEY_COLUMNS, how="left")
     joined = _normalize_part3_joined_columns(joined)
     joined = _reset_dataframe_index(
         _sorted_dataframe(joined, ["tiles_per_side", "tile_permutation_id"], na_position="first")
@@ -1391,10 +1504,17 @@ def run_part3_hardness_analysis(
     save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
 
     log("Computing metric-accuracy correlations...")
+    correlation_input = build_part3_correlation_input(joined)
     correlations = compute_part3_metric_correlations(joined, group_name=model_name)
     log("Saving correlations and plots...")
+    save_csv(correlation_input, os.path.join(results_dir, "metric_accuracy_correlation_input.csv"))
     save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
     for metric in PART3_METRIC_COLUMNS:
         plot_part3_metric_grid_views(joined, figures_dir, metric)
     log("Part 3 hardness analysis complete.")
-    return {"metrics": metrics, "joined": joined, "correlations": correlations}
+    return {
+        "metrics": metrics,
+        "joined": joined,
+        "correlation_input": correlation_input,
+        "correlations": correlations,
+    }

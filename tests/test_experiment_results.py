@@ -16,6 +16,7 @@ from src.evaluation.experiment_results import (
     PERMUTATION_MARKERS,
     add_part2_grid_baseline_deltas,
     aggregate_accuracy,
+    build_part3_correlation_input,
     compute_part3_metric_correlations,
     compute_part3_tile_permutation_metrics,
     experiment_intermediate_figure_path,
@@ -1334,6 +1335,74 @@ def test_part3_helpers_reuse_tile_permutation_csv_filter_model_and_emit_renamed_
     assert "edge_continuity_disruption_raw" not in metrics.columns
     assert model_results["model_name"].tolist() == ["resnet18"]
 
+
+def test_load_part1_model_results_defaults_to_regular_frozen_baseline_condition(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.96,
+                "ablation_name": None,
+                "freeze_backbone": True,
+                "classification_head": None,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.97,
+                "ablation_name": "unfrozen_pretrained_binary_head",
+                "freeze_backbone": False,
+                "classification_head": "binary_linear",
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.65,
+                "ablation_name": "zero_shot_full_pretrained_head",
+                "freeze_backbone": True,
+                "classification_head": "imagenet_full_head",
+            },
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    model_results = load_part1_model_results(str(tmp_path / "part1_raw_results.csv"), "mobilenetv3_small")
+
+    assert len(model_results) == 1
+    assert model_results.iloc[0]["best_val_accuracy"] == 0.96
+    assert pd.isna(model_results.iloc[0]["ablation_name"])
+
+
+def test_load_part1_model_results_raises_for_duplicate_part3_join_keys(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "model_name": "resnet18",
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.70,
+            },
+            {
+                "model_name": "resnet18",
+                "tiles_per_side": 2,
+                "num_tiles": 4,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.72,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+
+    with pytest.raises(ValueError, match="not unique"):
+        load_part1_model_results(str(tmp_path / "part1_raw_results.csv"), "resnet18")
+
+
 def test_part3_metrics_include_none_baseline_and_tiled_permutations(tmp_path):
     pd.DataFrame(
         [
@@ -1678,6 +1747,88 @@ def test_part3_correlations_are_nan_for_constant_accuracy():
 
     assert correlations["pearson"].isna().all()
     assert correlations["spearman"].isna().all()
+
+
+def test_part3_correlation_input_scopes_deduplicate_and_exclude_baseline_rows():
+    rows = []
+    for tile_permutation_id, accuracy in [(1, 0.91), (2, 0.90), (3, 0.89)]:
+        rows.append(
+            {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": tile_permutation_id,
+                "tile_permutation_name": ["easy", "medium", "hard"][tile_permutation_id - 1],
+                "best_val_accuracy": accuracy,
+                "global_tile_displacement": 0.00,
+                "adjacency_destruction_hardness": 0.00,
+                "spatial_permutation_entropy": 0.00,
+                "combined_hardness_score": 0.00,
+            }
+        )
+    for tiles_per_side in [4, 7, 10]:
+        for tile_permutation_id in [1, 2, 3]:
+            rows.append(
+                {
+                    "tiles_per_side": tiles_per_side,
+                    "num_tiles": tiles_per_side * tiles_per_side,
+                    "tile_permutation_id": tile_permutation_id,
+                    "tile_permutation_name": ["easy", "medium", "hard"][tile_permutation_id - 1],
+                    "best_val_accuracy": 0.90 - 0.01 * tile_permutation_id,
+                    "global_tile_displacement": 0.10 * tile_permutation_id,
+                    "adjacency_destruction_hardness": 0.20 * tile_permutation_id,
+                    "spatial_permutation_entropy": 0.15 * tile_permutation_id,
+                    "combined_hardness_score": 0.18 * tile_permutation_id,
+                }
+            )
+
+    correlation_input = build_part3_correlation_input(pd.DataFrame(rows))
+    counts = correlation_input.groupby("analysis_scope").size().to_dict()
+    one_baseline = correlation_input[correlation_input["analysis_scope"] == "one_baseline_row"]
+    non_baseline = correlation_input[correlation_input["analysis_scope"] == "non_baseline_rows"]
+
+    assert counts == {"all_rows": 12, "non_baseline_rows": 9, "one_baseline_row": 10}
+    assert one_baseline["num_tiles"].eq(1).sum() == 1
+    assert one_baseline.loc[one_baseline["num_tiles"] == 1, "tile_permutation_name"].tolist() == ["baseline"]
+    assert non_baseline["num_tiles"].eq(1).sum() == 0
+
+
+def test_part3_correlations_include_analysis_scopes_and_scope_sample_sizes():
+    rows = []
+    for tile_permutation_id, accuracy in [(1, 0.91), (2, 0.90), (3, 0.89)]:
+        rows.append(
+            {
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": tile_permutation_id,
+                "best_val_accuracy": accuracy,
+                "global_tile_displacement": 0.00,
+                "adjacency_destruction_hardness": 0.00,
+                "spatial_permutation_entropy": 0.00,
+                "combined_hardness_score": 0.00,
+            }
+        )
+    for index in range(9):
+        rows.append(
+            {
+                "tiles_per_side": 4 + index,
+                "num_tiles": 16 + index,
+                "tile_permutation_id": (index % 3) + 1,
+                "best_val_accuracy": 0.88 - 0.01 * index,
+                "global_tile_displacement": 0.10 + 0.03 * index,
+                "adjacency_destruction_hardness": 0.20 + 0.04 * index,
+                "spatial_permutation_entropy": 0.15 + 0.02 * index,
+                "combined_hardness_score": 0.18 + 0.03 * index,
+            }
+        )
+
+    correlations = compute_part3_metric_correlations(pd.DataFrame(rows))
+
+    assert set(correlations["analysis_scope"]) == {"all_rows", "one_baseline_row", "non_baseline_rows"}
+    assert correlations.groupby("analysis_scope")["n"].first().to_dict() == {
+        "all_rows": 12,
+        "non_baseline_rows": 9,
+        "one_baseline_row": 10,
+    }
 
 
 def test_part3_correlations_are_finite_for_non_constant_accuracy():
