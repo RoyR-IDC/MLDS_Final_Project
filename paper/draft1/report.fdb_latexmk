@@ -1,10 +1,10 @@
 # Fdb version 4
-["pdflatex"] 1781874468.92478 "report.tex" "report.pdf" "report" 1781874472.75266 0
-  "../../outputs/figures/part1_accuracy_vs_tiles.png" 1779861272 99671 dde125809bf2adc7f1c913d73cf56bc1 ""
-  "../../outputs/figures/part2_ablation_comparison.png" 1780343088.21435 137091 fdd16a5c76f2e928f3cea5e0775c477f ""
-  "../../outputs/figures/part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png" 1779874998 203353 0750d62634c9625d8f6a638392d6e3df ""
-  "../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png" 1779874998 54857 5e79e61bcbe3ccbc629266dae27f252e ""
-  "../../outputs/figures/part3_hardness_examples.png" 1780343091.65883 1600529 1dd0b60141bb818613879088d2147d44 ""
+["pdflatex"] 1782478082.50407 "report.tex" "report.pdf" "report" 1782478096.85906 0
+  "../../outputs/figures/part1_accuracy_vs_tiles.png" 1781945840 160421 5cb5aaa7f5976a67d11b5527247df3c3 ""
+  "../../outputs/figures/part2_ablation_comparison.png" 1780063356 99484 d231027bc60e3c59dacb4b5df0a67901 ""
+  "../../outputs/figures/part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png" 1782225256.45497 211124 854afb7093c455e70827ee7ba07a5cab ""
+  "../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png" 1782225257.63643 55890 89c4c53d315f5d8a975dcb3843e7ac1f ""
+  "../../outputs/figures/part3_hardness_examples.png" 1782478066.01628 1600529 1dd0b60141bb818613879088d2147d44 ""
   "../template/images/runi_logo.png" 1781062814.92111 70164 8693916a2b159cd0d90b1f4671a8235e ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/jknappen/ec/tcrm1095.tfm" 1136768653 1536 02c06700a42be0f5a28664c7273f82e7 ""
@@ -104,9 +104,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1781874472.41205 18037 456d58cdb90223ba2d61c0e78a70ac5b "pdflatex"
-  "report.out" 1781874472.41734 7370 2ef5632cb050344996ebce6b866cc493 "pdflatex"
-  "report.tex" 1781874098.5084 73509 ce877132b392659277db4eb389f6affa ""
+  "report.aux" 1782478095.76137 18123 c18c398a93e773f371791959f2b544ea "pdflatex"
+  "report.out" 1782478095.77496 7370 2ef5632cb050344996ebce6b866cc493 "pdflatex"
+  "report.tex" 1782478029.28187 74122 d09e59ec73f7f987d532c8c01e219866 ""
   (generated)
   "report.aux"
   "report.log"
