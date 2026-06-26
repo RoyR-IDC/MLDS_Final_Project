@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.util import find_spec
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -191,9 +192,7 @@ def _ensure_colab_pdf_export_dependencies() -> None:
     if not is_google_colab_runtime():
         return
 
-    try:
-        import nbconvert  # noqa: F401
-    except ImportError:
+    if find_spec("nbconvert") is None:
         print("Installing nbconvert for PDF export...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "nbconvert"])
 
@@ -260,7 +259,7 @@ def export_notebook_to_pdf(
         "--output-dir",
         str(export_dir),
     ]
-    result = subprocess.run(
+    result: subprocess.CompletedProcess[str] = subprocess.run(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

@@ -168,10 +168,12 @@ def test_colab_mount_passes_force_remount(monkeypatch):
 
     google_module = ModuleType("google")
     colab_module = ModuleType("google.colab")
-    google_module.__path__ = []
-    google_module.colab = colab_module
-    colab_module.drive = SimpleNamespace(
-        mount=lambda path, force_remount=False: mount_calls.append((path, force_remount))
+    setattr(google_module, "__path__", [])
+    setattr(google_module, "colab", colab_module)
+    setattr(
+        colab_module,
+        "drive",
+        SimpleNamespace(mount=lambda path, force_remount=False: mount_calls.append((path, force_remount))),
     )
     monkeypatch.setitem(sys.modules, "google", google_module)
     monkeypatch.setitem(sys.modules, "google.colab", colab_module)
