@@ -1,7 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1782478082.50407 "report.tex" "report.pdf" "report" 1782478096.85906 0
-  "../../outputs/figures/part1_accuracy_vs_tiles.png" 1781945840 160421 5cb5aaa7f5976a67d11b5527247df3c3 ""
-  "../../outputs/figures/part2_ablation_comparison.png" 1780063356 99484 d231027bc60e3c59dacb4b5df0a67901 ""
+["pdflatex"] 1782479515.69252 "report.tex" "report.pdf" "report" 1782479526.206 0
+  "../../outputs/figures/part1_accuracy_vs_tiles.png" 1782479321.00828 109896 310adbe7a880df284395936f7b07ea88 ""
   "../../outputs/figures/part3_adjacency_destruction_hardness_grid_hardness_accuracy_3d.png" 1782225256.45497 211124 854afb7093c455e70827ee7ba07a5cab ""
   "../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png" 1782225257.63643 55890 89c4c53d315f5d8a975dcb3843e7ac1f ""
   "../../outputs/figures/part3_hardness_examples.png" 1782478066.01628 1600529 1dd0b60141bb818613879088d2147d44 ""
@@ -104,9 +103,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1782478095.76137 18123 c18c398a93e773f371791959f2b544ea "pdflatex"
-  "report.out" 1782478095.77496 7370 2ef5632cb050344996ebce6b866cc493 "pdflatex"
-  "report.tex" 1782478029.28187 74122 d09e59ec73f7f987d532c8c01e219866 ""
+  "report.aux" 1782479524.89493 18324 8986b9ef3b1a4aeaa42cfacc2080ee64 "pdflatex"
+  "report.out" 1782479524.90575 6971 b66521cecac4d70fc152363e7f556613 "pdflatex"
+  "report.tex" 1782479509.32724 73712 645507bcc620a32696535ecc206391d7 ""
   (generated)
   "report.aux"
   "report.log"
