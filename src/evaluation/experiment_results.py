@@ -964,10 +964,7 @@ def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
     ordered_plot_paths = [
         path
         for metric in PART3_METRIC_COLUMNS
-        for path in [
-            metric_plots[metric]["grid_hardness"],
-            metric_plots[metric]["grid_hardness_accuracy_3d"],
-        ]
+        for path in [metric_plots[metric]["grid_hardness"]]
     ]
     existing_plots = [
         path

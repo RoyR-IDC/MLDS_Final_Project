@@ -1631,7 +1631,6 @@ def test_part3_metric_grid_plots_are_reported_by_output_paths(tmp_path):
     }
     assert paths["plots"] == [
         str(tmp_path / "part3_combined_hardness_grid_vs_hardness.png"),
-        str(tmp_path / "part3_combined_hardness_grid_hardness_accuracy_3d.png"),
     ]
     assert paths["metric_plots"]["combined_hardness_score"] == output_paths
 
