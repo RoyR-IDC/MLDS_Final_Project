@@ -166,6 +166,23 @@ def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
+def _nbconvert_tex_packages_missing() -> bool:
+    """Return whether nbconvert's LaTeX package dependencies are missing."""
+
+    if not _command_exists("kpsewhich"):
+        return True
+
+    return (
+        subprocess.run(
+            ["kpsewhich", "adjustbox.sty"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        != 0
+    )
+
+
 def _ensure_colab_pdf_export_dependencies() -> None:
     """Install the LaTeX pieces nbconvert needs in a fresh Colab runtime."""
 
@@ -182,12 +199,7 @@ def _ensure_colab_pdf_export_dependencies() -> None:
 
     missing_latex_command = not _command_exists("xelatex")
     missing_pandoc = not _command_exists("pandoc")
-    missing_nbconvert_tex_packages = subprocess.run(
-        ["kpsewhich", "adjustbox.sty"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    ).returncode != 0
+    missing_nbconvert_tex_packages = _nbconvert_tex_packages_missing()
 
     if not (missing_latex_command or missing_pandoc or missing_nbconvert_tex_packages):
         return

@@ -5,6 +5,7 @@ from types import ModuleType
 from types import SimpleNamespace
 import zipfile
 
+import src.utils.notebook_setup as notebook_setup
 import src.utils.colab as colab
 from src.utils.colab import (
     COLAB_PREINSTALLED_REQUIREMENT_PREFIXES,
@@ -262,6 +263,17 @@ def test_stage_colab_data_missing_zip_warns_and_keeps_drive_path(tmp_path, monke
     assert staged == str(source)
     assert not destination.exists()
     assert "ZIP was not found" in capsys.readouterr().out
+
+
+def test_nbconvert_tex_package_check_treats_missing_kpsewhich_as_missing(monkeypatch):
+    monkeypatch.setattr(notebook_setup, "_command_exists", lambda command: False)
+    monkeypatch.setattr(
+        notebook_setup.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("kpsewhich should not be invoked when missing")),
+    )
+
+    assert notebook_setup._nbconvert_tex_packages_missing() is True
 
 
 def test_zip_train_images_script_creates_flat_archive(tmp_path):
