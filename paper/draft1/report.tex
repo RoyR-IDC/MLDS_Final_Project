@@ -328,7 +328,7 @@ The model factory uses explicit timm model identifiers rather than framework def
 
 \subsection{Optimization and Hyperparameters}
 
-The original Part 1 baseline and all Part 2 training runs use ImageNet-pretrained backbones with the feature extractor frozen and only the classification head trainable. The added unfrozen Part 1 control keeps the pretrained initialization and binary head but allows all model parameters to update. The zero-shot full-head control performs no gradient updates and reports validation accuracy from the native ImageNet-1k classifier. For trained binary-head runs, the loss is cross-entropy over the two classes. The optimizer is AdamW with learning rate $3 \times 10^{-4}$ and weight decay $1 \times 10^{-4}$. Runs use seed 42. In the executed Colab configuration, the batch size is 64, the dataloader uses 4 workers, and automatic mixed precision is enabled. The local configuration defaults to smaller smoke-test settings, so the reported results should be read as the Colab run matrix.
+The original Part 1 baseline and the explicit Part 2 ablation training runs use ImageNet-pretrained backbones with the feature extractor frozen and only the classification head trainable. The added unfrozen Part 1 control keeps the pretrained initialization and binary head but allows all model parameters to update. The zero-shot full-head control performs no gradient updates and reports validation accuracy from the native ImageNet-1k classifier. The updated Part 2 regular-baseline aggregate is loaded from the current regular Part 1 output rows and is used as the grid-level reference for ablation deltas. For trained binary-head runs, the loss is cross-entropy over the two classes. The optimizer is AdamW with learning rate $3 \times 10^{-4}$ and weight decay $1 \times 10^{-4}$. Runs use seed 42. In the executed Colab configuration, the batch size is 64, the dataloader uses 4 workers, and automatic mixed precision is enabled. The local configuration defaults to smaller smoke-test settings, so the reported results should be read as the Colab run matrix.
 
 Part 1 trained binary-head runs train each model/permutation record for 10 epochs; the zero-shot full-head control uses 0 epochs. Part 2 non-curriculum ablations also train for 10 epochs. The two curriculum ablations train for 30 epochs, distributed across their stages as evenly as possible: corruption-probability curriculum uses four stages with probabilities 0.1, 0.3, 0.5, and 0.8, while permutation-difficulty curriculum starts from original images and progresses through $2 \times 2$, $3 \times 3$, $4 \times 4$, and, when needed, the final target grid. Part 3 does not train a model; it computes deterministic permutation metrics and joins them to the saved configurable-CNN accuracies.
 
@@ -686,7 +686,7 @@ The main Part 1 analysis compares the three ImageNet-1k pretrained backbones und
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{part1_accuracy_vs_tiles.png}
+  \includegraphics[width=\linewidth]{part1_accuracy_vs_tiles_frozen_pretrained_binary_head.png}
   \caption{Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption; the plotted values average over deterministic difficulty presets at each grid size.}
   \label{fig:part1-accuracy}
 \end{figure}
@@ -694,7 +694,7 @@ The main Part 1 analysis compares the three ImageNet-1k pretrained backbones und
 \subsection{Part 2: Configurable-CNN Improvement Strategies}
 \label{sec:part2-results}
 
-Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary over the 12 deterministic records, and Figure~\ref{fig:part2-ablation} shows each strategy's delta from its matched baseline.
+Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. Figure~\ref{fig:part2-ablation} shows each strategy's delta from its matched grid baseline.
 
 \begin{table*}[t]
   \centering
@@ -704,34 +704,25 @@ Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary
     \toprule
     \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. baseline} \\
     \midrule
-    Regular Part 1 baseline & pending & pending & 0.00 pp \\
-    Patch shuffle & pending & pending & pending \\
-    Regular augmentations & pending & pending & pending \\
-    Mixed original/permuted & pending & pending & pending \\
-    CNN MLP head & pending & pending & pending \\
-    Corruption-probability curriculum & pending & pending & pending \\
-    Permutation-difficulty curriculum & pending & pending & pending \\
+    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
+    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
+    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
+    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
+    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
+    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
+    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 2 MobileNetV3-Small CNN ablation summary over the 12 deterministic records. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run.}
+  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the grid-level regular Part 1 baseline used by the current Part 2 plotting code.}
   \label{tab:part2-results}
 \end{table*}
 
-The Part 2 matrix is designed to compare each ablation against the matched regular baseline at the same grid size and deterministic difficulty label. The reported deltas should be interpreted within the limited deterministic matrix and the shared validation-set selection protocol.
+The Part 2 matrix is designed to compare each ablation against the matched regular baseline at the same grid size, with raw points retaining the deterministic difficulty labels in the figure. In the updated aggregate summary, the CNN MLP head has the largest mean best-validation improvement over the grid-level baseline (+8.49 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean improvement and is negative for the 100-tile aggregate, suggesting that additional random local shuffling is not uniformly helpful under the final fixed validation permutations. The reported deltas should be interpreted within the limited deterministic matrix and the shared validation-set selection protocol.
 
 \begin{figure}[t]
   \centering
-  \fbox{%
-  \begin{minipage}{0.92\linewidth}
-  \centering
-  \textbf{Part 2 MobileNetV3-Small ablation deltas}\\[0.5em]
-  Regular baseline \quad Patch shuffle \quad Regular augmentation\\
-  Mixed original/permuted \quad CNN MLP head\\
-  Corruption-probability curriculum \quad Permutation-difficulty curriculum\\[0.5em]
-  Values are reported as best-validation-accuracy deltas from the matched regular baseline.
-  \end{minipage}
-  }
+  \includegraphics[width=\linewidth]{part2_ablation_comparison.png}
   \caption{Part 2 best-validation-accuracy delta from the matched CNN baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}
   \label{fig:part2-ablation}
 \end{figure}
