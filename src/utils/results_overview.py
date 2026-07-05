@@ -308,39 +308,69 @@ def ensure_part3_hardness_examples_figure(project_root: Path, *, force: bool = F
             }
         )
 
-    row_count = len(rows)
+    condition_order = ["easy", "medium", "hard"]
+    grid_order = ["baseline", "4x4", "7x7", "10x10"]
+    row_by_grid_condition = {
+        (str(row["grid"]), str(row["tile_permutation_name"])): row
+        for row in rows
+    }
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(
-        row_count,
-        2,
-        figsize=(9, max(2.1, 2.1 * row_count)),
-        gridspec_kw={"width_ratios": [1.0, 1.35]},
+        len(condition_order),
+        len(grid_order),
+        figsize=(12, 8.4),
         squeeze=False,
     )
     fig.suptitle(f"Deterministic validation image: {image_path.name}", y=0.995)
-    for axis_row, row in zip(axes, rows):
-        image_axis, text_axis = axis_row
-        image_axis.imshow(row["image_array"])
-        image_axis.set_title(f"Grid {row['grid']} | {row.get('tile_permutation_name', 'order')}")
-        image_axis.axis("off")
-
-        text_axis.axis("off")
-        text_axis.text(
-            0.0,
-            0.5,
-            "\n".join(
+    baseline_row = next(row for row in rows if row["grid"] == "baseline")
+    for row_idx, condition_name in enumerate(condition_order):
+        for col_idx, grid_name in enumerate(grid_order):
+            axis = axes[row_idx][col_idx]
+            row = baseline_row if grid_name == "baseline" else row_by_grid_condition[(grid_name, condition_name)]
+            axis.imshow(row["image_array"])
+            axis.axis("off")
+            if row_idx == 0:
+                axis.set_title("No permutation" if grid_name == "baseline" else f"Grid {grid_name}")
+            if col_idx == 0:
+                axis.text(
+                    -0.05,
+                    0.5,
+                    condition_name.capitalize(),
+                    va="center",
+                    ha="right",
+                    rotation=90,
+                    transform=axis.transAxes,
+                    fontsize=12,
+                    fontweight="bold",
+                )
+            metric_text = "\n".join(
                 [
-                    f"Adjacency destruction: {row['adjacency_destruction_hardness']:.3f}",
-                    f"Global displacement: {row['global_tile_displacement']:.3f}",
-                    f"Spatial permutation entropy: {row['spatial_permutation_entropy']:.3f}",
-                    f"Combined hardness: {row['combined_hardness_score']:.3f}",
+                    f"A {row['adjacency_destruction_hardness']:.3f}",
+                    f"D {row['global_tile_displacement']:.3f}",
+                    f"E {row['spatial_permutation_entropy']:.3f}",
+                    f"C {row['combined_hardness_score']:.3f}",
                 ]
-            ),
-            va="center",
-            ha="left",
-            fontsize=11,
-        )
-    fig.tight_layout(rect=[0, 0, 1, 0.985])
+            )
+            axis.text(
+                0.02,
+                0.02,
+                metric_text,
+                transform=axis.transAxes,
+                va="bottom",
+                ha="left",
+                fontsize=8,
+                color="white",
+                bbox={"facecolor": "black", "alpha": 0.62, "pad": 2, "edgecolor": "none"},
+            )
+    fig.text(
+        0.5,
+        0.01,
+        "Metric overlay: A = adjacency destruction, D = global displacement, E = spatial entropy, C = combined hardness.",
+        ha="center",
+        fontsize=9,
+    )
+    fig.tight_layout(rect=[0.03, 0.03, 1, 0.965])
     fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     return output_path
