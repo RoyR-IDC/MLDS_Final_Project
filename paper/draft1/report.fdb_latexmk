@@ -1,5 +1,11 @@
 # Fdb version 4
-["pdflatex"] 1783266672.53748 "report.tex" "report.pdf" "report" 1783266676.17392 0
+["pdflatex"] 1783285058.76149 "report.tex" "report.pdf" "report" 1783285063.41587 0
+  "../../outputs/figures/intermediate/part2_ablation_augmentation_patch_shuffle.png" 1782613672 76875 d17154631b9af470457110cc8e206fd9 ""
+  "../../outputs/figures/intermediate/part2_ablation_cnn_mlp_head.png" 1782613746 79318 537cf62f5079b382747ef26281d7768e ""
+  "../../outputs/figures/intermediate/part2_ablation_curriculum_corruption_probability.png" 1782613776 78876 8ed7f0542a7d63be2fb458e191bc9bb9 ""
+  "../../outputs/figures/intermediate/part2_ablation_curriculum_permutation_difficulty.png" 1782613802 77891 dde0029c8e0082376e203b849694bc81 ""
+  "../../outputs/figures/intermediate/part2_ablation_mixed_original_permuted.png" 1782613722 81614 2b2082041ebd9c31b54ef59ad416342a ""
+  "../../outputs/figures/intermediate/part2_ablation_regular_augmentations.png" 1782613696 81694 b319644840ceda2b988e449d75cc150d ""
   "../../outputs/figures/part1_accuracy_vs_tiles_frozen_pretrained_binary_head.png" 1782613048 102817 917a4520647d51f5bfe32a115774a168 ""
   "../../outputs/figures/part1_accuracy_vs_tiles_unfrozen_pretrained_binary_head.png" 1782613048 90703 74514016a819fc214204e82e585c4b80 ""
   "../../outputs/figures/part1_accuracy_vs_tiles_zero_shot_full_pretrained_head.png" 1782613048 123997 24b73c496a7cc79c25d4bee2168ec379 ""
@@ -106,9 +112,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1783266675.85357 18904 1571b4470f3c7404a094218b9d70d90f "pdflatex"
-  "report.out" 1783266675.85845 8377 afcedd464fdbb508d56b34394f1f4719 "pdflatex"
-  "report.tex" 1783266619.05366 71625 44726ca98aa2ee782e6202c7e3abc31f ""
+  "report.aux" 1783285063.08072 18033 48a7cfce385177a23f74e8005ffbd307 "pdflatex"
+  "report.out" 1783285063.08639 8377 afcedd464fdbb508d56b34394f1f4719 "pdflatex"
+  "report.tex" 1783284995.68523 67529 bcbdb7e50abbdf8769ffbbde9163d95f ""
   (generated)
   "report.aux"
   "report.log"

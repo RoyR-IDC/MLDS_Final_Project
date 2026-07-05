@@ -132,7 +132,7 @@ The dataset is Kaggle's Dogs vs Cats image dataset. The labeled portion contains
 
 \subsection{Supervised Split}
 
-The supervised split is stratified with seed 42 and an 80/20 train/validation ratio. This gives 20,000 training images and 5,000 validation images. Both splits are exactly class-balanced: the training split contains 10,000 cats and 10,000 dogs, and the validation split contains 2,500 cats and 2,500 dogs. The validation split is held out from optimization and is not modified by training-only augmentations such as patch shuffle, regular augmentation, original/permuted sampling, or curriculum-stage sampling. Tables~\ref{tab:part1-train-validation}, \ref{tab:part2-train-validation}, and \ref{tab:part3-train-validation} provide the detailed per-part reuse of this split in Section~\ref{sec:additional-implementation-details}.
+The supervised split is stratified with seed 42 and an 80/20 train/validation ratio. This gives 20,000 training images and 5,000 validation images. Both splits are exactly class-balanced: the training split contains 10,000 cats and 10,000 dogs, and the validation split contains 2,500 cats and 2,500 dogs. The validation split is held out from optimization and is not modified by training-only augmentations such as patch shuffle, regular augmentation, original/permuted sampling, or curriculum-stage sampling. Table~\ref{tab:part1-train-validation} provides the detailed Part 1 reuse of this split in Section~\ref{sec:additional-information}.
 
 \subsection{Image Resizing and Model Input}
 
@@ -365,171 +365,13 @@ Table~\ref{tab:reproducibility-checklist} collects the implementation details ne
 
 \subsection{Model Implementation Details}
 
-Tables~\ref{tab:model-architecture-comparison}--\ref{tab:part1-pretraining-heads} record the model-family summary, parameter counts, and concrete timm checkpoint identifiers used in the Part 1 comparison.
-
-\begin{table}[t]
-  \centering
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{lll}
-    \toprule
-    \textbf{Model} & \textbf{Main operation} & \textbf{Inductive bias} \\
-    \midrule
-    MobileNetV3-Small & Convolution & Local texture and translation structure \\
-    DeiT-Tiny & Self-attention & Patch-to-patch interactions \\
-    gMLP-S16 & Spatial-gating MLP & Patch and feature mixing without attention \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Architectural comparison of the three frozen feature extractors.}
-  \label{tab:model-architecture-comparison}
-\end{table}
-
-\begin{table}[t]
-  \centering
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{lrrr}
-    \toprule
-    \textbf{Model} & \textbf{Learnable} & \textbf{Frozen} & \textbf{Total} \\
-    \midrule
-    MobileNetV3-Small & 2,050 & 1,517,856 & 1,519,906 \\
-    DeiT-Tiny & 386 & 5,524,416 & 5,524,802 \\
-    gMLP-S16 & 514 & 19,165,656 & 19,166,170 \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}
-  \label{tab:model-parameter-comparison}
-\end{table}
-
-\begin{table}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{llll}
-    \toprule
-    \textbf{Model} & \textbf{Selected checkpoint} & \textbf{Native head} & \textbf{Freeze behavior} \\
-    \midrule
-    MobileNetV3-Small & \texttt{mobilenetv3\_small\_100} & \texttt{classifier}, 1000 classes & freeze all except \texttt{classifier} \\
-    DeiT-Tiny & \texttt{deit\_tiny\_patch16\_224.fb\_in1k} & \texttt{head}, 1000 classes & freeze all except \texttt{head} \\
-    gMLP-S16 & \texttt{gmlp\_s16\_224.ra3\_in1k} & \texttt{head}, 1000 classes & freeze all except \texttt{head} \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached.}
-  \label{tab:part1-pretraining-heads}
-\end{table}
+Tables~\ref{tab:model-architecture-comparison}--\ref{tab:part1-pretraining-heads} in Section~\ref{sec:additional-information} record the model-family summary, parameter counts, and concrete timm checkpoint identifiers used in the Part 1 comparison.
 
 \subsection{Training and Validation Sets by Experiment}
 
-All experiments use the same 20,000/5,000 split described in the data overview. Tables~\ref{tab:part1-train-validation}, \ref{tab:part2-train-validation}, and \ref{tab:part3-train-validation} summarize how that split is reused in the three assignment parts.
-
-\begin{table}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{p{0.22\linewidth}p{0.31\linewidth}p{0.38\linewidth}}
-    \toprule
-    \textbf{Part 1 run} & \textbf{Training set} & \textbf{Validation set} \\
-    \midrule
-    1 tile / none & 20,000 unpermuted images repeated under easy, medium, and hard labels. & 5,000 unpermuted held-out images. \\
-    $4 \times 4$ permutations & Same 20,000 images with easy, medium, and hard deterministic $4 \times 4$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
-    $7 \times 7$ permutations & Same 20,000 images with easy, medium, and hard deterministic $7 \times 7$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
-    $10 \times 10$ permutations & Same 20,000 images with easy, medium, and hard deterministic $10 \times 10$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 1 training and validation sets. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each remote run trains for 10 epochs.}
-  \label{tab:part1-train-validation}
-\end{table}
-
-\begin{table*}[t]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{p{0.18\textwidth}p{0.28\textwidth}p{0.28\textwidth}p{0.20\textwidth}}
-    \toprule
-    \textbf{Part 2 strategy} & \textbf{Training set} & \textbf{Added training exposure} & \textbf{Validation set} \\
-    \midrule
-    Regular Part 1 baseline & Reused Part 1 configurable-CNN runs. & None beyond the fixed target permutation. & Reused Part 1 held-out validation accuracy. \\
-    Patch shuffle & Same 20,000 training images and target permutation. & No appended files; each batch of size $B$ produces $B$ shuffled training views, for 20,000 shuffled views per epoch. & Same 5,000 held-out images with the target permutation only. \\
-    Regular augmentations & Same 20,000 training images and target permutation. & Standard stochastic training transforms produce one augmented view per example per epoch. & Same 5,000 held-out images with the target permutation only. \\
-    Mixed original/permuted & Same 20,000 training images. & Each training view is sampled as original or target-permuted, using $p_{\mathrm{original}}=0.5$. & Same 5,000 held-out images with the target permutation only. \\
-    CNN MLP head & Same 20,000 training images and target permutation. & No new images; the linear classifier is replaced by a small MLP head. & Same 5,000 held-out images with the target permutation. \\
-    Corruption-probability curriculum & Same 20,000 training images at every stage. & No appended files; stage probabilities 0.1, 0.3, 0.5, and 0.8 give expected permuted counts of 2,000, 6,000, 10,000, and 16,000 views per stage epoch. & One fixed target validation loader; no separate validation set per stage. \\
-    Permutation-difficulty curriculum & Same 20,000 training images at every stage. & No appended files; each stage processes 20,000 views per epoch at its scheduled difficulty: original, $2 \times 2$, $3 \times 3$, $4 \times 4$, and for $7 \times 7$ or $10 \times 10$ targets an additional final target-grid stage. & One fixed final-target validation loader; no separate validation set per stage. \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 2 training and validation sets by ablation. The final output matrix uses the configured CNN backbone, defaulting to MobileNetV3-Small, with $4$ grid settings crossed with easy, medium, and hard deterministic permutation records, for 12 records per ablation.}
-  \label{tab:part2-train-validation}
-\end{table*}
-
-\begin{table*}[t]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{p{0.18\textwidth}p{0.17\textwidth}p{0.34\textwidth}p{0.23\textwidth}}
-    \toprule
-    \textbf{Part 2 strategy} & \textbf{Stages} & \textbf{Experiment sequence} & \textbf{Dataset increase / per-epoch views} \\
-    \midrule
-    Regular Part 1 baseline & 1 & Standard training on the target permutation. & No increase: 20,000 training examples per epoch. \\
-    Patch shuffle & 1 & Standard training, with random patch shuffling applied inside training batches. & $0$ stored increase; $B$ shuffled views per batch and 20,000 per epoch. \\
-    Regular augmentations & 1 & Standard training, with generic image augmentations in the training transform. & $0$ stored increase; one stochastic view per example per epoch. \\
-    Mixed original/permuted & 1 & Standard training, sampling clean and target-permuted views with equal probability. & $0$ stored increase; expected 10,000 clean and 10,000 permuted views per epoch. \\
-    CNN MLP head & 1 & Standard target-permutation training, replacing the linear head with an MLP head. & No increase: the examples are unchanged, only the trainable head changes. \\
-    Corruption-probability curriculum & 4 & Permutation probability stages: 0.1, 0.3, 0.5, 0.8. & $0$ stored increase; expected permuted views per epoch are 2,000, 6,000, 10,000, and 16,000 by stage. \\
-    Permutation-difficulty curriculum & 1, 4, or 5 & Baseline target: original only. Tiled targets: original, $2 \times 2$, $3 \times 3$, $4 \times 4$, and the final target grid when larger than $4 \times 4$, using the same easy/medium/hard function as the target record. & $0$ stored increase; 20,000 scheduled-difficulty views per stage epoch. \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 2 ablation experiment design. The explicit Part 2 ablation runs train for 30 epochs. None of the ablations duplicate files on disk.}
-  \label{tab:part2-ablation-design}
-\end{table*}
-
-\begin{table}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{p{0.30\linewidth}p{0.30\linewidth}p{0.31\linewidth}}
-    \toprule
-    \textbf{Part 3 analysis} & \textbf{Training set} & \textbf{Validation source} \\
-    \midrule
-    Hardness metric computation & Not applicable; Part 3 does not train a model. & Reuses Part 1 configurable-CNN validation accuracies. \\
-    Metric-accuracy join & Not applicable; only saved CSV outputs are joined. & Matches each metric row to the corresponding Part 1 permutation ID. \\
-    Correlation analysis & Not applicable; no parameters are updated. & Computes correlations against the joined held-out validation accuracies. \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 3 data usage. Part 3 analyzes saved permutations and validation accuracies rather than creating new train or validation splits.}
-  \label{tab:part3-train-validation}
-\end{table}
+All experiments use the same 20,000/5,000 split described in the data overview. Table~\ref{tab:part1-train-validation} summarizes how that split is reused in the Part 1 runs.
 
 The curriculum ablations in Part 2 use stage-specific training loaders, but they do not create separate held-out validation splits per stage. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run. The saved explicit Part 2 ablation runs use 30 epochs, so curriculum comparisons are not explained by a shorter training schedule for the other improvement runs in the current matrix.
-
-\begin{table*}[t]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{p{0.24\textwidth}p{0.68\textwidth}}
-    \toprule
-    \textbf{Item} & \textbf{Value to report} \\
-    \midrule
-    Dataset source & Kaggle Dogs vs Cats labeled training images; the supervised experiments use the labeled 25,000-image portion. \\
-    Train/validation split procedure & Stratified class-balanced split; validation fraction 0.2; test fraction 0.0; split seed 42. \\
-    Image preprocessing & Resize to the smallest square size divisible by the grid side length, convert to RGB float tensor, and normalize with ImageNet mean and standard deviation; timm models are center-cropped back to 224 after tile-compatible resizing when required. \\
-    Tile transform details & Tiles are square non-overlapping tensor blocks after resizing; the permutation copies source tiles into output positions with no interpolation during tile rearrangement; preset parameters are listed in Table~\ref{tab:permutation-presets}. \\
-    Optimization & AdamW; learning rate $3 \times 10^{-4}$; weight decay $1 \times 10^{-4}$; cross-entropy loss; batch size 64 and 4 dataloader workers in the Colab runs; no learning-rate scheduler is used. \\
-    Training duration & Remote Part 1 runs train for 10 epochs; explicit Part 2 ablation runs train for 30 epochs; the zero-shot control uses 0 epochs. \\
-    Model configuration & Part 1 models use timm ImageNet-1k checkpoints: \texttt{mobilenetv3\_small\_100}, \texttt{deit\_tiny\_patch16\_224.fb\_in1k}, and \texttt{gmlp\_s16\_224.ra3\_in1k}. The main Part 1 baseline freezes backbones and trains only binary heads; the controls either unfreeze the pretrained binary-head model or preserve the native ImageNet-1k head for zero-shot dog/cat scoring. The configurable-CNN MLP head is Linear(in\_features,256), BatchNorm1d, ReLU, Dropout(0.3), Linear(256,2). \\
-    Augmentation and curricula & Patch shuffle randomly permutes within-image patches during training; regular augmentation uses random rotation, color jitter, resize, tensor conversion, and normalization; mixed-input training uses $p_{\mathrm{original}}=0.5$; curriculum definitions are given in Table~\ref{tab:part2-ablation-design}. \\
-    Compute environment & The executed environment records Python 3.12.13, numpy 2.0.2, pandas 2.2.2, scipy 1.16.3, scikit-learn 1.6.1, torch 2.11.0+cu128, torchvision 0.26.0+cu128, timm 1.0.27, PyYAML 6.0.3, and an NVIDIA L4 GPU. Seed 42 is used, but deterministic GPU kernels are not enforced. \\
-    Artifacts & The saved outputs include experiment scripts, raw and aggregated CSV files, joined hardness metrics, figures, and checkpoints for the reported run matrix. \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Reproducibility checklist for the reported experiment matrix.}
-  \label{tab:reproducibility-checklist}
-\end{table*}
 
 \section{Evaluation Protocol}
 
@@ -547,24 +389,6 @@ All result statements in this section should be read as validation-set findings 
 \label{sec:part1-results}
 
 Table~\ref{tab:part1-results} summarizes the frozen-backbone architecture comparison by tile count, and Figure~\ref{fig:part1-accuracy} visualizes the same trend across grid sizes. The notebook records the main frozen-backbone runs, the unfrozen control, and the zero-shot control with explicit condition labels so those results can be reported separately.
-
-\begin{table*}[t]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrrr}
-    \toprule
-    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
-    \midrule
-    MobileNetV3-Small & 91.82\% & 86.93\% & 84.92\% & 80.36\% \\
-    DeiT-Tiny & 98.75\% & 97.23\% & 97.08\% & 92.97\% \\
-    gMLP-S16 & 99.09\% & 97.16\% & 96.11\% & 89.47\% \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}
-  \label{tab:part1-results}
-\end{table*}
 
 The main Part 1 analysis compares the three ImageNet-1k pretrained backbones under the same deterministic permutation matrix. If the hardest conditions remain far above chance, one plausible explanation is that tile permutation preserves local texture, color, object-part, and background cues, and ImageNet-trained classifiers are known to rely heavily on texture and other local cues \citep{geirhos2019imagenet,hermann2020origins}. The notebook includes explicit checks of label order, validation balance, train/validation separation, and the hard-row calculation before drawing conclusions from the controls.
 
@@ -597,28 +421,6 @@ The frozen-backbone comparison shows a clear architecture effect. DeiT-Tiny and 
 
 Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. Figure~\ref{fig:part2-ablation} shows each strategy's delta from its matched grid baseline.
 
-\begin{table*}[t]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrr}
-    \toprule
-    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. baseline} \\
-    \midrule
-    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
-    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
-    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
-    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
-    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
-    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
-    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the grid-level regular Part 1 baseline used by the current Part 2 plotting code.}
-  \label{tab:part2-results}
-\end{table*}
-
 The Part 2 matrix is designed to compare each ablation against the matched regular baseline at the same grid size, with raw points retaining the deterministic difficulty labels in the figure. In the updated aggregate summary, the CNN MLP head has the largest mean best-validation improvement over the grid-level baseline (+8.49 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean improvement and is negative for the 100-tile aggregate, suggesting that additional random local shuffling is not uniformly helpful under the final fixed validation permutations. The reported deltas should be interpreted within the limited deterministic matrix and the shared validation-set selection protocol.
 
 \begin{figure}[t]
@@ -637,18 +439,18 @@ Table~\ref{tab:part3-correlations} reports exploratory correlations between dete
   \centering
   \small
   \resizebox{\linewidth}{!}{%
-  \begin{tabular}{lrrr}
+  \begin{tabular}{lrr}
     \toprule
-    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} & \textbf{N} \\
+    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} \\
     \midrule
-    Global displacement & -0.7093 & -0.6167 & 9 \\
-    Adjacency destruction & -0.9100 & -0.9372 & 9 \\
-    Spatial entropy & -0.6116 & -0.6333 & 9 \\
-    Combined hardness & -0.8331 & -0.8667 & 9 \\
+    Global displacement & -0.7093 & -0.6167 \\
+    Adjacency destruction & -0.9100 & -0.9372 \\
+    Spatial entropy & -0.6116 & -0.6333 \\
+    Combined hardness & -0.8331 & -0.8667 \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
+  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records ($N=9$ for each row). Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
   \label{tab:part3-correlations}
 \end{table}
 
@@ -776,6 +578,42 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
 
 \clearpage
 \section{Additional Information}
+\label{sec:additional-information}
+
+\begin{figure}[!htbp]
+  \centering
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_augmentation_patch_shuffle.png}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_regular_augmentations.png}
+  \end{minipage}
+  \vspace{0.45em}
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_mixed_original_permuted.png}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_cnn_mlp_head.png}
+  \end{minipage}
+  \vspace{0.45em}
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_corruption_probability.png}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_permutation_difficulty.png}
+  \end{minipage}
+  \caption{Intermediate Part 2 ablation plots for patch shuffle, regular augmentations, mixed original/permuted training, CNN MLP head, corruption-probability curriculum, and permutation-difficulty curriculum.}
+  \label{fig:part2-intermediate-ablation-plots}
+\end{figure}
 
 \begin{figure}[!htbp]
   \centering
@@ -801,5 +639,141 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \caption{Part 3 hardness metrics by grid size and deterministic difficulty label. The four panels show global tile displacement, adjacency destruction, spatial permutation entropy, and the combined hardness score.}
   \label{fig:part3-hardness-grid-metrics}
 \end{figure}
+
+\begin{table*}[!htbp]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{p{0.24\textwidth}p{0.68\textwidth}}
+    \toprule
+    \textbf{Item} & \textbf{Value to report} \\
+    \midrule
+    Dataset source & Kaggle Dogs vs Cats labeled training images; the supervised experiments use the labeled 25,000-image portion. \\
+    Train/validation split procedure & Stratified class-balanced split; validation fraction 0.2; test fraction 0.0; split seed 42. \\
+    Image preprocessing & Resize to the smallest square size divisible by the grid side length, convert to RGB float tensor, and normalize with ImageNet mean and standard deviation; timm models are center-cropped back to 224 after tile-compatible resizing when required. \\
+    Tile transform details & Tiles are square non-overlapping tensor blocks after resizing; the permutation copies source tiles into output positions with no interpolation during tile rearrangement; preset parameters are listed in Table~\ref{tab:permutation-presets}. \\
+    Optimization & AdamW; learning rate $3 \times 10^{-4}$; weight decay $1 \times 10^{-4}$; cross-entropy loss; batch size 64 and 4 dataloader workers in the Colab runs; no learning-rate scheduler is used. \\
+    Training duration & Remote Part 1 runs train for 10 epochs; explicit Part 2 ablation runs train for 30 epochs; the zero-shot control uses 0 epochs. \\
+    Model configuration & Part 1 models use timm ImageNet-1k checkpoints: \texttt{mobilenetv3\_small\_100}, \texttt{deit\_tiny\_patch16\_224.fb\_in1k}, and \texttt{gmlp\_s16\_224.ra3\_in1k}. The main Part 1 baseline freezes backbones and trains only binary heads; the controls either unfreeze the pretrained binary-head model or preserve the native ImageNet-1k head for zero-shot dog/cat scoring. The configurable-CNN MLP head is Linear(in\_features,256), BatchNorm1d, ReLU, Dropout(0.3), Linear(256,2). \\
+    Augmentation and curricula & Patch shuffle randomly permutes within-image patches during training; regular augmentation uses random rotation, color jitter, resize, tensor conversion, and normalization; mixed-input training uses $p_{\mathrm{original}}=0.5$; curriculum definitions are described in Section~4.6. \\
+    Compute environment & The executed environment records Python 3.12.13, numpy 2.0.2, pandas 2.2.2, scipy 1.16.3, scikit-learn 1.6.1, torch 2.11.0+cu128, torchvision 0.26.0+cu128, timm 1.0.27, PyYAML 6.0.3, and an NVIDIA L4 GPU. Seed 42 is used, but deterministic GPU kernels are not enforced. \\
+    Artifacts & The saved outputs include experiment scripts, raw and aggregated CSV files, joined hardness metrics, figures, and checkpoints for the reported run matrix. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Reproducibility checklist for the reported experiment matrix.}
+  \label{tab:reproducibility-checklist}
+\end{table*}
+
+\begin{table*}[!htbp]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
+    \midrule
+    MobileNetV3-Small & 91.82\% & 86.93\% & 84.92\% & 80.36\% \\
+    DeiT-Tiny & 98.75\% & 97.23\% & 97.08\% & 92.97\% \\
+    gMLP-S16 & 99.09\% & 97.16\% & 96.11\% & 89.47\% \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}
+  \label{tab:part1-results}
+\end{table*}
+
+\begin{table*}[!htbp]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. baseline} \\
+    \midrule
+    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
+    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
+    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
+    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
+    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
+    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
+    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the grid-level regular Part 1 baseline used by the current Part 2 plotting code.}
+  \label{tab:part2-results}
+\end{table*}
+
+\begin{table}[!htbp]
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    \textbf{Model} & \textbf{Main operation} & \textbf{Inductive bias} \\
+    \midrule
+    MobileNetV3-Small & Convolution & Local texture and translation structure \\
+    DeiT-Tiny & Self-attention & Patch-to-patch interactions \\
+    gMLP-S16 & Spatial-gating MLP & Patch and feature mixing without attention \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Architectural comparison of the three frozen feature extractors.}
+  \label{tab:model-architecture-comparison}
+\end{table}
+
+\begin{table}[!htbp]
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Model} & \textbf{Learnable} & \textbf{Frozen} & \textbf{Total} \\
+    \midrule
+    MobileNetV3-Small & 2,050 & 1,517,856 & 1,519,906 \\
+    DeiT-Tiny & 386 & 5,524,416 & 5,524,802 \\
+    gMLP-S16 & 514 & 19,165,656 & 19,166,170 \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}
+  \label{tab:model-parameter-comparison}
+\end{table}
+
+\begin{table}[!htbp]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{llll}
+    \toprule
+    \textbf{Model} & \textbf{Selected checkpoint} & \textbf{Native head} & \textbf{Freeze behavior} \\
+    \midrule
+    MobileNetV3-Small & \texttt{mobilenetv3\_small\_100} & \texttt{classifier}, 1000 classes & freeze all except \texttt{classifier} \\
+    DeiT-Tiny & \texttt{deit\_tiny\_patch16\_224.fb\_in1k} & \texttt{head}, 1000 classes & freeze all except \texttt{head} \\
+    gMLP-S16 & \texttt{gmlp\_s16\_224.ra3\_in1k} & \texttt{head}, 1000 classes & freeze all except \texttt{head} \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached.}
+  \label{tab:part1-pretraining-heads}
+\end{table}
+
+\begin{table}[!htbp]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{p{0.22\linewidth}p{0.31\linewidth}p{0.38\linewidth}}
+    \toprule
+    \textbf{Part 1 run} & \textbf{Training set} & \textbf{Validation set} \\
+    \midrule
+    1 tile / none & 20,000 unpermuted images repeated under easy, medium, and hard labels. & 5,000 unpermuted held-out images. \\
+    $4 \times 4$ permutations & Same 20,000 images with easy, medium, and hard deterministic $4 \times 4$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    $7 \times 7$ permutations & Same 20,000 images with easy, medium, and hard deterministic $7 \times 7$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    $10 \times 10$ permutations & Same 20,000 images with easy, medium, and hard deterministic $10 \times 10$ permutations. & Same 5,000 held-out images with the matching deterministic permutation. \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Part 1 training and validation sets. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each remote run trains for 10 epochs.}
+  \label{tab:part1-train-validation}
+\end{table}
 
 \end{document}
