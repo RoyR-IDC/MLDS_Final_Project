@@ -322,14 +322,17 @@ def ensure_part3_hardness_examples_figure(project_root: Path, *, force: bool = F
         figsize=(12, 8.4),
         squeeze=False,
     )
-    fig.suptitle(f"Deterministic validation image: {image_path.name}", y=0.995)
+    fig.suptitle("Deterministic validation image under fixed permutations", y=0.995)
     baseline_row = next(row for row in rows if row["grid"] == "baseline")
     for row_idx, condition_name in enumerate(condition_order):
         for col_idx, grid_name in enumerate(grid_order):
             axis = axes[row_idx][col_idx]
+            is_baseline_column = grid_name == "baseline"
+            show_baseline = is_baseline_column and row_idx == 1
             row = baseline_row if grid_name == "baseline" else row_by_grid_condition[(grid_name, condition_name)]
-            axis.imshow(row["image_array"])
             axis.axis("off")
+            if not is_baseline_column or show_baseline:
+                axis.imshow(row["image_array"])
             if row_idx == 0:
                 axis.set_title("No permutation" if grid_name == "baseline" else f"Grid {grid_name}")
             if col_idx == 0:
@@ -344,6 +347,8 @@ def ensure_part3_hardness_examples_figure(project_root: Path, *, force: bool = F
                     fontsize=12,
                     fontweight="bold",
                 )
+            if is_baseline_column and not show_baseline:
+                continue
             metric_text = "\n".join(
                 [
                     f"A {row['adjacency_destruction_hardness']:.3f}",

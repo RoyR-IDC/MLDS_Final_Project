@@ -191,64 +191,7 @@ The construction is parameterized by relative quantities: the fraction of tiles 
 
 To compare architectural inductive biases, the Part 1 pipeline uses three pretrained feature extractors: MobileNetV3-Small \citep{howard2019searching}, DeiT-Tiny \citep{touvron2021deit}, and gMLP-S16 \citep{liu2021pay}. All three are loaded from timm with ImageNet-1k-only pretrained weights. In the main Part 1 transfer-learning regime, the ImageNet-pretrained backbone is frozen and only the final binary classification head is optimized. This setting evaluates pretrained representations plus a small trained classification head under the tested permutations; it does not test full representation learning under permutation.
 
-The three models differ in how they exchange information across the image. MobileNetV3-Small uses lightweight convolutions, giving it a local-neighborhood bias. DeiT-Tiny represents the image as patches and uses self-attention to let patches interact. gMLP-S16 also operates on image patches, but replaces attention with MLP layers and spatial gating for token mixing. The comparison is informative but not fully controlled: the models differ not only in inductive bias, but also in parameter count, patch/tokenization behavior, and feature geometry.
-
-\begin{figure}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{p{0.22\linewidth}p{0.25\linewidth}p{0.25\linewidth}p{0.18\linewidth}}
-    \toprule
-    \textbf{Input} & \textbf{Backbone} & \textbf{Mixing} & \textbf{Head} \\
-    \midrule
-    $224 \times 224$ RGB image or tile-permuted image &
-    Conv. stem; mobile inverted residual blocks; squeeze-and-excitation modules &
-    Local spatial neighborhoods are processed by shared convolutional filters, then summarized by global pooling &
-    Two-class classifier head \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{MobileNetV3-Small CNN schematic. In the main transfer-learning runs, the ImageNet-1k convolutional backbone is frozen and only the final binary head is optimized.}
-  \label{fig:cnn-flow}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{p{0.22\linewidth}p{0.25\linewidth}p{0.25\linewidth}p{0.18\linewidth}}
-    \toprule
-    \textbf{Input} & \textbf{Backbone} & \textbf{Mixing} & \textbf{Head} \\
-    \midrule
-    $224 \times 224$ RGB image split into patch tokens &
-    Patch embedding; class token and positional embedding; transformer encoder blocks &
-    Multi-head self-attention exchanges information across all patch tokens at each encoder block &
-    Two-class classifier head \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{DeiT-Tiny transformer schematic. The model reads tile-permuted images as patch-token sequences, so fixed tile rearrangement affects both visual patch content and the token positions supplied to the frozen encoder.}
-  \label{fig:deit-flow}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{p{0.22\linewidth}p{0.25\linewidth}p{0.25\linewidth}p{0.18\linewidth}}
-    \toprule
-    \textbf{Input} & \textbf{Backbone} & \textbf{Mixing} & \textbf{Head} \\
-    \midrule
-    $224 \times 224$ RGB image split into patch tokens &
-    Patch embedding; stacked gMLP blocks; normalization and readout &
-    Spatial-gating units mix token positions, while channel projections recombine features within each token &
-    Two-class classifier head \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{gMLP-S16 schematic. The model provides a non-convolutional, non-attention comparison point because cross-token interaction is performed by MLP spatial gating rather than self-attention.}
-  \label{fig:gmlp-flow}
-\end{figure}
+The three models differ in how they exchange information across the image. MobileNetV3-Small uses lightweight convolutions, giving it a local-neighborhood bias. DeiT-Tiny represents the image as patches and uses self-attention to let patches interact. gMLP-S16 also operates on image patches, but replaces attention with MLP layers and spatial gating for token mixing. The comparison is informative but not fully controlled: the models differ not only in inductive bias, but also in parameter count, patch/tokenization behavior, and feature geometry. Tables~\ref{tab:model-architecture-comparison}--\ref{tab:part1-pretraining-heads} summarize the model-family roles, parameter counts, checkpoint identifiers, and head-freezing behavior used in the executed comparison.
 
 \subsection{Optimization and Hyperparameters}
 
@@ -592,7 +535,7 @@ The curriculum ablations in Part 2 use stage-specific training loaders, but they
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it can be optimistic as a final performance estimate because it selects the best epoch on the validation set.
 
-For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The primary pooled correlation analysis collapses the repeated one-tile/no-permutation baseline to one row, giving 10 rows; the original 12-row view and a 9-row non-baseline-only view are retained as sensitivity checks. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No p-values, confidence intervals, repeated-seed variability estimates, or independent test-set measurements are reported.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No p-values, confidence intervals, repeated-seed variability estimates, or independent test-set measurements are reported.
 
 \section{Results}
 
@@ -681,14 +624,14 @@ The Part 2 matrix is designed to compare each ablation against the matched regul
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{part2_ablation_comparison.png}
-  \caption{Part 2 best-validation-accuracy delta from the matched CNN baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}
+  \caption{Part 2 best-validation-accuracy delta from the matched CNN baseline. Colors identify ablation strategies, and raw deterministic records use marker shapes for difficulty: circles are easy, crosses are medium, and triangles are hard. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}
   \label{fig:part2-ablation}
 \end{figure}
 
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
 
-Table~\ref{tab:part3-correlations} reports exploratory correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy under the primary one-baseline-row scope. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, Figure~\ref{fig:part3-hardness-grid-metrics} visualizes all four hardness metrics by grid size and deterministic difficulty label, and Figure~\ref{fig:part3-metrics-accuracy} shows the 2D relationship between hardness and validation accuracy.
+Table~\ref{tab:part3-correlations} reports exploratory correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy under the nine non-baseline permutation records. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, and Figure~\ref{fig:part3-hardness-grid-metrics} in the Additional Information section visualizes all four hardness metrics by grid size and deterministic difficulty label.
 
 \begin{table}[t]
   \centering
@@ -698,72 +641,34 @@ Table~\ref{tab:part3-correlations} reports exploratory correlations between dete
     \toprule
     \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} & \textbf{N} \\
     \midrule
-    Global displacement & -0.7463 & -0.6970 & 10 \\
-    Adjacency destruction & -0.9120 & -0.9423 & 10 \\
-    Spatial entropy & -0.6650 & -0.7212 & 10 \\
-    Combined hardness & -0.8481 & -0.8909 & 10 \\
+    Global displacement & -0.7093 & -0.6167 & 9 \\
+    Adjacency destruction & -0.9100 & -0.9372 & 9 \\
+    Spatial entropy & -0.6116 & -0.6333 & 9 \\
+    Combined hardness & -0.8331 & -0.8667 & 9 \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics after collapsing the repeated one-tile/no-permutation baseline to one row. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
+  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records. Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
   \label{tab:part3-correlations}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. In the primary one-baseline-row scope, all four hardness metrics were negatively correlated with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9120 and Spearman correlation -0.9423. The retained 12-row full scope gives similar but baseline-weighted correlations, while the 9-row non-baseline-only scope checks that the association is not solely driven by the clean baseline.
+Part 3 provides a ranking lens for the deterministic permutations. In the nine-row non-baseline scope, all four hardness metrics were negatively correlated with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9100 and Spearman correlation -0.9372. The retained 12-row full scope and one-baseline-row scope give similar but baseline-weighted sensitivity views in the saved correlation CSV.
 
-The metric plots show that the easy presets remain close to the baseline for all three nontrivial grid sizes, while medium and hard presets separate more strongly. Adjacency destruction is nearly saturated for the hard $7 \times 7$ and both medium/hard $10 \times 10$ records, which explains why this metric has a strong monotonic relationship with accuracy but less resolution among the hardest cases. Global displacement and spatial entropy provide complementary information because they distinguish some settings with similar adjacency destruction.
-
-\begin{figure*}[t]
-  \centering
-  \begin{minipage}{0.49\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{part3_global_tile_displacement_grid_vs_hardness.png}
-  \end{minipage}
-  \hfill
-  \begin{minipage}{0.49\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{part3_adjacency_destruction_hardness_grid_vs_hardness.png}
-  \end{minipage}
-  \vspace{0.75em}
-  \begin{minipage}{0.49\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{part3_spatial_permutation_entropy_grid_vs_hardness.png}
-  \end{minipage}
-  \hfill
-  \begin{minipage}{0.49\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{part3_combined_hardness_grid_vs_hardness.png}
-  \end{minipage}
-  \caption{Part 3 hardness metrics by grid size and deterministic difficulty label. The four panels show global tile displacement, adjacency destruction, spatial permutation entropy, and the combined hardness score.}
-  \label{fig:part3-hardness-grid-metrics}
-\end{figure*}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=0.95\textwidth]{part3_metrics_vs_accuracy_2d.png}
-  \caption{Part 3 hardness metrics versus MobileNetV3-Small best validation accuracy. Each panel uses the current joined metric-accuracy table and a 2D trend line.}
-  \label{fig:part3-metrics-accuracy}
-\end{figure*}
+\clearpage
 
 \section{Discussion}
 
-The proposal asks whether a neural network can classify post-permutation images and whether performance depends on tile resolution and permutation choice. The deterministic matrix is designed to test this directly across grid size, difficulty label, and model family. The expected pattern is not merely whether accuracy is above chance, but whether accuracy drops with stronger deterministic disruption under a controlled protocol. The implementation standardizes the backbone comparison to MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 with ImageNet-1k-only timm checkpoints.
+The experiments show that Dogs-versus-Cats classification remains possible after fixed deterministic tile permutations, but performance still depends on grid size, permutation preset, and representation family. DeiT-Tiny and gMLP-S16 preserve higher validation accuracy than MobileNetV3-Small under the strongest tested grids, suggesting that the frozen token-based representations expose more usable dog/cat signal in this protocol. This should not be read as evidence that the models reconstruct the original layout or solve permutation hardness; local texture, object-part, color, and background cues may remain sufficient for this dataset.
 
-This interpretation is intentionally scoped to the measured validation runs. Because the matrix uses only three deterministic presets per grid size and no repeated training seeds or independent test set, the magnitude and ordering of these effects may change under broader sampling or a different evaluation protocol.
+The Part 2 ablations indicate that head capacity and curriculum-style training are more useful than adding random patch shuffle alone. The CNN MLP head gives the largest mean improvement over the matched baseline, which is consistent with the idea that frozen convolutional features may remain informative but need a more flexible classifier head after spatial disruption. Patch shuffle is weaker and can hurt at larger grids, implying that extra random local corruption is not automatically aligned with the fixed validation permutations.
 
-The architecture comparison is controlled with respect to pretraining source because all three selected checkpoints are ImageNet-1k-only. This does not show that DeiT-Tiny or gMLP-S16 is generally superior for permuted images, nor that attention or token mixing solves permutation hardness. The backbones are frozen, pretrained on natural images, and differ in several ways beyond architecture. A cautious interpretation is that class-discriminative information may remain available after the deterministic tile-wise permutations and can be accessed by pretrained features plus a small classification head in this protocol.
-
-The Part 2 ablations test whether simply adding spatial noise, changing the training distribution, increasing head capacity, or scheduling difficulty improves the target task. Patch shuffle may help only if the additional random shuffling matches useful invariances for the fixed validation permutation. The MLP head tests whether additional trainable capacity at the classifier stage improves the mapping from frozen convolutional features to dog/cat labels.
-
-The hardness metrics address the proposal's third objective: ranking permutations with the same tile count. The negative correlations suggest that geometry-only permutation descriptors can capture meaningful variation in MobileNetV3-Small performance within the deterministic matrix. Adjacency destruction was particularly associated with validation accuracy, which is consistent with the intuition that destroying local tile neighborhoods can be difficult for a frozen convolutional model. Because the primary analysis uses only 10 rows after collapsing the repeated clean baseline, it should be viewed as a hypothesis-generating result for future experiments with more permutation samples.
-
-Finally, high accuracy should not be interpreted as evidence that the models learned to undo the permutation. The experiments do not directly distinguish spatial reconstruction, compensation for a fixed mapping, and exploitation of surviving class-discriminative cues. One possible explanation is that local texture, object parts, background statistics, or other cues persist even when global shape is disrupted; the current experiments cannot distinguish this explanation from compensation for the fixed mapping.
+The hardness metrics provide a compact way to rank the tested permutations. Their negative correlations with MobileNetV3-Small accuracy, especially adjacency destruction, support the intuition that disrupting local neighborhoods is harmful for a frozen CNN. Because this analysis uses only nine non-baseline permutation records, it is best treated as hypothesis-generating rather than a stable statistical estimate.
 
 \section{Limitations}
 
 Several limitations constrain the strength and scope of the conclusions. First, no repeated training seeds are reported, so run-to-run variation is not quantified. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch on the validation set. Third, the architecture comparison is confounded by pretraining, parameter counts, patch sizes, tokenization behavior, and model-specific feature representations. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
 
-The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the primary hardness-correlation analysis uses only 10 rows after collapsing the repeated one-tile baseline. The study does not test unseen permutations, transfer across permutations, cryptographic recovery, reconstruction, inversion, or explicit learning of the original layout. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 improvement strategy. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
+The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the reported hardness-correlation analysis uses only nine non-baseline permutation records. The study does not test unseen permutations, transfer across permutations, cryptographic recovery, reconstruction, inversion, or explicit learning of the original layout. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 improvement strategy. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
 
 \section{Conclusion and Future Work}
 
@@ -868,5 +773,33 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
 \newblock \url{https://proceedings.mlr.press/v139/touvron21a.html}.
 
 \end{thebibliography}
+
+\clearpage
+\section{Additional Information}
+
+\begin{figure}[!htbp]
+  \centering
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{part3_global_tile_displacement_grid_vs_hardness.png}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{part3_adjacency_destruction_hardness_grid_vs_hardness.png}
+  \end{minipage}
+  \vspace{0.45em}
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{part3_spatial_permutation_entropy_grid_vs_hardness.png}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{part3_combined_hardness_grid_vs_hardness.png}
+  \end{minipage}
+  \caption{Part 3 hardness metrics by grid size and deterministic difficulty label. The four panels show global tile displacement, adjacency destruction, spatial permutation entropy, and the combined hardness score.}
+  \label{fig:part3-hardness-grid-metrics}
+\end{figure}
 
 \end{document}

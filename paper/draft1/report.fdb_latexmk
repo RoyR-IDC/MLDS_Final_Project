@@ -1,14 +1,13 @@
 # Fdb version 4
-["pdflatex"] 1783261512.21195 "report.tex" "report.pdf" "report" 1783261517.35948 0
+["pdflatex"] 1783266672.53748 "report.tex" "report.pdf" "report" 1783266676.17392 0
   "../../outputs/figures/part1_accuracy_vs_tiles_frozen_pretrained_binary_head.png" 1782613048 102817 917a4520647d51f5bfe32a115774a168 ""
   "../../outputs/figures/part1_accuracy_vs_tiles_unfrozen_pretrained_binary_head.png" 1782613048 90703 74514016a819fc214204e82e585c4b80 ""
   "../../outputs/figures/part1_accuracy_vs_tiles_zero_shot_full_pretrained_head.png" 1782613048 123997 24b73c496a7cc79c25d4bee2168ec379 ""
-  "../../outputs/figures/part2_ablation_comparison.png" 1782613804 106430 ea7b0af3cddee856efe1183518c29d45 ""
+  "../../outputs/figures/part2_ablation_comparison.png" 1783266316.38685 145113 b01cee31a2ad3c0b3aa4a2fda4628ac7 ""
   "../../outputs/figures/part3_adjacency_destruction_hardness_grid_vs_hardness.png" 1782618074 58431 444b86688fece35f3c1dc172e27b6477 ""
   "../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png" 1782618078 55890 2e830782b945f3c806131293073f571e ""
   "../../outputs/figures/part3_global_tile_displacement_grid_vs_hardness.png" 1782618074 55935 c2b3575b5a5a6e35489969c5e99a8162 ""
-  "../../outputs/figures/part3_hardness_examples.png" 1783260718.83814 1845164 90677fff0a8cb361475f31db8fc5dc90 ""
-  "../../outputs/figures/part3_metrics_vs_accuracy_2d.png" 1783260763.8112 152968 e7eb159875dc3ab6350e6890a10f910c ""
+  "../../outputs/figures/part3_hardness_examples.png" 1783266392.54677 1713458 37e73970845590187cd848e7a8cfdbb4 ""
   "../../outputs/figures/part3_spatial_permutation_entropy_grid_vs_hardness.png" 1782618078 54963 484d0bb4c8296538b9dd09cef2163655 ""
   "../template/images/runi_logo.png" 1781062814.92111 70164 8693916a2b159cd0d90b1f4671a8235e ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
@@ -107,9 +106,9 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778616634 323232 a535625b038a5f4a7d8c4daf390244d9 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1778616566 2974185 1ebcc950ac5b7ae3f1bf1548be5da61b ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "report.aux" 1783261517.03143 20578 ed635b9bb3b50f511671cd8353d31843 "pdflatex"
-  "report.out" 1783261517.03568 8219 7049e0cd2f277a13ea463d46fcb9c1eb "pdflatex"
-  "report.tex" 1783261505.35921 76214 74e8db030d7983b8f971e60846d39dc0 ""
+  "report.aux" 1783266675.85357 18904 1571b4470f3c7404a094218b9d70d90f "pdflatex"
+  "report.out" 1783266675.85845 8377 afcedd464fdbb508d56b34394f1f4719 "pdflatex"
+  "report.tex" 1783266619.05366 71625 44726ca98aa2ee782e6202c7e3abc31f ""
   (generated)
   "report.aux"
   "report.log"

@@ -196,10 +196,6 @@ INPUT ../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png
 INPUT ../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png
 INPUT ../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png
 INPUT ../../outputs/figures/part3_combined_hardness_grid_vs_hardness.png
-INPUT ../../outputs/figures/part3_metrics_vs_accuracy_2d.png
-INPUT ../../outputs/figures/part3_metrics_vs_accuracy_2d.png
-INPUT ../../outputs/figures/part3_metrics_vs_accuracy_2d.png
-INPUT ../../outputs/figures/part3_metrics_vs_accuracy_2d.png
 INPUT report.aux
 INPUT ./report.out
 INPUT ./report.out
