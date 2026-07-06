@@ -1,0 +1,120 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{boyle2019permuted}
+\citation{boyle2019permuted}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{3}{section.1}\protected@file@percent }
+\citation{doersch2015unsupervised,noroozi2016unsupervised}
+\citation{gidaris2018unsupervised}
+\citation{howard2019searching}
+\citation{dosovitskiy2021image}
+\citation{touvron2021deit}
+\citation{tolstikhin2021mlp}
+\citation{liu2021pay}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Works}{4}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Cryptographic and Permuted-Puzzle Motivation}{4}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Spatial Ordering}{4}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Convolutions}{4}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Vision Transformers}{4}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}MLPs and MLPs for Vision}{4}{subsection.2.5}\protected@file@percent }
+\citation{goodfellow2016deep}
+\citation{shorten2019survey}
+\citation{bengio2009curriculum}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Robustness, Augmentation, and Curricula}{5}{subsection.2.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Data Overview}{5}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Dataset Source and Image Sizes}{5}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Supervised Split}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Image Resizing and Model Input}{5}{subsection.3.3}\protected@file@percent }
+\citation{howard2019searching}
+\citation{touvron2021deit}
+\citation{liu2021pay}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Tile-Permutation Matrix}{6}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{6}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Models Used in the Baseline Comparison}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Example validation image under the deterministic grid and difficulty settings used throughout the experiments. Rows correspond to the easy, medium, and hard presets; columns correspond to the unpermuted baseline and the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. The metric overlay reports adjacency destruction (A), global displacement (D), spatial entropy (E), and combined hardness (C).}}{7}{figure.1}\protected@file@percent }
+\newlabel{fig:data-permutation-examples}{{1}{7}{Example validation image under the deterministic grid and difficulty settings used throughout the experiments. Rows correspond to the easy, medium, and hard presets; columns correspond to the unpermuted baseline and the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. The metric overlay reports adjacency destruction (A), global displacement (D), spatial entropy (E), and combined hardness (C)}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Deterministic Permutation Functions}{7}{subsection.4.2}\protected@file@percent }
+\citation{howard2019searching}
+\citation{touvron2021deit}
+\citation{liu2021pay}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Deterministic permutation preset parameters, as defined in \texttt  {tile\_permutations.py}.}}{8}{table.1}\protected@file@percent }
+\newlabel{tab:permutation-presets}{{1}{8}{Deterministic permutation preset parameters, as defined in \texttt {tile\_permutations.py}}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Architecture Comparison and Frozen Backbones}{8}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Optimization and Hyperparameters}{8}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Preprocessing and Training-Only Augmentation}{9}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Improvement Strategies}{9}{subsection.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.1}Regular Part 1 Baseline}{9}{subsubsection.4.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.2}Patch Shuffle}{10}{subsubsection.4.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.3}Regular Augmentations}{10}{subsubsection.4.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.4}Mixed Original/Permuted Training}{10}{subsubsection.4.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.5}CNN MLP Head}{10}{subsubsection.4.6.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.6}Corruption-Probability Curriculum}{11}{subsubsection.4.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.6.7}Permutation-Difficulty Curriculum}{11}{subsubsection.4.6.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Tile Permutation Hardness Metrics}{11}{subsection.4.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Tile permutation hardness metrics used in the analysis.}}{12}{table.2}\protected@file@percent }
+\newlabel{tab:tile-permutation-hardness-metrics}{{2}{12}{Tile permutation hardness metrics used in the analysis}{table.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.1}Adjacency Destruction Hardness}{12}{subsubsection.4.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.2}Global Tile Displacement}{12}{subsubsection.4.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.3}Spatial Permutation Entropy}{12}{subsubsection.4.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.4}Combined Hardness Score}{13}{subsubsection.4.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Additional Implementation Details}{13}{section.5}\protected@file@percent }
+\newlabel{sec:additional-implementation-details}{{5}{13}{Additional Implementation Details}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Model Implementation Details}{13}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Training and Validation Sets by Experiment}{13}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation Protocol}{13}{section.6}\protected@file@percent }
+\citation{geirhos2019imagenet,hermann2020origins}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Results}{14}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Part 1: Frozen-Backbone Baselines}{14}{subsection.7.1}\protected@file@percent }
+\newlabel{sec:part1-results}{{7.1}{14}{Part 1: Frozen-Backbone Baselines}{subsection.7.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption; the plotted values average over deterministic difficulty presets at each grid size.}}{14}{figure.2}\protected@file@percent }
+\newlabel{fig:part1-accuracy}{{2}{14}{Part 1 mean best validation accuracy as a function of tile count for the three frozen pretrained backbones. Higher tile counts correspond to finer grids and more opportunities for tile-wise spatial disruption; the plotted values average over deterministic difficulty presets at each grid size}{figure.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Reviewer-control Part 1 plots. Left: unfrozen pretrained binary-head control, where completed saved runs allow the pretrained representation to update during supervised Dogs-versus-Cats training. Right: zero-shot native ImageNet-1k-head control, where no binary training is performed and dog/cat predictions are computed by grouped ImageNet probabilities.}}{15}{figure.3}\protected@file@percent }
+\newlabel{fig:part1-control-accuracy}{{3}{15}{Reviewer-control Part 1 plots. Left: unfrozen pretrained binary-head control, where completed saved runs allow the pretrained representation to update during supervised Dogs-versus-Cats training. Right: zero-shot native ImageNet-1k-head control, where no binary training is performed and dog/cat predictions are computed by grouped ImageNet probabilities}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Part 2: Configurable-CNN Improvement Strategies}{15}{subsection.7.2}\protected@file@percent }
+\newlabel{sec:part2-results}{{7.2}{15}{Part 2: Configurable-CNN Improvement Strategies}{subsection.7.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Part 2 best-validation-accuracy delta from the matched CNN baseline. Colors identify ablation strategies, and raw deterministic records use marker shapes for difficulty: circles are easy, crosses are medium, and triangles are hard. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}}{15}{figure.4}\protected@file@percent }
+\newlabel{fig:part2-ablation}{{4}{15}{Part 2 best-validation-accuracy delta from the matched CNN baseline. Colors identify ablation strategies, and raw deterministic records use marker shapes for difficulty: circles are easy, crosses are medium, and triangles are hard. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records ($N=9$ for each row). Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}}{16}{table.3}\protected@file@percent }
+\newlabel{tab:part3-correlations}{{3}{16}{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records ($N=9$ for each row). Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Part 3: Hardness Metrics}{16}{subsection.7.3}\protected@file@percent }
+\newlabel{sec:part3-results}{{7.3}{16}{Part 3: Hardness Metrics}{subsection.7.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion}{17}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Limitations}{17}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Conclusion and Future Work}{17}{section.10}\protected@file@percent }
+\bibcite{bengio2009curriculum}{{1}{2009}{{Bengio et~al.}}{{}}}
+\bibcite{boyle2019permuted}{{2}{2019}{{Boyle et~al.}}{{}}}
+\bibcite{doersch2015unsupervised}{{3}{2015}{{Doersch et~al.}}{{}}}
+\bibcite{dosovitskiy2021image}{{4}{2021}{{Dosovitskiy et~al.}}{{}}}
+\bibcite{gidaris2018unsupervised}{{5}{2018}{{Gidaris et~al.}}{{}}}
+\bibcite{geirhos2019imagenet}{{6}{2019}{{Geirhos et~al.}}{{}}}
+\bibcite{goodfellow2016deep}{{7}{2016}{{Goodfellow et~al.}}{{}}}
+\bibcite{he2016deep}{{8}{2016}{{He et~al.}}{{}}}
+\bibcite{hermann2020origins}{{9}{2020}{{Hermann et~al.}}{{}}}
+\bibcite{howard2019searching}{{10}{2019}{{Howard et~al.}}{{}}}
+\bibcite{liu2021pay}{{11}{2021}{{Liu et~al.}}{{}}}
+\bibcite{noroozi2016unsupervised}{{12}{2016}{{Noroozi and Favaro}}{{}}}
+\bibcite{shorten2019survey}{{13}{2019}{{Shorten and Khoshgoftaar}}{{}}}
+\bibcite{tolstikhin2021mlp}{{14}{2021}{{Tolstikhin et~al.}}{{}}}
+\bibcite{touvron2021deit}{{15}{2021}{{Touvron et~al.}}{{}}}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Additional Information}{21}{section.11}\protected@file@percent }
+\newlabel{sec:additional-information}{{11}{21}{Additional Information}{section.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Intermediate Part 2 ablation plots for patch shuffle, regular augmentations, mixed original/permuted training, CNN MLP head, corruption-probability curriculum, and permutation-difficulty curriculum.}}{21}{figure.5}\protected@file@percent }
+\newlabel{fig:part2-intermediate-ablation-plots}{{5}{21}{Intermediate Part 2 ablation plots for patch shuffle, regular augmentations, mixed original/permuted training, CNN MLP head, corruption-probability curriculum, and permutation-difficulty curriculum}{figure.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Part 3 hardness metrics by grid size and deterministic difficulty label. The four panels show global tile displacement, adjacency destruction, spatial permutation entropy, and the combined hardness score.}}{22}{figure.6}\protected@file@percent }
+\newlabel{fig:part3-hardness-grid-metrics}{{6}{22}{Part 3 hardness metrics by grid size and deterministic difficulty label. The four panels show global tile displacement, adjacency destruction, spatial permutation entropy, and the combined hardness score}{figure.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Reproducibility checklist for the reported experiment matrix.}}{23}{table.4}\protected@file@percent }
+\newlabel{tab:reproducibility-checklist}{{4}{23}{Reproducibility checklist for the reported experiment matrix}{table.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}}{24}{table.5}\protected@file@percent }
+\newlabel{tab:part1-results}{{5}{24}{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Part 2 MobileNetV3-Small CNN ablation summary from \texttt  {part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the grid-level regular Part 1 baseline used by the current Part 2 plotting code.}}{24}{table.6}\protected@file@percent }
+\newlabel{tab:part2-results}{{6}{24}{Part 2 MobileNetV3-Small CNN ablation summary from \texttt {part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the grid-level regular Part 1 baseline used by the current Part 2 plotting code}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Architectural comparison of the three frozen feature extractors.}}{24}{table.7}\protected@file@percent }
+\newlabel{tab:model-architecture-comparison}{{7}{24}{Architectural comparison of the three frozen feature extractors}{table.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass.}}{24}{table.8}\protected@file@percent }
+\newlabel{tab:model-parameter-comparison}{{8}{24}{Parameter counts for the frozen-backbone comparison with two output classes. ``Learnable'' counts only the classifier head optimized during training; ``Frozen'' counts pretrained parameters used only in the forward pass}{table.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached.}}{25}{table.9}\protected@file@percent }
+\newlabel{tab:part1-pretraining-heads}{{9}{25}{Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached}{table.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Part 1 training and validation sets. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each remote run trains for 10 epochs.}}{25}{table.10}\protected@file@percent }
+\newlabel{tab:part1-train-validation}{{10}{25}{Part 1 training and validation sets. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each remote run trains for 10 epochs}{table.10}{}}
+\gdef \@abspage@last{25}
