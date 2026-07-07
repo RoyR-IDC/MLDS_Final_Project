@@ -14,6 +14,7 @@ import pytest
 
 from src.evaluation.experiment_results import (
     PERMUTATION_MARKERS,
+    _permutation_marker_name,
     add_part2_grid_baseline_deltas,
     aggregate_accuracy,
     build_part3_correlation_input,
@@ -31,6 +32,7 @@ from src.evaluation.experiment_results import (
     run_part3_hardness_analysis,
     save_rows,
 )
+from src.experiments.enhanced_confidence import plot_enhanced_confidence_results
 
 
 class ArrayKeyRow(Mapping):
@@ -330,6 +332,104 @@ def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(
     assert PERMUTATION_MARKERS["baseline"] == "D"
     assert plot_kwargs[0]["label"] == "Mean across permutations"
     assert plot_kwargs[0]["marker"] is None
+
+
+def test_permutation_marker_name_uses_base_for_enhanced_suffixes():
+    assert _permutation_marker_name("easy2") == "easy"
+    assert _permutation_marker_name("medium3") == "medium"
+    assert _permutation_marker_name("hard2") == "hard"
+
+
+def test_enhanced_confidence_mean_plot_uses_error_bars(monkeypatch, tmp_path):
+    errorbar_calls = []
+
+    def fake_errorbar(self, *args, **kwargs):
+        errorbar_calls.append((args, kwargs))
+        return []
+
+    monkeypatch.setattr("matplotlib.axes.Axes.errorbar", fake_errorbar)
+    raw = pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "ablation_name": "regular_part1",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy2",
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.90,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "ablation_name": "regular_part1",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy2",
+                "seed": 43,
+                "run_status": "completed",
+                "best_val_accuracy": 0.92,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "ablation_name": "curriculum_permutation_difficulty",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "hard3",
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.80,
+            },
+        ]
+    )
+
+    plot_enhanced_confidence_results(
+        raw,
+        str(tmp_path / "enhanced_mean.png"),
+        aggregate_over_seeds=True,
+        facet_column="ablation_name",
+    )
+
+    markers = [kwargs.get("marker") for _, kwargs in errorbar_calls]
+    assert "o" in markers
+    assert "^" in markers
+
+
+def test_enhanced_confidence_part2_plot_facets_both_conditions(tmp_path):
+    raw = pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "ablation_name": "regular_part1",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "easy",
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.90,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "ablation_name": "curriculum_permutation_difficulty",
+                "num_tiles": 16,
+                "tiles_per_side": 4,
+                "tile_permutation_name": "hard",
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.80,
+            },
+        ]
+    )
+    output_path = tmp_path / "enhanced_all.png"
+
+    plot_enhanced_confidence_results(
+        raw,
+        str(output_path),
+        aggregate_over_seeds=False,
+        facet_column="ablation_name",
+    )
+
+    assert output_path.exists()
 
 
 def test_plot_accuracy_vs_tiles_intermediate_legends_include_mean_and_conditions(monkeypatch, tmp_path):

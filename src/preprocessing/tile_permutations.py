@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import random
 from typing import Any, Iterable, Sequence, TypeAlias, TypeGuard, cast
 
 
@@ -65,6 +66,21 @@ class TilePermutationRecord:
 
 
 TILE_PERMUTATION_NAMES = ("easy", "medium", "hard")
+ENHANCED_TILE_PERMUTATION_NAMES = (
+    "easy",
+    "easy2",
+    "easy3",
+    "medium",
+    "medium2",
+    "medium3",
+    "hard",
+    "hard2",
+    "hard3",
+)
+ENHANCED_BASELINE_TILE_PERMUTATION_ID = 0
+ENHANCED_TILE_PERMUTATION_IDS = {
+    name: index for index, name in enumerate(ENHANCED_TILE_PERMUTATION_NAMES, start=1)
+}
 
 
 @dataclass(frozen=True)
@@ -314,6 +330,140 @@ def deterministic_tile_permutation(tiles_per_side: TilesPerSide, name: str) -> T
         col_shift_fraction=preset.col_shift_fraction,
         use_global_reversal=preset.use_global_reversal,
     )
+
+
+def base_tile_permutation_name(name: str | None) -> str:
+    """Return the base difficulty label for an enhanced permutation name."""
+
+    if name is None:
+        return "baseline"
+    normalized = str(name).strip().lower()
+    if normalized in {"", "baseline"}:
+        return "baseline"
+    for base_name in TILE_PERMUTATION_NAMES:
+        if normalized == base_name or normalized in {f"{base_name}2", f"{base_name}3"}:
+            return base_name
+    return normalized
+
+
+def _variant_index(name: str) -> int:
+    base_name = base_tile_permutation_name(name)
+    if base_name == name:
+        return 1
+    suffix = str(name).removeprefix(base_name)
+    return int(suffix) if suffix else 1
+
+
+def _seeded_variant_flat_order(
+    tiles_per_side: TilesPerSide,
+    *,
+    preset: DifficultyPermutationPreset,
+    seed: int,
+    variant_index: int,
+) -> list[int]:
+    num_tiles = tiles_per_side * tiles_per_side
+    flat_order = list(range(num_tiles))
+    if preset.use_global_reversal:
+        flat_order.reverse()
+
+    rng = random.Random(f"{seed}:{tiles_per_side}:{variant_index}")
+    row_shift_fraction = min(1.0, max(0.0, preset.row_shift_fraction + rng.uniform(-0.04, 0.04)))
+    col_shift_fraction = min(1.0, max(0.0, preset.col_shift_fraction + rng.uniform(-0.04, 0.04)))
+    flat_order = _apply_row_and_column_shifts(
+        flat_order,
+        tiles_per_side,
+        row_shift_fraction=row_shift_fraction,
+        col_shift_fraction=col_shift_fraction,
+    )
+
+    swap_count = _difficulty_swap_count(num_tiles, preset.swap_fraction)
+    max_distance = max(1, int(round((tiles_per_side - 1) * preset.max_swap_distance_fraction)))
+    positions = [(row, col) for row in range(tiles_per_side) for col in range(tiles_per_side)]
+    for _ in range(swap_count):
+        first = rng.choice(positions)
+        candidates = [
+            position
+            for position in positions
+            if position != first
+            and max(abs(position[0] - first[0]), abs(position[1] - first[1])) <= max_distance
+        ]
+        second = rng.choice(candidates or [position for position in positions if position != first])
+        _swap_positions(flat_order, tiles_per_side, first, second)
+    return flat_order
+
+
+def deterministic_enhanced_tile_permutation(
+    tiles_per_side: TilesPerSide,
+    name: str,
+    *,
+    seed: int = 42,
+) -> TilePermutation:
+    """Return a deterministic enhanced permutation, preserving existing base labels."""
+
+    normalized = str(name).strip().lower()
+    if normalized in TILE_PERMUTATION_NAMES:
+        return deterministic_tile_permutation(tiles_per_side, normalized)
+    if normalized not in ENHANCED_TILE_PERMUTATION_IDS:
+        raise ValueError(f"Unsupported enhanced tile permutation name: {name}")
+    if tiles_per_side < 1:
+        raise ValueError("tiles_per_side must be at least 1")
+    if tiles_per_side == 1:
+        return identity_tile_permutation(tiles_per_side)
+
+    base_name = base_tile_permutation_name(normalized)
+    preset = DIFFICULTY_PERMUTATION_PRESETS[base_name]
+    flat_order = _seeded_variant_flat_order(
+        tiles_per_side,
+        preset=preset,
+        seed=seed,
+        variant_index=_variant_index(normalized),
+    )
+    return TilePermutation(tiles_per_side=tiles_per_side, order=flat_order_to_matrix(tiles_per_side, flat_order))
+
+
+def build_enhanced_tile_permutation_records(
+    tiles_per_side_values: Iterable[TilesPerSide],
+    *,
+    seed: int = 42,
+    include_baseline: bool = True,
+) -> list[TilePermutationRecord]:
+    """Build enhanced confidence-experiment records with one shared 1x1 baseline."""
+
+    records: list[TilePermutationRecord] = []
+    emitted_baseline = False
+    for tiles_per_side in tiles_per_side_values:
+        resolved_tiles_per_side = int(tiles_per_side)
+        if resolved_tiles_per_side < 1:
+            raise ValueError("tiles_per_side values must be at least 1")
+        if resolved_tiles_per_side == 1:
+            if include_baseline and not emitted_baseline:
+                records.append(
+                    TilePermutationRecord(
+                        tiles_per_side=None,
+                        tile_permutation_id=ENHANCED_BASELINE_TILE_PERMUTATION_ID,
+                        tile_permutation_seed=seed,
+                        tile_permutation=None,
+                        tile_permutation_name="baseline",
+                    )
+                )
+                emitted_baseline = True
+            continue
+
+        for permutation_name in ENHANCED_TILE_PERMUTATION_NAMES:
+            records.append(
+                TilePermutationRecord(
+                    tiles_per_side=resolved_tiles_per_side,
+                    tile_permutation_id=ENHANCED_TILE_PERMUTATION_IDS[permutation_name],
+                    tile_permutation_seed=seed,
+                    tile_permutation=deterministic_enhanced_tile_permutation(
+                        resolved_tiles_per_side,
+                        permutation_name,
+                        seed=seed,
+                    ),
+                    tile_permutation_name=permutation_name,
+                )
+            )
+    return records
 
 
 def build_tile_permutation_records(

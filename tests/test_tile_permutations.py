@@ -7,10 +7,14 @@ from src.evaluation.tile_permutation_difficulty import (
     compute_spatial_permutation_entropy,
 )
 from src.preprocessing.tile_permutations import (
+    ENHANCED_TILE_PERMUTATION_IDS,
+    ENHANCED_TILE_PERMUTATION_NAMES,
     TILE_PERMUTATION_NAMES,
     TilePermutation,
+    build_enhanced_tile_permutation_records,
     build_tile_permutation_records,
     build_difficulty_tile_permutation,
+    deterministic_enhanced_tile_permutation,
     deterministic_tile_permutation,
     identity_tile_permutation,
     matrix_to_flat_order,
@@ -54,6 +58,44 @@ def test_build_tile_permutation_records_uses_named_deterministic_matrix():
     assert {record.tiles_per_side for record in records[3:]} == {4, 7, 10}
     assert all(record.tile_permutation_name in TILE_PERMUTATION_NAMES for record in records)
     assert all(record.tile_permutation is not None for record in records[3:])
+
+
+def test_build_enhanced_tile_permutation_records_uses_single_baseline():
+    records = build_enhanced_tile_permutation_records([1, 4, 7, 10, 14, 17], seed=42)
+
+    baseline_records = [record for record in records if record.tiles_per_side is None]
+    permuted_records = [record for record in records if record.tiles_per_side is not None]
+
+    assert len(records) == 46
+    assert [(record.tile_permutation_id, record.tile_permutation_name) for record in baseline_records] == [
+        (0, "baseline")
+    ]
+    assert {record.tiles_per_side for record in permuted_records} == {4, 7, 10, 14, 17}
+    assert {record.tile_permutation_name for record in permuted_records} == set(ENHANCED_TILE_PERMUTATION_NAMES)
+    assert all(
+        record.tile_permutation_id == ENHANCED_TILE_PERMUTATION_IDS[record.tile_permutation_name]
+        for record in permuted_records
+    )
+
+
+def test_enhanced_base_permutations_preserve_existing_matrices():
+    for tiles_per_side in (4, 7, 10, 14, 17):
+        for permutation_name in TILE_PERMUTATION_NAMES:
+            existing = deterministic_tile_permutation(tiles_per_side, permutation_name)
+            enhanced = deterministic_enhanced_tile_permutation(tiles_per_side, permutation_name, seed=42)
+
+            assert matrix_to_flat_order(enhanced) == matrix_to_flat_order(existing)
+
+
+def test_enhanced_variant_permutations_are_repeatable_and_non_identity():
+    for tiles_per_side in (4, 7, 10, 14, 17):
+        identity = list(range(tiles_per_side * tiles_per_side))
+        for permutation_name in ("easy2", "easy3", "medium2", "medium3", "hard2", "hard3"):
+            first = deterministic_enhanced_tile_permutation(tiles_per_side, permutation_name, seed=42)
+            second = deterministic_enhanced_tile_permutation(tiles_per_side, permutation_name, seed=42)
+
+            assert matrix_to_flat_order(first) == matrix_to_flat_order(second)
+            assert matrix_to_flat_order(first) != identity
 
 
 def test_deterministic_tile_permutations_are_valid_and_repeatable():

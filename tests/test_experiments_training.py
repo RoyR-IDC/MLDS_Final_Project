@@ -9,6 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.experiments import part1, part2, training_runs
+from src.experiments import enhanced_confidence
 from src.experiments.results import save_run_rows
 import src.training.trainer as trainer_module
 from src.experiments.part1 import (
@@ -30,6 +31,131 @@ from src.preprocessing.tile_permutations import TilePermutationRecord, determini
 from src.training.checkpoints import load_checkpoint, save_checkpoint, validate_checkpoint_metadata
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
+
+
+def test_enhanced_confidence_run_matrix_has_one_baseline():
+    matrix = enhanced_confidence.build_enhanced_confidence_run_matrix()
+
+    baseline_rows = [row for row in matrix if row["tiles_per_side"] is None]
+
+    assert len(matrix) == 136
+    assert baseline_rows == [
+        {
+            "seed": 42,
+            "tiles_per_side": None,
+            "num_tiles": 1,
+            "tile_permutation_id": 0,
+            "tile_permutation_name": "baseline",
+        }
+    ]
+
+
+def test_enhanced_legacy_rows_map_old_medium_hard_ids(tmp_path):
+    raw_path = tmp_path / "part1_raw_results.csv"
+    pd.DataFrame(
+        [
+            {
+                "part": "part1",
+                "run_id": "part1",
+                "config_name": "part1",
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": None,
+                "num_tiles": 1,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "tile_permutation_seed": 42,
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.90,
+                "val_accuracy": 0.89,
+            },
+            {
+                "part": "part1",
+                "run_id": "part1",
+                "config_name": "part1",
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 2,
+                "tile_permutation_name": "medium",
+                "tile_permutation_seed": 42,
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.80,
+                "val_accuracy": 0.79,
+            },
+            {
+                "part": "part1",
+                "run_id": "part1",
+                "config_name": "part1",
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "tile_permutation_id": 3,
+                "tile_permutation_name": "hard",
+                "tile_permutation_seed": 42,
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.70,
+                "val_accuracy": 0.69,
+            },
+        ]
+    ).to_csv(raw_path, index=False)
+    config = SimpleNamespace(epochs=10)
+
+    rows_by_key = enhanced_confidence._legacy_completed_rows(
+        raw_path=str(raw_path),
+        config=config,
+        part_name="part1",
+        config_name="part1_enhanced_confidence",
+        model_name="mobilenetv3_small",
+        source_ablation_name=None,
+        target_ablation_name=None,
+    )
+
+    assert sorted((tiles, permutation_id) for _, tiles, permutation_id, _ in rows_by_key) == [
+        (0, 0),
+        (4, 4),
+        (4, 7),
+    ]
+    assert {row["tile_permutation_name"] for row in rows_by_key.values()} == {"baseline", "medium", "hard"}
+
+
+def test_enhanced_completed_rows_exclude_failed_and_pending(tmp_path):
+    raw_path = tmp_path / "part1_enhanced_raw_results.csv"
+    pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "tile_permutation_id": 1,
+                "seed": 42,
+                "run_status": "completed",
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "tile_permutation_id": 2,
+                "seed": 42,
+                "run_status": "failed",
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "tile_permutation_id": 3,
+                "seed": 42,
+                "run_status": "pending",
+            },
+        ]
+    ).to_csv(raw_path, index=False)
+
+    completed = enhanced_confidence._completed_enhanced_rows(
+        output_path=str(raw_path),
+        model_name="mobilenetv3_small",
+        ablation_name=None,
+    )
+
+    assert sorted((tiles, permutation_id) for _, tiles, permutation_id, _ in completed) == [(4, 1)]
 
 
 def test_executable_tile_permutation_records_returns_records():
