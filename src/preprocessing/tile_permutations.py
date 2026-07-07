@@ -69,13 +69,10 @@ TILE_PERMUTATION_NAMES = ("easy", "medium", "hard")
 ENHANCED_TILE_PERMUTATION_NAMES = (
     "easy",
     "easy2",
-    "easy3",
     "medium",
     "medium2",
-    "medium3",
     "hard",
     "hard2",
-    "hard3",
 )
 ENHANCED_BASELINE_TILE_PERMUTATION_ID = 0
 ENHANCED_TILE_PERMUTATION_IDS = {

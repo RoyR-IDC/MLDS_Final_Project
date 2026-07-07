@@ -66,7 +66,7 @@ def test_build_enhanced_tile_permutation_records_uses_single_baseline():
     baseline_records = [record for record in records if record.tiles_per_side is None]
     permuted_records = [record for record in records if record.tiles_per_side is not None]
 
-    assert len(records) == 46
+    assert len(records) == 31
     assert [(record.tile_permutation_id, record.tile_permutation_name) for record in baseline_records] == [
         (0, "baseline")
     ]
@@ -90,12 +90,28 @@ def test_enhanced_base_permutations_preserve_existing_matrices():
 def test_enhanced_variant_permutations_are_repeatable_and_non_identity():
     for tiles_per_side in (4, 7, 10, 14, 17):
         identity = list(range(tiles_per_side * tiles_per_side))
-        for permutation_name in ("easy2", "easy3", "medium2", "medium3", "hard2", "hard3"):
+        for permutation_name in ("easy2", "medium2", "hard2"):
             first = deterministic_enhanced_tile_permutation(tiles_per_side, permutation_name, seed=42)
             second = deterministic_enhanced_tile_permutation(tiles_per_side, permutation_name, seed=42)
 
             assert matrix_to_flat_order(first) == matrix_to_flat_order(second)
             assert matrix_to_flat_order(first) != identity
+
+
+def test_enhanced_variant_three_names_are_not_scheduled():
+    records = build_enhanced_tile_permutation_records([1, 4], seed=42)
+
+    assert {record.tile_permutation_name for record in records} == {
+        "baseline",
+        "easy",
+        "easy2",
+        "medium",
+        "medium2",
+        "hard",
+        "hard2",
+    }
+    with pytest.raises(ValueError, match="Unsupported enhanced tile permutation name"):
+        deterministic_enhanced_tile_permutation(4, "easy3", seed=42)
 
 
 def test_deterministic_tile_permutations_are_valid_and_repeatable():

@@ -336,7 +336,7 @@ def test_plot_accuracy_vs_tiles_overlays_condition_markers_in_intermediate_plot(
 
 def test_permutation_marker_name_uses_base_for_enhanced_suffixes():
     assert _permutation_marker_name("easy2") == "easy"
-    assert _permutation_marker_name("medium3") == "medium"
+    assert _permutation_marker_name("medium2") == "medium"
     assert _permutation_marker_name("hard2") == "hard"
 
 
@@ -375,7 +375,7 @@ def test_enhanced_confidence_mean_plot_uses_error_bars(monkeypatch, tmp_path):
                 "ablation_name": "curriculum_permutation_difficulty",
                 "num_tiles": 16,
                 "tiles_per_side": 4,
-                "tile_permutation_name": "hard3",
+                "tile_permutation_name": "hard2",
                 "seed": 42,
                 "run_status": "completed",
                 "best_val_accuracy": 0.80,

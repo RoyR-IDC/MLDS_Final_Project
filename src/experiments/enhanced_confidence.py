@@ -39,7 +39,7 @@ from src.utils.io import ensure_dir
 from src.utils.reproducibility import seed_everything
 
 
-ENHANCED_CONFIDENCE_SEEDS = (42, 43, 44)
+ENHANCED_CONFIDENCE_SEEDS = (42, 43)
 ENHANCED_CONFIDENCE_TILES_PER_SIDE_VALUES = (1, 4, 7, 10, 14, 17)
 ENHANCED_CONFIDENCE_MODEL_NAME = "mobilenetv3_small"
 PART1_ENHANCED_CONFIG_NAME = "part1_enhanced_confidence"
@@ -329,6 +329,22 @@ def _completed_rows_for_seed(
     return completed
 
 
+def _expected_enhanced_keys(ablation_name: str | None) -> set[tuple[int, int, int, str]]:
+    ablation_key = "" if ablation_name is None else ablation_name
+    return {
+        (seed, *_record_key(record), ablation_key)
+        for seed in ENHANCED_CONFIDENCE_SEEDS
+        for record in build_enhanced_confidence_records_for_seed(seed)
+    }
+
+
+def _filter_expected_rows(raw_results: pd.DataFrame, *, ablation_name: str | None = None) -> pd.DataFrame:
+    expected_keys = _expected_enhanced_keys(ablation_name)
+    return raw_results[
+        raw_results.apply(lambda row: _enhanced_result_key(row.to_dict()) in expected_keys, axis=1)
+    ].copy()
+
+
 def _part1_completed_rows(config: CVExperimentConfig, output_path: str) -> dict[tuple[int, int, int, str], dict[str, Any]]:
     completed = _completed_enhanced_rows(
         output_path=output_path,
@@ -458,6 +474,7 @@ def run_part1_enhanced_confidence_experiment(
             else True
         )
     ].copy()
+    filtered = _filter_expected_rows(filtered, ablation_name=PART1_ENHANCED_ABLATION_NAME)
     aggregated = aggregate_accuracy(
         filtered[filtered["run_status"].astype(str) == "completed"],
         group_columns=["model_name", "tiles_per_side", "num_tiles"],
@@ -530,7 +547,21 @@ def run_part2_enhanced_confidence_experiment(
                 )
 
     raw_results = pd.read_csv(output_paths["raw_results"])
-    completed = raw_results[raw_results["run_status"].astype(str) == "completed"].copy()
+    expected_part2 = pd.concat(
+        [
+            _filter_expected_rows(
+                raw_results[raw_results["ablation_name"].astype(str) == PART2_BASELINE_ABLATION_NAME],
+                ablation_name=PART2_BASELINE_ABLATION_NAME,
+            ),
+            _filter_expected_rows(
+                raw_results[raw_results["ablation_name"].astype(str) == PART2_CURRICULUM_ABLATION_NAME],
+                ablation_name=PART2_CURRICULUM_ABLATION_NAME,
+            ),
+        ],
+        ignore_index=True,
+        sort=False,
+    )
+    completed = expected_part2[expected_part2["run_status"].astype(str) == "completed"].copy()
     aggregated = aggregate_accuracy(
         completed,
         group_columns=["model_name", "ablation_name", "tiles_per_side", "num_tiles"],
@@ -538,13 +569,13 @@ def run_part2_enhanced_confidence_experiment(
     ensure_dir(os.path.dirname(output_paths["aggregated_results"]) or ".")
     aggregated.to_csv(output_paths["aggregated_results"], index=False)
     plot_enhanced_confidence_results(
-        raw_results,
+        expected_part2,
         output_paths["all_points_figure"],
         aggregate_over_seeds=False,
         facet_column="ablation_name",
     )
     plot_enhanced_confidence_results(
-        raw_results,
+        expected_part2,
         output_paths["mean_by_seed_figure"],
         aggregate_over_seeds=True,
         facet_column="ablation_name",

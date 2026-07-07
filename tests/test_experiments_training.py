@@ -38,7 +38,11 @@ def test_enhanced_confidence_run_matrix_has_one_baseline():
 
     baseline_rows = [row for row in matrix if row["tiles_per_side"] is None]
 
-    assert len(matrix) == 136
+    assert len(matrix) == 61
+    assert {row["seed"] for row in matrix} == {42, 43}
+    assert sum(1 for row in matrix if row["seed"] == 42) == 31
+    assert sum(1 for row in matrix if row["seed"] == 43) == 30
+    assert all(row["seed"] != 44 for row in matrix)
     assert baseline_rows == [
         {
             "seed": 42,
@@ -115,10 +119,80 @@ def test_enhanced_legacy_rows_map_old_medium_hard_ids(tmp_path):
 
     assert sorted((tiles, permutation_id) for _, tiles, permutation_id, _ in rows_by_key) == [
         (0, 0),
-        (4, 4),
-        (4, 7),
+        (4, 3),
+        (4, 5),
     ]
     assert {row["tile_permutation_name"] for row in rows_by_key.values()} == {"baseline", "medium", "hard"}
+
+
+def test_enhanced_output_paths_do_not_overlap_original_results():
+    part1_paths = enhanced_confidence.enhanced_confidence_output_paths("outputs/results", "outputs/figures", "part1")
+    part2_paths = enhanced_confidence.enhanced_confidence_output_paths("outputs/results", "outputs/figures", "part2")
+
+    assert part1_paths["raw_results"] == "outputs/results/part1_enhanced_raw_results.csv"
+    assert part1_paths["aggregated_results"] == "outputs/results/part1_enhanced_aggregated_results.csv"
+    assert part2_paths["raw_results"] == "outputs/results/part2_enhanced_raw_results.csv"
+    assert part2_paths["aggregated_results"] == "outputs/results/part2_enhanced_aggregated_results.csv"
+    assert part1_paths["raw_results"] != "outputs/results/part1_raw_results.csv"
+    assert part1_paths["aggregated_results"] != "outputs/results/part1_aggregated_results.csv"
+    assert part2_paths["raw_results"] != "outputs/results/part2_raw_results.csv"
+    assert part2_paths["aggregated_results"] != "outputs/results/part2_aggregated_results.csv"
+
+
+def test_enhanced_expected_row_filter_ignores_inactive_seed_44():
+    raw = pd.DataFrame(
+        [
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "seed": 42,
+                "run_status": "completed",
+                "best_val_accuracy": 0.90,
+            },
+            {
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "tile_permutation_id": 1,
+                "tile_permutation_name": "easy",
+                "seed": 44,
+                "run_status": "completed",
+                "best_val_accuracy": 0.91,
+            },
+        ]
+    )
+
+    filtered = enhanced_confidence._filter_expected_rows(raw)
+
+    assert filtered["seed"].tolist() == [42]
+
+
+def test_completed_active_enhanced_rows_are_excluded_from_missing_schedule():
+    records = enhanced_confidence.build_enhanced_confidence_records_for_seed(42)
+    completed_record = next(record for record in records if record.tiles_per_side == 4 and record.tile_permutation_id == 1)
+    completed_rows = {
+        (42, 4, 1, ""): {
+            "seed": 42,
+            "tiles_per_side": 4,
+            "tile_permutation_id": 1,
+            "ablation_name": None,
+            "run_status": "completed",
+        }
+    }
+
+    completed_for_seed = enhanced_confidence._completed_rows_for_seed(
+        completed_rows,
+        seed=42,
+        ablation_name=None,
+    )
+    missing_records = [
+        record for record in records if enhanced_confidence._record_key(record) not in completed_for_seed
+    ]
+
+    assert enhanced_confidence._record_key(completed_record) not in {
+        enhanced_confidence._record_key(record) for record in missing_records
+    }
 
 
 def test_enhanced_completed_rows_exclude_failed_and_pending(tmp_path):
