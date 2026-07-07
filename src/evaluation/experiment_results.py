@@ -34,6 +34,7 @@ from src.experiments.results import (
 from src.models.registry import SUPPORTED_MODEL_NAMES, validate_model_name
 from src.preprocessing.samples import Sample, discover_samples, stratified_split
 from src.preprocessing.tile_permutations import (
+    base_tile_permutation_name,
     build_tile_permutation_records,
     tile_permutation_from_jsonable,
     tile_permutation_to_jsonable,
@@ -146,7 +147,7 @@ def _permutation_marker_name(value: object) -> str:
 
     if value is None or (isinstance(value, float) and bool(pd.isna(value))):
         return "baseline"
-    name = str(value).strip().lower()
+    name = base_tile_permutation_name(str(value).strip().lower())
     return name if name in PERMUTATION_MARKERS else "unknown"
 
 
