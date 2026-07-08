@@ -115,19 +115,28 @@ def _remove_stale_src_modules(project_root: Path) -> None:
     """Drop cached ``src`` modules that were imported from outside ``project_root``."""
 
     expected_src = project_root / "src"
-    stale_modules: list[str] = []
-    for module_name in list(sys.modules):
+    src_modules = [module_name for module_name in sys.modules if module_name == "src" or module_name.startswith("src.")]
+    remove_src_tree = False
+
+    if any(module_name.startswith("src.") for module_name in src_modules) and "src" not in sys.modules:
+        remove_src_tree = True
+
+    for module_name in src_modules:
         if module_name != "src" and not module_name.startswith("src."):
             continue
         module_file = _module_file(module_name)
         if module_file is None:
+            remove_src_tree = True
             continue
         try:
             module_file.relative_to(expected_src)
         except ValueError:
-            stale_modules.append(module_name)
+            remove_src_tree = True
 
-    for module_name in stale_modules:
+    if not remove_src_tree:
+        return
+
+    for module_name in sorted(src_modules, key=lambda name: name.count("."), reverse=True):
         sys.modules.pop(module_name, None)
 
 
@@ -212,8 +221,8 @@ def prepare_project_imports(project_root: str | Path | None = None) -> Path:
         )
 
     root_text = str(root)
-    if root_text not in sys.path:
-        sys.path.insert(0, root_text)
+    sys.path[:] = [path for path in sys.path if path != root_text]
+    sys.path.insert(0, root_text)
     _remove_stale_src_modules(root)
     invalidate_caches()
     os.chdir(root)

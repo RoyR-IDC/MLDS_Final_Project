@@ -29,9 +29,11 @@ def write_flat_image_zip(zip_path, filenames):
 def write_minimal_project(project_root):
     (project_root / "src" / "utils").mkdir(parents=True)
     (project_root / "src" / "evaluation").mkdir(parents=True)
+    (project_root / "src" / "experiments").mkdir(parents=True)
     (project_root / "src" / "__init__.py").write_text("")
     (project_root / "src" / "utils" / "notebook_setup.py").write_text("")
     (project_root / "src" / "evaluation" / "experiment_results.py").write_text("")
+    (project_root / "src" / "experiments" / "enhanced_confidence.py").write_text("")
 
 
 def test_requirement_package_name_normalizes_common_requirement_forms():
@@ -134,6 +136,24 @@ def test_prepare_project_imports_removes_stale_src_modules(tmp_path, monkeypatch
         sys.path[:] = original_sys_path
 
 
+def test_prepare_project_imports_removes_orphaned_src_children(tmp_path, monkeypatch):
+    project_root = tmp_path / "MLDS_Final_Project"
+    write_minimal_project(project_root)
+    original_sys_path = list(sys.path)
+    orphaned_child = ModuleType("src.utils")
+    orphaned_child.__file__ = str(project_root / "src" / "utils" / "__init__.py")
+    monkeypatch.delitem(sys.modules, "src", raising=False)
+    monkeypatch.setitem(sys.modules, "src.utils", orphaned_child)
+
+    try:
+        prepare_project_imports(project_root)
+
+        assert "src.utils" not in sys.modules
+        assert importlib.util.find_spec("src.utils.notebook_setup") is not None
+    finally:
+        sys.path[:] = original_sys_path
+
+
 def test_prepare_project_imports_invalidates_import_caches(tmp_path, monkeypatch):
     project_root = tmp_path / "MLDS_Final_Project"
     write_minimal_project(project_root)
@@ -159,6 +179,7 @@ def test_prepare_project_imports_rejects_partial_project_copy(tmp_path):
         prepare_project_imports(partial_root)
     except ModuleNotFoundError as exc:
         assert "src/evaluation/experiment_results.py" in str(exc)
+        assert "src/experiments/enhanced_confidence.py" in str(exc)
     else:
         raise AssertionError("prepare_project_imports should reject a partial project copy")
 
