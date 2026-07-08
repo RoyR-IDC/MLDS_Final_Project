@@ -99,6 +99,13 @@ def validate_checkpoint_metadata(
         "tile_permutation_probability",
     )
     for key in keys_to_match:
+        if key == "run_id":
+            compatible_run_ids = set(expected_metadata.get("_compatible_run_ids", ()))
+            if (
+                expected_metadata.get(key) != checkpoint_metadata.get(key)
+                and checkpoint_metadata.get(key) in compatible_run_ids
+            ):
+                continue
         if expected_metadata.get(key) != checkpoint_metadata.get(key):
             return False
 

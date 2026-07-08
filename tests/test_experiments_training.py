@@ -307,6 +307,67 @@ def test_checkpoint_config_enabled_on_colab(tmp_path):
     assert (tmp_path / "outputs" / "checkpoints" / "part1" / "run").is_dir()
 
 
+def test_part1_checkpoint_config_uses_legacy_run_id_when_present(tmp_path):
+    config = SimpleNamespace(
+        part="part1",
+        config_name="part1",
+        outputs_dir=str(tmp_path / "outputs"),
+        using_google_colab=True,
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=4,
+        tile_permutation_id=2,
+        tile_permutation_seed=42,
+        tile_permutation=identity_tile_permutation(4),
+    )
+    legacy_dir = tmp_path / "outputs" / "checkpoints" / "part1" / "part1"
+    legacy_dir.mkdir(parents=True)
+    legacy_last_path = legacy_dir / "deit_tiny__tiles_4__perm_2__last.pt"
+    legacy_last_path.write_bytes(b"checkpoint")
+    new_dir = tmp_path / "outputs" / "checkpoints" / "part1" / "part1_part1_seed_42"
+    new_dir.mkdir(parents=True)
+    (new_dir / "deit_tiny__tiles_4__perm_2__last.pt").write_bytes(b"partial rerun")
+
+    checkpoint_config = training_runs.build_checkpoint_config(
+        config=config,
+        run_id="part1_part1_seed_42",
+        model_name="deit_tiny",
+        record=record,
+    )
+
+    assert checkpoint_config.last_path == str(legacy_last_path)
+    assert checkpoint_config.resume_path == str(legacy_last_path)
+    assert checkpoint_config.best_path == str(legacy_dir / "deit_tiny__tiles_4__perm_2__best.pt")
+
+
+def test_checkpoint_metadata_accepts_part1_legacy_run_id():
+    expected_metadata = {
+        "part": "part1",
+        "config_name": "part1",
+        "run_id": "part1_part1_seed_42",
+        "_compatible_run_ids": ("part1",),
+        "model_name": "deit_tiny",
+        "ablation_name": None,
+        "tiles_per_side": 4,
+        "tile_permutation_id": 2,
+        "tile_permutation_seed": 42,
+        "seed": 42,
+    }
+    checkpoint = {
+        "metadata": {
+            **{key: value for key, value in expected_metadata.items() if key != "_compatible_run_ids"},
+            "run_id": "part1",
+        },
+        "planned_total_epochs": 10,
+    }
+
+    assert validate_checkpoint_metadata(
+        checkpoint,
+        expected_metadata=expected_metadata,
+        planned_total_epochs=10,
+    )
+
+
 def test_colab_run_id_is_stable_for_same_config():
     config = SimpleNamespace(
         part="part1",

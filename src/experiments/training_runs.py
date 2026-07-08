@@ -102,6 +102,16 @@ def checkpoint_dir_path(*, config: CVExperimentConfig, run_id: str) -> str:
     return ensure_dir(os.path.join(outputs_dir, "checkpoints", str(config.part), run_id))
 
 
+def compatible_legacy_run_ids(config: CVExperimentConfig, run_id: str) -> tuple[str, ...]:
+    """Return older checkpoint run ids that are compatible with ``run_id``."""
+
+    part = str(getattr(config, "part", ""))
+    config_name = str(getattr(config, "config_name", part))
+    if part == "part1" and config_name == "part1" and run_id != "part1":
+        return ("part1",)
+    return ()
+
+
 def checkpoints_enabled(config: CVExperimentConfig) -> bool:
     """Return whether model checkpoints should be written for this runtime."""
 
@@ -122,6 +132,11 @@ def build_checkpoint_config(
         return CheckpointConfig(save_best=False, save_last=False)
 
     checkpoint_dir = checkpoint_dir_path(config=config, run_id=run_id)
+    outputs_dir = (
+        getattr(config, "outputs_dir", "")
+        or os.path.dirname(getattr(config, "results_dir", ""))
+        or "outputs"
+    )
     name_parts = [
         clean_checkpoint_name_part(model_name),
         clean_checkpoint_name_part(ablation_name) if ablation_name else None,
@@ -129,9 +144,22 @@ def build_checkpoint_config(
         f"perm_{record.tile_permutation_id}",
     ]
     stem = "__".join(part for part in name_parts if part)
+    best_path = os.path.join(checkpoint_dir, f"{stem}__best.pt")
+    last_path = os.path.join(checkpoint_dir, f"{stem}__last.pt")
+
+    for legacy_run_id in compatible_legacy_run_ids(config, run_id):
+        legacy_checkpoint_dir = os.path.join(outputs_dir, "checkpoints", str(config.part), legacy_run_id)
+        legacy_last_path = os.path.join(legacy_checkpoint_dir, f"{stem}__last.pt")
+        if os.path.exists(legacy_last_path):
+            legacy_best_path = os.path.join(legacy_checkpoint_dir, f"{stem}__best.pt")
+            return CheckpointConfig(
+                best_path=legacy_best_path,
+                last_path=legacy_last_path,
+            )
+
     return CheckpointConfig(
-        best_path=os.path.join(checkpoint_dir, f"{stem}__best.pt"),
-        last_path=os.path.join(checkpoint_dir, f"{stem}__last.pt"),
+        best_path=best_path,
+        last_path=last_path,
     )
 
 
@@ -165,6 +193,7 @@ def build_training_metadata(
         "part": config.part,
         "config_name": config.config_name,
         "run_id": run_id,
+        "_compatible_run_ids": compatible_legacy_run_ids(config, run_id),
         "model_name": model_name,
         "ablation_name": ablation_name,
         "tiles_per_side": record.tiles_per_side,
