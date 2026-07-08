@@ -28,6 +28,8 @@ def test_part_notebooks_bootstrap_full_project_before_src_imports():
         assert "src/__init__.py" in setup_source
         assert "src/utils/notebook_setup.py" in setup_source
         assert "src/evaluation/experiment_results.py" in setup_source
+        if notebook_path.name in {"part1_solution.ipynb", "part2_solution.ipynb"}:
+            assert "src/experiments/enhanced_confidence.py" in setup_source
         assert "force_remount=True" in setup_source
         assert "def _safe_cwd()" in setup_source
         assert "def _safe_exists(path)" in setup_source

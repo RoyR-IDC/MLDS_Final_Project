@@ -56,6 +56,7 @@ def _path_looks_like_project_root(path: Path) -> bool:
             (path / "src" / "__init__.py").is_file()
             and (path / "src" / "utils" / "notebook_setup.py").is_file()
             and (path / "src" / "evaluation" / "experiment_results.py").is_file()
+            and (path / "src" / "experiments" / "enhanced_confidence.py").is_file()
         )
     except OSError:
         return False
@@ -205,7 +206,8 @@ def prepare_project_imports(project_root: str | Path | None = None) -> Path:
         raise ModuleNotFoundError(
             "Could not find the full MLDS_Final_Project repository. "
             "Expected src/__init__.py, src/utils/notebook_setup.py, and "
-            "src/evaluation/experiment_results.py under the project root. "
+            "src/evaluation/experiment_results.py, and "
+            "src/experiments/enhanced_confidence.py under the project root. "
             "In Colab, upload or clone the full repo, then rerun the setup cell."
         )
 
