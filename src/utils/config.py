@@ -213,11 +213,15 @@ class CVExperimentConfig:
 
         if self.root_dir and self.root_dir != DEFAULT_LOCAL_ROOT:
             return
+        project_root = Path(find_project_root())
+        if project_root.exists():
+            self.root_dir = str(project_root)
+            return
         drive_root = Path(DEFAULT_COLAB_DRIVE_ROOT)
         if drive_root.exists():
             self.root_dir = str(drive_root)
             return
-        self.root_dir = find_project_root()
+        self.root_dir = str(project_root)
 
     def _update_root_for_local_runtime(self) -> None:
         """Avoid carrying the developer machine path into other local runtimes."""

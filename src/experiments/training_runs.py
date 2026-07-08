@@ -131,12 +131,12 @@ def build_checkpoint_config(
     if not checkpoints_enabled(config):
         return CheckpointConfig(save_best=False, save_last=False)
 
-    checkpoint_dir = checkpoint_dir_path(config=config, run_id=run_id)
     outputs_dir = (
         getattr(config, "outputs_dir", "")
         or os.path.dirname(getattr(config, "results_dir", ""))
         or "outputs"
     )
+    checkpoint_dir = os.path.join(outputs_dir, "checkpoints", str(config.part), run_id)
     name_parts = [
         clean_checkpoint_name_part(model_name),
         clean_checkpoint_name_part(ablation_name) if ablation_name else None,
@@ -157,6 +157,7 @@ def build_checkpoint_config(
                 last_path=legacy_last_path,
             )
 
+    ensure_dir(checkpoint_dir)
     return CheckpointConfig(
         best_path=best_path,
         last_path=last_path,

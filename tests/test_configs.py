@@ -249,6 +249,19 @@ def test_colab_runtime_defaults_enable_t4_speed_settings():
     assert config.use_amp is True
 
 
+def test_colab_root_resolution_prefers_discovered_project(monkeypatch, tmp_path):
+    discovered_root = tmp_path / "MyDrive" / "code_projects" / "MLDS_Final_Project"
+    discovered_root.mkdir(parents=True)
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.root_dir = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+
+    monkeypatch.setattr("src.utils.config.find_project_root", lambda: str(discovered_root))
+
+    CVExperimentConfig._update_root_for_colab(config)
+
+    assert config.root_dir == str(discovered_root)
+
+
 def test_part3_local_testing_keeps_hardness_notebook_tile_scope():
     config = Part3ExperimentConfig.__new__(Part3ExperimentConfig)
 
@@ -263,9 +276,11 @@ def test_find_project_root_walks_up_from_notebook_directory(tmp_path):
     notebook_dir.mkdir(parents=True)
     (project_root / "src" / "utils").mkdir(parents=True)
     (project_root / "src" / "evaluation").mkdir(parents=True)
+    (project_root / "src" / "experiments").mkdir(parents=True)
     (project_root / "src" / "__init__.py").write_text("")
     (project_root / "src" / "utils" / "notebook_setup.py").write_text("")
     (project_root / "src" / "evaluation" / "experiment_results.py").write_text("")
+    (project_root / "src" / "experiments" / "enhanced_confidence.py").write_text("")
 
     assert find_project_root(notebook_dir) == str(project_root)
 
