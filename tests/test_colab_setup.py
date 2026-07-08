@@ -242,6 +242,41 @@ def test_stage_colab_data_reuses_existing_local_copy(tmp_path, monkeypatch):
     assert (destination / "cat.0.jpg").read_bytes() == b"local"
 
 
+def test_stage_colab_data_reuses_existing_local_copy_when_source_is_missing(tmp_path, monkeypatch):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    destination.mkdir(parents=True)
+    for filename in ("cat.0.jpg", "dog.1.jpg"):
+        (destination / filename).write_bytes(b"local")
+    write_flat_image_zip(colab_data_zip_path(destination), ["cat.0.jpg", "dog.1.jpg"])
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        using_google_colab=True,
+    )
+
+    assert staged == str(destination)
+    assert (destination / "cat.0.jpg").read_bytes() == b"local"
+
+
+def test_stage_colab_data_extracts_existing_local_zip_when_source_is_missing(tmp_path, monkeypatch):
+    source = tmp_path / "drive" / "train"
+    destination = tmp_path / "content" / "train"
+    write_flat_image_zip(colab_data_zip_path(destination), ["cat.0.jpg", "dog.1.jpg"])
+    monkeypatch.setattr(colab, "path_is_under_colab_drive", lambda path: True)
+
+    staged = stage_colab_data_to_local_disk(
+        source,
+        local_data_dir=destination,
+        using_google_colab=True,
+    )
+
+    assert staged == str(destination)
+    assert sorted(path.name for path in destination.iterdir()) == ["cat.0.jpg", "dog.1.jpg"]
+
+
 def test_stage_colab_data_can_skip_local_copy_when_disabled(tmp_path, monkeypatch, capsys):
     source = tmp_path / "drive" / "train"
     destination = tmp_path / "content" / "train"

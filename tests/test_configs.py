@@ -303,3 +303,27 @@ def test_colab_config_accepts_zip_only_dataset_input(tmp_path):
     zip_path.write_bytes(b"zip")
 
     assert CVExperimentConfig._data_input_exists(config) is True
+
+
+def test_colab_config_accepts_existing_staged_local_dataset(tmp_path):
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.data_dir = str(tmp_path / "drive" / "data" / "dogs-vs-cats" / "train")
+    config.using_google_colab = True
+    config.stage_colab_data_to_local_disk = True
+    config.colab_local_data_dir = str(tmp_path / "content" / "data" / "dogs-vs-cats" / "train")
+    Path(config.colab_local_data_dir).mkdir(parents=True)
+
+    assert CVExperimentConfig._data_input_exists(config) is True
+
+
+def test_colab_config_accepts_existing_staged_local_zip(tmp_path):
+    config = CVExperimentConfig.__new__(CVExperimentConfig)
+    config.data_dir = str(tmp_path / "drive" / "data" / "dogs-vs-cats" / "train")
+    config.using_google_colab = True
+    config.stage_colab_data_to_local_disk = True
+    config.colab_local_data_dir = str(tmp_path / "content" / "data" / "dogs-vs-cats" / "train")
+    local_zip_path = Path(f"{config.colab_local_data_dir}.zip")
+    local_zip_path.parent.mkdir(parents=True)
+    local_zip_path.write_bytes(b"zip")
+
+    assert CVExperimentConfig._data_input_exists(config) is True

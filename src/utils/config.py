@@ -251,6 +251,11 @@ class CVExperimentConfig:
         if os.path.exists(self.data_dir):
             return True
         if self.using_google_colab and self.stage_colab_data_to_local_disk:
+            local_data_dir = Path(getattr(self, "colab_local_data_dir", ""))
+            if str(local_data_dir) and local_data_dir.exists():
+                return True
+            if str(local_data_dir) and colab_data_zip_path(local_data_dir).exists():
+                return True
             return colab_data_zip_path(self.data_dir).exists()
         return False
 

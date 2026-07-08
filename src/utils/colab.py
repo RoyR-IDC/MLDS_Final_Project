@@ -471,7 +471,9 @@ def stage_colab_data_to_local_disk(
     destination_count = _count_labeled_images(destination)
     zip_members = _zip_labeled_image_members(source_zip)
     zip_count = len(zip_members)
-    expected_count = source_count or zip_count
+    local_zip_members = _zip_labeled_image_members(local_zip)
+    local_zip_count = len(local_zip_members)
+    expected_count = source_count or zip_count or local_zip_count
 
     print("Starting Colab dataset staging.")
     print(f"  Source data directory: {source}")
@@ -480,6 +482,7 @@ def stage_colab_data_to_local_disk(
     print(f"  Local extraction directory: {destination}")
     print(f"  Source directory labeled images: {source_count}")
     print(f"  Source ZIP labeled images: {zip_count}")
+    print(f"  Existing local ZIP labeled images: {local_zip_count}")
     print(f"  Existing local labeled images: {destination_count}")
 
     if expected_count > 0 and destination_count >= expected_count:
@@ -491,6 +494,21 @@ def stage_colab_data_to_local_disk(
         return str(destination)
 
     if not source_zip.exists():
+        if local_zip_count > 0:
+            extract_start_time = perf_counter()
+            print(
+                "Source dataset ZIP was not found; extracting existing local Colab ZIP "
+                f"instead: {local_zip}"
+            )
+            extracted_count = _extract_labeled_images_from_zip(local_zip, destination)
+            extract_elapsed_seconds = perf_counter() - extract_start_time
+            final_count = _count_labeled_images(destination)
+            print(
+                "Finished extracting existing local Colab dataset: "
+                f"{extracted_count} files extracted in {extract_elapsed_seconds:.2f}s; "
+                f"{final_count} labeled images now available locally."
+            )
+            return str(destination)
         elapsed_seconds = perf_counter() - start_time
         print(
             "Colab dataset ZIP was not found; leaving data on Google Drive instead of "
