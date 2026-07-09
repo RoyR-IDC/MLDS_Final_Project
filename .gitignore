@@ -80,6 +80,7 @@ target/
 
 # macOS
 .DS_Store
+paper/.DS_Store
 
 # LaTeX generated files
 paper/**/*.aux
@@ -221,3 +222,4 @@ outputs/
 outputs_*/
 src/notebooks/backups/
 *.icloud
+paper/.DS_Store
