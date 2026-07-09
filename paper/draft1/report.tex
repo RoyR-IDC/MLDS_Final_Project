@@ -722,16 +722,7 @@ The Part 2 matrix is designed to compare each ablation against the matched regul
 
 \begin{figure}[t]
   \centering
-  \fbox{%
-  \begin{minipage}{0.92\linewidth}
-  \centering
-  \textbf{Part 2 MobileNetV3-Small ablation deltas}\\[0.5em]
-  Regular baseline \quad Patch shuffle \quad Regular augmentation\\
-  Mixed original/permuted \quad CNN MLP head\\
-  Corruption-probability curriculum \quad Permutation-difficulty curriculum\\[0.5em]
-  Values are reported as best-validation-accuracy deltas from the matched regular baseline.
-  \end{minipage}
-  }
+  \includegraphics[width=\linewidth]{part2_ablation_comparison.png}
   \caption{Part 2 best-validation-accuracy delta from the matched CNN baseline. Positive values indicate improvement relative to the same grid size and deterministic permutation preset; negative values indicate that the ablation underperformed the matched baseline.}
   \label{fig:part2-ablation}
 \end{figure}
