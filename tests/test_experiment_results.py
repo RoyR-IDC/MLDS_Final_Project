@@ -983,7 +983,8 @@ def test_plot_ablation_results_intermediate_mode_hides_aggregate_points(monkeypa
         PERMUTATION_MARKERS["medium"],
         PERMUTATION_MARKERS["hard"],
     ]
-    assert "Ablation" not in legend_titles
+    assert "Ablation" in legend_titles
+    assert "patch_shuffle" in legend_labels
     assert "Condition" in legend_titles
     assert "Baseline: no permutation" not in legend_labels
 
@@ -1224,7 +1225,7 @@ def test_refresh_part2_ablation_comparison_copies_original_and_passes_raw_result
     assert captured["raw_results"] is not None
     assert captured["raw_results"]["tile_permutation_name"].tolist() == ["easy"]
     assert captured["show_raw_points"] is True
-    assert captured["show_aggregate_points"] is True
+    assert captured["show_aggregate_points"] is False
     assert captured["archive_existing"] is False
 
 
@@ -1332,6 +1333,86 @@ def test_part1_baseline_raw_rows_are_retagged_for_part2(tmp_path):
     assert rows[0]["config_name"] == "part2_improvement"
     assert rows[0]["ablation_name"] == "regular_part1"
     assert rows[0]["model_name"] == "resnet18"
+
+
+def test_part1_baseline_raw_rows_scope_to_matched_part2_condition(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "part": "part1",
+                "model_name": "mobilenetv3_small",
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.96,
+                "ablation_name": "unfrozen_pretrained_binary_head",
+                "freeze_backbone": False,
+                "classification_head": "binary_linear",
+            },
+            {
+                "part": "part1",
+                "model_name": "mobilenetv3_small",
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.81,
+                "ablation_name": "zero_shot_full_pretrained_head",
+                "freeze_backbone": True,
+                "classification_head": "imagenet_full_head",
+            },
+            {
+                "part": "part1",
+                "model_name": "mobilenetv3_small",
+                "num_tiles": 16,
+                "tile_permutation_id": 1,
+                "best_val_accuracy": 0.90,
+                "ablation_name": None,
+                "freeze_backbone": True,
+                "classification_head": None,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_raw_results.csv", index=False)
+    config = SimpleNamespace(results_dir=str(tmp_path), part="part2", config_name="part2_improvement")
+
+    rows = load_part1_model_baseline_raw_rows(config, "mobilenetv3_small")
+
+    assert len(rows) == 1
+    assert rows[0]["best_val_accuracy"] == 0.90
+    assert rows[0]["ablation_name"] == "regular_part1"
+
+
+def test_part1_baseline_aggregated_rows_scope_to_matched_part2_condition(tmp_path):
+    pd.DataFrame(
+        [
+            {
+                "experiment_condition": "frozen_pretrained_binary_head",
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.90,
+                "std_best_epoch_val_accuracy": 0.0,
+                "mean_final_epoch_val_accuracy": 0.95,
+                "std_final_epoch_val_accuracy": 0.0,
+                "n_runs": 3,
+            },
+            {
+                "experiment_condition": "unfrozen_pretrained_binary_head",
+                "model_name": "mobilenetv3_small",
+                "tiles_per_side": 4,
+                "num_tiles": 16,
+                "mean_best_epoch_val_accuracy": 0.96,
+                "std_best_epoch_val_accuracy": 0.0,
+                "mean_final_epoch_val_accuracy": 0.80,
+                "std_final_epoch_val_accuracy": 0.0,
+                "n_runs": 3,
+            },
+        ]
+    ).to_csv(tmp_path / "part1_aggregated_results.csv", index=False)
+    config = SimpleNamespace(results_dir=str(tmp_path), part="part2", config_name="part2_improvement")
+
+    baseline = load_part1_model_baseline_aggregated(config, "mobilenetv3_small")
+
+    assert len(baseline) == 1
+    assert baseline.iloc[0]["mean_best_epoch_val_accuracy"] == 0.90
+    assert baseline.iloc[0]["ablation_name"] == "regular_part1"
 
 
 def test_part1_baseline_aggregated_rejects_unsupported_accuracy_column_names(tmp_path):

@@ -77,6 +77,7 @@ CONDITION_LABELS = {
     "unknown": "unknown",
 }
 PART2_DELTA_REFERENCE_LABEL = "Matched Part 1 grid baseline reference"
+PART2_DEFAULT_PART1_BASELINE_CONDITION = "frozen_pretrained_binary_head"
 
 
 def _read_csv_dataframe(path: str) -> pd.DataFrame:
@@ -382,6 +383,43 @@ def _part2_delta_reference_handle() -> plt.Line2D:
     )
 
 
+def _part2_part1_baseline_condition(config: CVExperimentConfig) -> str:
+    return str(
+        getattr(
+            config,
+            "part1_baseline_condition",
+            PART2_DEFAULT_PART1_BASELINE_CONDITION,
+        )
+    )
+
+
+def _filter_part1_baseline_for_part2(part1_results: pd.DataFrame, config: CVExperimentConfig) -> pd.DataFrame:
+    """Scope Part 1 model rows to the baseline condition matched by Part 2."""
+
+    condition = _part2_part1_baseline_condition(config)
+    candidate_masks: list[pd.Series] = []
+    if "experiment_condition" in part1_results.columns:
+        candidate_masks.append(part1_results["experiment_condition"].astype(str) == condition)
+    if "ablation_name" in part1_results.columns:
+        candidate_masks.append(part1_results["ablation_name"].astype(str) == condition)
+    if {"freeze_backbone", "classification_head"}.issubset(part1_results.columns):
+        freeze_backbone = part1_results["freeze_backbone"].astype(str).str.lower()
+        classification_head = part1_results["classification_head"]
+        classification_head_text = classification_head.astype(str).str.lower()
+        if condition == "frozen_pretrained_binary_head":
+            candidate_masks.append(freeze_backbone.eq("true") & classification_head.isna())
+        elif condition == "unfrozen_pretrained_binary_head":
+            candidate_masks.append(
+                freeze_backbone.eq("false") & classification_head_text.isin({"binary_linear", "linear"})
+            )
+
+    for mask in candidate_masks:
+        filtered = part1_results[mask].copy()
+        if not filtered.empty:
+            return cast(pd.DataFrame, filtered)
+    return part1_results.copy()
+
+
 def add_part2_grid_baseline_deltas(
     aggregated: pd.DataFrame,
     raw_results: pd.DataFrame | None = None,
@@ -575,6 +613,7 @@ def load_part1_model_baseline_raw_rows(
 
     part1_raw_any = cast(Any, part1_raw)
     baseline = cast(pd.DataFrame, part1_raw_any[part1_raw_any["model_name"] == model_name].copy())
+    baseline = _filter_part1_baseline_for_part2(baseline, config)
     if baseline.empty:
         return []
 
@@ -606,6 +645,7 @@ def load_part1_model_baseline_aggregated(
 
     part1_results_any = cast(Any, part1_results)
     baseline = cast(pd.DataFrame, part1_results_any[part1_results_any["model_name"] == model_name].copy())
+    baseline = _filter_part1_baseline_for_part2(baseline, config)
     if baseline.empty:
         print(f"Part 1 results exist, but no rows were found for {model_name}.")
         return pd.DataFrame()
@@ -807,6 +847,23 @@ def plot_ablation_results(
             label=ablation_name,
         )
         ablation_handles.append((scatter, ablation_name))
+    if not ablation_handles and ablation_names:
+        ablation_handles = [
+            (
+                plt.Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    linestyle="None",
+                    markersize=7,
+                    color=color_by_ablation.get(ablation_name),
+                    markerfacecolor=color_by_ablation.get(ablation_name),
+                    markeredgecolor=color_by_ablation.get(ablation_name),
+                ),
+                ablation_name,
+            )
+            for ablation_name in ablation_names
+        ]
 
     marker_names_used: list[str] = []
     if plot_raw is not None and not plot_raw.empty:
@@ -944,7 +1001,7 @@ def refresh_part2_ablation_comparison_figure(
         output_path,
         raw_results=raw_results,
         show_raw_points=True,
-        show_aggregate_points=True,
+        show_aggregate_points=False,
         archive_existing=False,
     )
     return {
