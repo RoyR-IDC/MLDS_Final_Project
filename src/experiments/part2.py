@@ -62,6 +62,7 @@ from src.preprocessing.tile_permutations import (
     TilePermutation,
     TilePermutationRecord,
     build_tile_permutation_records,
+    deterministic_enhanced_tile_permutation,
     deterministic_tile_permutation,
 )
 from src.training.curriculum import CurriculumSchedule, TrainingStage
@@ -234,7 +235,14 @@ def _permutation_for_stage(
     if record.tiles_per_side == tiles_per_side and record.tile_permutation is not None:
         return record.tile_permutation
     permutation_name = record.tile_permutation_name or "medium"
-    return deterministic_tile_permutation(tiles_per_side, permutation_name)
+    try:
+        return deterministic_enhanced_tile_permutation(
+            tiles_per_side,
+            permutation_name,
+            seed=record.tile_permutation_seed,
+        )
+    except ValueError:
+        return deterministic_tile_permutation(tiles_per_side, permutation_name)
 
 
 def _difficulty_stage_tiles(

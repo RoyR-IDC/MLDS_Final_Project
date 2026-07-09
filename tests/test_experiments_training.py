@@ -27,7 +27,13 @@ from src.experiments.part2 import (
     build_curriculum_schedule,
     train_part2_ablation_experiments,
 )
-from src.preprocessing.tile_permutations import TilePermutationRecord, deterministic_tile_permutation, identity_tile_permutation
+from src.preprocessing.tile_permutations import (
+    TilePermutationRecord,
+    deterministic_enhanced_tile_permutation,
+    deterministic_tile_permutation,
+    identity_tile_permutation,
+    matrix_to_flat_order,
+)
 from src.training.checkpoints import load_checkpoint, save_checkpoint, validate_checkpoint_metadata
 from src.training.run import CheckpointConfig, TrainingConfig, TrainingResult, TrainingRunSpec
 from src.training.trainer import ModelTrainer
@@ -1442,6 +1448,57 @@ def test_difficulty_curriculum_includes_target_grid_stage(monkeypatch):
     ]
     assert loader_tiles == [1, 4, 7, 10]
     assert schedule.total_epochs == 10
+
+
+def test_difficulty_curriculum_rebuilds_enhanced_variant_stage_permutations(monkeypatch):
+    config = SimpleNamespace(
+        image_size=32,
+        batch_size=4,
+        num_workers=0,
+        epochs=10,
+        seed=42,
+        tiles_per_side_values=[1, 4, 7, 10],
+    )
+    record = TilePermutationRecord(
+        tiles_per_side=10,
+        tile_permutation_id=2,
+        tile_permutation_seed=42,
+        tile_permutation=deterministic_enhanced_tile_permutation(10, "easy2", seed=42),
+        tile_permutation_name="easy2",
+    )
+    captured_permutations = []
+
+    class FakeLoader:
+        pass
+
+    def fake_build_dataloaders(**kwargs):
+        captured_permutations.append(kwargs["tile_permutation"])
+        return FakeLoader(), FakeLoader()
+
+    monkeypatch.setattr(part2, "build_dataloaders", fake_build_dataloaders)
+
+    schedule = build_curriculum_schedule(
+        ablation={"curriculum": "permutation_difficulty"},
+        record=record,
+        train_samples=[("cat.jpg", 0), ("dog.jpg", 1)],
+        config=config,
+    )
+
+    assert schedule is not None
+    assert schedule.stage_names == [
+        "original",
+        "4x4_permutation",
+        "7x7_permutation",
+        "10x10_permutation",
+    ]
+    assert captured_permutations[0] is None
+    assert matrix_to_flat_order(captured_permutations[1]) == matrix_to_flat_order(
+        deterministic_enhanced_tile_permutation(4, "easy2", seed=42)
+    )
+    assert matrix_to_flat_order(captured_permutations[2]) == matrix_to_flat_order(
+        deterministic_enhanced_tile_permutation(7, "easy2", seed=42)
+    )
+    assert captured_permutations[3] == record.tile_permutation
 
 
 def test_difficulty_curriculum_spec_allows_variable_stage_image_sizes(monkeypatch):
