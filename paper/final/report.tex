@@ -184,8 +184,11 @@ The construction is parameterized by relative quantities: the fraction of tiles 
     \bottomrule
   \end{tabular}
   }
-  \caption{Deterministic permutation preset parameters, as defined in \texttt{tile\_permutations.py}.}
+  \caption{Deterministic tile-permutation preset parameters used for all nontrivial grid sizes.}
   \label{tab:permutation-presets}
+  \begin{flushleft}
+  \footnotesize\emph{Note.} The one-tile baseline is unpermuted under all difficulty labels.
+  \end{flushleft}
 \end{table}
 
 \subsection{Architecture Comparison and Frozen Backbones}
@@ -248,14 +251,14 @@ We describe each tested deterministic tile permutation using three complementary
   \centering
   \scriptsize
   \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lll}
+  \begin{tabular}{llll}
     \toprule
-    \textbf{Metric} & \textbf{Dimension} & \textbf{What it captures} \\
+    \textbf{Metric} & \textbf{Dimension} & \textbf{What it captures} & \textbf{Interpretation} \\
     \midrule
-    Adjacency destruction hardness & Local topology & Are original neighbors still neighbors? \\
-    Global tile displacement & Global geometry & How far did tiles move from their original positions? \\
-    Spatial permutation entropy & Permutation disorder & How diverse or irregular are tile movement patterns? \\
-    Combined hardness score & Aggregated hardness & Weighted summary of the three normalized axes. \\
+    Adjacency destruction hardness & Local topology & Are original neighbors still neighbors? & Higher adjacency destruction means fewer original neighbor relations are preserved. \\
+    Global tile displacement & Global geometry & How far did tiles move from their original positions? & Higher displacement means tiles move farther from original locations. \\
+    Spatial permutation entropy & Permutation disorder & How diverse or irregular are tile movement patterns? & Higher entropy means more diverse movement patterns under the implemented binning. \\
+    Combined hardness score & Aggregated hardness & Weighted summary of the three normalized axes. & Higher combined hardness means larger weighted aggregate hardness. \\
     \bottomrule
   \end{tabular}
   }
@@ -429,6 +432,9 @@ Table~\ref{tab:part3-correlations} reports exploratory correlations between dete
   }
   \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records ($N=9$ for each row). Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
   \label{tab:part3-correlations}
+  \begin{flushleft}
+  \footnotesize\emph{Note.} No p-values, confidence intervals, or repeated-seed estimates are reported.
+  \end{flushleft}
 \end{table}
 
 Part 3 provides a ranking lens for the deterministic permutations. In the nine-row non-baseline scope, all four hardness metrics were negatively correlated with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9100 and Spearman correlation -0.9372. Because $N=9$ is very small, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained 12-row full scope and one-baseline-row scope give similar but baseline-weighted sensitivity views in the saved correlation CSV.
@@ -667,7 +673,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     Image preprocessing & Resize to a tile-compatible square size, apply the tile permutation, center-crop back to 224 when required, and normalize with ImageNet mean and standard deviation. The $10 \times 10$ condition uses a temporary $230 \times 230$ representation before center-cropping to 224. \\
     Tile transform details & Tiles are square non-overlapping tensor blocks after resizing; the permutation copies source tiles into output positions with no interpolation during tile rearrangement; preset parameters are listed in Table~\ref{tab:permutation-presets}. \\
     Optimization & AdamW; learning rate $3 \times 10^{-4}$; weight decay $1 \times 10^{-4}$; cross-entropy loss; batch size 64 and 4 dataloader workers in the Google Colab L4-runtime runs; no learning-rate scheduler is used. \\
-    Training duration & Google Colab Part 1 runs train for 10 epochs; explicit Part 2 ablation runs train for 30 epochs; the zero-shot control uses 0 epochs. \\
+    Training duration & Part 1 trained binary-head runs: 10 epochs. Explicit Part 2 ablation runs: 30 epochs. Zero-shot control: 0 epochs. \\
     Model configuration & Part 1 models use timm ImageNet-1k checkpoints: \texttt{mobilenetv3\_small\_100}, \texttt{deit\_tiny\_patch16\_224.fb\_in1k}, and \texttt{gmlp\_s16\_224.ra3\_in1k}. The main Part 1 baseline freezes backbones and trains only binary heads; the controls either unfreeze the pretrained binary-head model or preserve the native ImageNet-1k head for zero-shot dog/cat scoring. The configurable-CNN MLP head is Linear(in\_features,256), BatchNorm1d, ReLU, Dropout(0.3), Linear(256,2). \\
     Augmentation and curricula & Patch shuffle randomly permutes within-image patches during training; regular augmentation uses random rotation, color jitter, resize, tensor conversion, and normalization; mixed-input training uses $p_{\mathrm{original}}=0.5$; curriculum definitions are described in Section~4.6. \\
     Compute environment & All reported code was executed remotely on Google Colab with the Google L4 runtime. The executed environment records Python 3.12.13, numpy 2.0.2, pandas 2.2.2, scipy 1.16.3, scikit-learn 1.6.1, torch 2.11.0+cu128, torchvision 0.26.0+cu128, timm 1.0.27, PyYAML 6.0.3, and an NVIDIA L4 GPU. Seed 42 is used, but deterministic GPU kernels are not enforced, so exact bitwise reproducibility is not guaranteed. \\
@@ -677,6 +683,9 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   }
   \caption{Reproducibility checklist for the reported experiment matrix.}
   \label{tab:reproducibility-checklist}
+  \begin{flushleft}
+  \footnotesize\emph{Note.} Part 2 deltas against the regular Part 1 reference are descriptive because the reference and ablation runs are not duration-matched.
+  \end{flushleft}
 \end{table*}
 
 \begin{table*}[!htbp]
@@ -687,13 +696,13 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     \toprule
     \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
     \midrule
-    MobileNetV3-Small & 91.82\% & 86.93\% & 84.92\% & 80.36\% \\
-    DeiT-Tiny & 98.75\% & 97.23\% & 97.08\% & 92.97\% \\
-    gMLP-S16 & 99.09\% & 97.16\% & 96.11\% & 89.47\% \\
+    MobileNetV3-Small & 91.82\% (0.19 pp) & 86.93\% (4.07 pp) & 84.92\% (7.56 pp) & 80.36\% (10.03 pp) \\
+    DeiT-Tiny & 98.75\% (0.03 pp) & 97.23\% (1.23 pp) & 97.08\% (1.84 pp) & 92.97\% (5.19 pp) \\
+    gMLP-S16 & 99.09\% (0.01 pp) & 97.16\% (1.67 pp) & 96.11\% (3.59 pp) & 89.47\% (8.95 pp) \\
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 1 mean best validation accuracy by model and tile count, aggregated across the easy, medium, and hard deterministic records at each grid size.}
+  \caption{Part 1 mean best validation accuracy by model and tile count, mean over deterministic difficulty labels. Values in parentheses are standard deviations in percentage points from \texttt{part1\_aggregated\_results.csv}. Each model/tile-count aggregate contains three records.}
   \label{tab:part1-results}
 \end{table*}
 
@@ -703,7 +712,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \resizebox{\textwidth}{!}{%
   \begin{tabular}{lrrr}
     \toprule
-    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. baseline} \\
+    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. regular Part 1 reference} \\
     \midrule
     Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
     Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
@@ -715,7 +724,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are computed against the regular Part 1 reference baseline at the same grid size and deterministic difficulty label.}
+  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are descriptive because the regular Part 1 reference was trained for 10 epochs, whereas explicit Part 2 ablation runs were trained for 30 epochs.}
   \label{tab:part2-results}
 \end{table*}
 
@@ -767,7 +776,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     \bottomrule
   \end{tabular}
   }
-  \caption{Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached.}
+  \caption{Pretraining, native classifier head, and freezing behavior for the selected Part 1 model checkpoints. All selected checkpoints are ImageNet-1k timm checkpoints; each native classifier exposes a 1000-class ImageNet-1k output head before the trained Dogs-versus-Cats binary head is attached. For zero-shot evaluation, dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching \texttt{src/experiments/part1.py}.}
   \label{tab:part1-pretraining-heads}
 \end{table}
 
@@ -786,7 +795,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     \bottomrule
   \end{tabular}
   }
-  \caption{Part 1 training and validation sets. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each remote run trains for 10 epochs.}
+  \caption{Part 1 training and validation sets only. The same split is reused for MobileNetV3-Small, DeiT-Tiny, and gMLP-S16, and each Part 1 remote trained binary-head run trains for 10 epochs.}
   \label{tab:part1-train-validation}
 \end{table}
 
