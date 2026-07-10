@@ -15,6 +15,7 @@ import src.training.trainer as trainer_module
 from src.experiments.part1 import (
     IMAGENET1K_DOMESTIC_CAT_CLASS_INDICES,
     IMAGENET1K_DOG_CLASS_INDICES,
+    missing_records_for_part1_variant,
     train_unfrozen_pretrained_binary_head_on_tile_permutation_records,
     get_executable_tile_permutation_records,
     train_model_on_tile_permutation_records,
@@ -856,6 +857,91 @@ def test_save_run_rows_preserves_baseline_when_saving_ablation(tmp_path):
     assert len(saved) == 2
     assert set(saved["val_accuracy"]) == {0.8, 0.9}
     assert saved["ablation_name"].isna().sum() == 1
+
+
+def test_save_run_rows_preserves_completed_siblings_when_saving_missing_subset(tmp_path):
+    raw_results_path = tmp_path / "part1_raw_results.csv"
+    completed_baseline_row = {
+        "run_id": "run",
+        "config_name": "part1",
+        "model_name": "deit_tiny",
+        "ablation_name": "unfrozen_pretrained_binary_head",
+        "tiles_per_side": None,
+        "tile_permutation_id": 1,
+        "seed": 42,
+        "run_status": "completed",
+        "val_accuracy": 0.90,
+    }
+    missing_subset_row = {
+        "run_id": "run",
+        "config_name": "part1",
+        "model_name": "deit_tiny",
+        "ablation_name": "unfrozen_pretrained_binary_head",
+        "tiles_per_side": 4,
+        "tile_permutation_id": 1,
+        "seed": 42,
+        "run_status": "completed",
+        "val_accuracy": 0.80,
+    }
+
+    save_run_rows(
+        rows=[completed_baseline_row],
+        output_path=str(raw_results_path),
+        run_id="run",
+        model_name="deit_tiny",
+    )
+    save_run_rows(
+        rows=[missing_subset_row],
+        output_path=str(raw_results_path),
+        run_id="run",
+        model_name="deit_tiny",
+    )
+
+    saved = pd.read_csv(raw_results_path)
+    assert len(saved) == 2
+    assert set(saved["tile_permutation_id"]) == {1}
+    assert set(saved["val_accuracy"]) == {0.90, 0.80}
+    assert saved["tiles_per_side"].isna().sum() == 1
+
+
+def test_part1_missing_variant_records_ignore_completed_rows(tmp_path):
+    raw_results_path = tmp_path / "part1_raw_results.csv"
+    records = [
+        TilePermutationRecord(
+            tiles_per_side=None,
+            tile_permutation_id=1,
+            tile_permutation_seed=42,
+            tile_permutation=None,
+            tile_permutation_name="easy",
+        ),
+        TilePermutationRecord(
+            tiles_per_side=4,
+            tile_permutation_id=1,
+            tile_permutation_seed=42,
+            tile_permutation=identity_tile_permutation(4),
+            tile_permutation_name="easy",
+        ),
+    ]
+    pd.DataFrame(
+        [
+            {
+                "model_name": "deit_tiny",
+                "ablation_name": "unfrozen_pretrained_binary_head",
+                "tiles_per_side": None,
+                "tile_permutation_id": 1,
+                "run_status": "completed",
+            }
+        ]
+    ).to_csv(raw_results_path, index=False)
+
+    missing = missing_records_for_part1_variant(
+        raw_results_path=str(raw_results_path),
+        ablation_name="unfrozen_pretrained_binary_head",
+        model_name="deit_tiny",
+        records=records,
+    )
+
+    assert missing == [records[1]]
 
 
 def test_unfrozen_part1_variant_sets_freeze_backbone_false(monkeypatch, tmp_path):

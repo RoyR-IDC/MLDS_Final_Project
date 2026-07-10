@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from time import perf_counter
 from typing import Any, Optional, Sequence
 
@@ -61,6 +62,49 @@ def get_executable_tile_permutation_records(records: Sequence[TilePermutationRec
     """Return tile-permutation records that correspond to actual runs."""
 
     return list(records)
+
+
+def completed_part1_variant_keys(raw_results_path: str, ablation_name: str) -> set[tuple[str, int | None, int]]:
+    """Return completed Part 1 model/grid/permutation keys for one variant."""
+
+    if not os.path.exists(raw_results_path):
+        return set()
+    raw = pd.read_csv(raw_results_path)
+    if "ablation_name" not in raw.columns:
+        return set()
+    subset = raw[raw["ablation_name"].astype(str) == str(ablation_name)]
+    if "run_status" in subset.columns:
+        subset = subset[subset["run_status"].astype(str) == "completed"]
+    return {
+        (
+            str(row.model_name),
+            None if pd.isna(row.tiles_per_side) else int(row.tiles_per_side),
+            int(row.tile_permutation_id),
+        )
+        for row in subset.itertuples(index=False)
+    }
+
+
+def missing_records_for_part1_variant(
+    *,
+    raw_results_path: str,
+    ablation_name: str,
+    model_name: str,
+    records: Sequence[TilePermutationRecord],
+) -> list[TilePermutationRecord]:
+    """Return records that still need a completed row for a Part 1 variant."""
+
+    completed = completed_part1_variant_keys(raw_results_path, ablation_name)
+    missing = []
+    for record in records:
+        key = (
+            str(model_name),
+            None if record.tiles_per_side is None else int(record.tiles_per_side),
+            int(record.tile_permutation_id),
+        )
+        if key not in completed:
+            missing.append(record)
+    return missing
 
 
 def initialize_tile_permutation_result_rows(

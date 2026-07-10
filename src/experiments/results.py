@@ -127,6 +127,46 @@ def _csv_safe_rows(rows: Sequence[Mapping[Any, Any]]) -> list[dict[str, Any]]:
     return [{str(key): _csv_safe_value(value) for key, value in row.items()} for row in rows]
 
 
+def _is_missing_result_value(value: Any) -> bool:
+    """Return whether a CSV cell value should compare as missing."""
+
+    if value is None:
+        return True
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    return bool(missing) if isinstance(missing, bool) else False
+
+
+def _normalized_result_key_value(value: Any) -> Any:
+    """Return a stable, hashable key value for CSV row matching."""
+
+    if _is_missing_result_value(value):
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric_value = float(value)
+        if numeric_value.is_integer():
+            return str(int(numeric_value))
+        return str(numeric_value)
+    return str(value)
+
+
+def _result_row_identity_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Return the narrow identity used to replace only incoming result rows."""
+
+    key_columns = (
+        "run_id",
+        "config_name",
+        "model_name",
+        "ablation_name",
+        "tiles_per_side",
+        "tile_permutation_id",
+        "seed",
+    )
+    return tuple(_normalized_result_key_value(row.get(column)) for column in key_columns)
+
+
 def save_rows(rows: Sequence[Mapping[Any, Any]], output_path: str) -> None:
     """Save experiment rows to CSV."""
 
@@ -145,26 +185,14 @@ def save_run_rows(
     existing_rows: list[dict[str, Any]] = []
     if os.path.exists(output_path):
         existing_results = pd.read_csv(output_path)
-        if "run_id" in existing_results.columns:
-            mask = existing_results["run_id"].astype(str) == str(run_id)
-            if model_name is not None and "model_name" in existing_results.columns:
-                mask &= existing_results["model_name"].astype(str) == str(model_name)
-            if rows and any("ablation_name" in row for row in rows):
-                incoming_ablations = {
-                    str(row.get("ablation_name"))
-                    for row in rows
-                    if row.get("ablation_name") is not None
-                }
-                if incoming_ablations:
-                    if "ablation_name" not in existing_results.columns:
-                        mask &= False
-                    else:
-                        mask &= existing_results["ablation_name"].astype(str).isin(incoming_ablations)
-                elif "ablation_name" in existing_results.columns:
-                    mask &= existing_results["ablation_name"].isna()
-            elif "ablation_name" in existing_results.columns:
-                mask &= existing_results["ablation_name"].isna()
-            existing_results = existing_results[~mask]
+        if rows:
+            incoming_keys = {_result_row_identity_key(row) for row in rows}
+            if incoming_keys:
+                existing_mask = existing_results.apply(
+                    lambda existing_row: _result_row_identity_key(existing_row.to_dict()) in incoming_keys,
+                    axis=1,
+                )
+                existing_results = existing_results[~existing_mask]
         existing_rows = existing_results.to_dict("records")
 
     save_rows([*existing_rows, *rows], output_path)
