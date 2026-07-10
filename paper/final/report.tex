@@ -242,7 +242,7 @@ The permutation-difficulty curriculum changes the spatial difficulty presented d
 
 \subsection{Tile Permutation Hardness Metrics}
 
-We quantify the difficulty induced by a tile permutation using three complementary, model-agnostic axes and a fourth combined score. Let the image be divided into an $N \times N$ grid. For each source tile $i$, let $(r_i, c_i)$ denote its original row and column, and let $(r'_i, c'_i)$ denote its destination after applying the permutation.
+We describe each tested deterministic tile permutation using three complementary, model-agnostic axes and a fourth combined score. These metrics are descriptors of the permutations used in this experiment; they should not be read as intrinsic difficulty measures for all model classes. Let the image be divided into an $N \times N$ grid. For each source tile $i$, let $(r_i, c_i)$ denote its original row and column, and let $(r'_i, c'_i)$ denote its destination after applying the permutation.
 
 \begin{table*}[t]
   \centering
@@ -265,23 +265,23 @@ We quantify the difficulty induced by a tile permutation using three complementa
 
 \subsubsection{Adjacency Destruction Hardness}
 
-\textbf{Main idea.} This metric asks how much of the original neighborhood structure survives after the tile permutation. If tiles that were next to each other are no longer neighbors, the image becomes harder for a convolutional model that relies on local structure.
+This metric asks how much of the original neighborhood structure survives after the tile permutation.
 
-For every original rightward and downward neighboring relation, we test whether the same two source tiles remain adjacent in the same direction after permutation. The number of such canonical adjacency relations is
+The implementation uses strict directed adjacency. For every original rightward and downward neighboring relation, it tests whether the same two source tiles remain adjacent in the same direction after permutation. Reversed or merely undirected adjacency is therefore not counted as preserved. Boundary tiles contribute only valid in-grid relations: tiles on the right edge have no rightward relation, tiles on the bottom edge have no downward relation, and the bottom-right corner contributes neither. Thus $M$ denotes the total number of original canonical directed adjacency relations:
 \[
-M = 2N(N-1).
+M = 2N(N - 1).
 \]
 If $A_{\mathrm{preserved}}$ is the number of preserved directed adjacencies, adjacency destruction is
 \[
 A = 1 - \frac{A_{\mathrm{preserved}}}{M}.
 \]
-A low value means that much of the original local structure is preserved. A high value means that neighboring tile relations were mostly destroyed.
+A low value means that much of the original local topology is preserved. A high value means that directed neighboring tile relations were mostly destroyed.
 
 \subsubsection{Global Tile Displacement}
 
-\textbf{Main idea.} This metric measures how far tiles move from their original positions. A permutation that only nudges tiles nearby should preserve more global shape than one that sends tiles across the image.
+This metric measures how far tiles move from their original positions. It is direction-insensitive: the calculation uses only Manhattan distance magnitude, not whether a tile moved up, down, left, or right. A permutation that only nudges tiles nearby should preserve more global shape than one that sends tiles across the image.
 
-For each tile, we compute its Manhattan displacement in grid coordinates:
+For each tile, we compute its undirected Manhattan displacement in grid coordinates:
 \[
 \delta_i = |r'_i-r_i| + |c'_i-c_i|.
 \]
@@ -289,11 +289,19 @@ The normalized global displacement is
 \[
 D = \frac{\sum_i \delta_i}{D_{\max}},
 \]
-where $D_{\max}$ is the maximum possible total Manhattan displacement for an $N \times N$ grid. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
+where $D_{\max}$ is the theoretical maximum total Manhattan displacement over all permutations of an $N \times N$ grid:
+\[
+D_{\max} =
+\begin{cases}
+N^3, & \text{if } N \text{ is even}, \\
+N(N^2 - 1), & \text{if } N \text{ is odd}.
+\end{cases}
+\]
+This is the closed form of the implementation's row/column reversal maximum. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
 
 \subsubsection{Spatial Permutation Entropy}
 
-\textbf{Main idea.} This metric asks whether tile movement follows a simple pattern or many different movement patterns. More varied movement directions and distances mean the permutation is less orderly.
+This metric asks whether tile movement follows a simple pattern or many different movement patterns. It combines movement direction with distance tier and computes entropy over the resulting bins across all tiles. More varied movement directions and distances mean the permutation is less orderly.
 
 For each tile, we compute
 \[
@@ -315,21 +323,21 @@ The distance tier is near when $0 < d_i \leq 1/3$, medium when $1/3 < d_i \leq 2
 \[
 E = \frac{-\sum_b p_b \log p_b}{\log(N^2)}.
 \]
-A low value means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances, making it more disorderly.
+This denominator is the implementation-specific normalization used for the reported values. It normalizes by the number of tiles, even though the movement-bin alphabet is coarser than the set of all possible tile destinations. A low value means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances.
 
 \subsubsection{Combined Hardness Score}
 
-\textbf{Main idea.} The combined score summarizes the component metrics into one number so permutations can be ranked by an overall notion of difficulty.
+The combined score summarizes the component metrics into one number so permutations can be ranked by an overall notion of difficulty.
 
 The final score is a convex combination of the three normalized components:
 \[
 C = w_a A + w_d D + w_e E,
 \]
-with default weights
+with weights
 \[
-w_a = 0.5,\quad w_e = 0.3,\quad w_d = 0.2.
+w_a = 0.5,\quad w_d = 0.2,\quad w_e = 0.3.
 \]
-A low combined score represents an easier permutation with preserved structure, small movement, and low movement disorder. A high combined score represents a harder permutation across these complementary axes.
+These weights are heuristic and are used only to summarize the three normalized axes in this experiment. A low combined score indicates preserved directed adjacency, small movement, and low movement-bin diversity; a high combined score indicates stronger disruption across these axes.
 
 \section{Additional Implementation Details}
 \label{sec:additional-implementation-details}
