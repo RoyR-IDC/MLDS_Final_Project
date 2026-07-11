@@ -82,6 +82,17 @@ STRATEGY_MARKERS = {
     "curriculum_corruption_probability": "v",
     "curriculum_permutation_difficulty": "*",
 }
+ENHANCED_TILE_PERMUTATION_NAMES = ("easy", "easy2", "medium", "medium2", "hard", "hard2")
+ENHANCED_TILE_PERMUTATION_IDS = {
+    name: index for index, name in enumerate(ENHANCED_TILE_PERMUTATION_NAMES, start=1)
+}
+ENHANCED_MARKERS = {"easy": "o", "medium": "x", "hard": "^", "baseline": "D"}
+PART2_BASELINE_ABLATION_NAME = "regular_part1"
+PART2_CURRICULUM_ABLATION_NAME = "curriculum_permutation_difficulty"
+ENHANCED_FACET_LABELS = {
+    PART2_BASELINE_ABLATION_NAME: "Regular Part 1 reference",
+    PART2_CURRICULUM_ABLATION_NAME: "Permutation-difficulty curriculum",
+}
 
 
 def _set_style() -> None:
@@ -550,6 +561,243 @@ def make_figure_6() -> None:
     _save(fig, "part3_hardness_metrics_grid_readable")
 
 
+def _enhanced_base_tile_permutation_name(name: object) -> str:
+    if name is None or (isinstance(name, float) and pd.isna(name)):
+        return "baseline"
+    normalized = str(name).strip().lower()
+    if normalized in {"", "baseline", "nan"}:
+        return "baseline"
+    for base_name in DIFFICULTY_ORDER:
+        if normalized == base_name or normalized in {f"{base_name}2", f"{base_name}3"}:
+            return base_name
+    return normalized
+
+
+def _enhanced_accuracy_column(frame: pd.DataFrame) -> str:
+    if "best_val_accuracy" in frame.columns:
+        return "best_val_accuracy"
+    if "val_accuracy" in frame.columns:
+        return "val_accuracy"
+    raise ValueError("enhanced results must contain best_val_accuracy or val_accuracy")
+
+
+def _enhanced_label_order(label: object) -> int:
+    text = str(label)
+    if _enhanced_base_tile_permutation_name(text) == "baseline":
+        return 0
+    return ENHANCED_TILE_PERMUTATION_IDS.get(text, 99)
+
+
+def _prepare_enhanced_plot_frame(raw_results: pd.DataFrame) -> pd.DataFrame:
+    frame = raw_results.copy()
+    if "run_status" in frame.columns:
+        frame = frame[frame["run_status"].astype(str) == "completed"].copy()
+    if "num_tiles" not in frame.columns:
+        frame["num_tiles"] = [
+            1 if pd.isna(tiles_per_side) else int(tiles_per_side) * int(tiles_per_side)
+            for tiles_per_side in frame["tiles_per_side"]
+        ]
+    if "tile_permutation_name" not in frame.columns:
+        frame["tile_permutation_name"] = "baseline"
+    frame["tile_permutation_name"] = frame["tile_permutation_name"].fillna("baseline").astype(str)
+    frame["base_permutation_name"] = frame["tile_permutation_name"].map(_enhanced_base_tile_permutation_name)
+    return frame
+
+
+def _enhanced_tile_axis_positions(num_tiles_values: pd.Series) -> dict[int, int]:
+    values = sorted({int(value) for value in num_tiles_values if not pd.isna(value)})
+    return {value: index for index, value in enumerate(values)}
+
+
+def _enhanced_tile_axis_label(num_tiles: int) -> str:
+    if num_tiles == 1:
+        return "1x1"
+    tiles_per_side = int(num_tiles**0.5)
+    return f"{tiles_per_side}x{tiles_per_side}" if tiles_per_side * tiles_per_side == num_tiles else str(num_tiles)
+
+
+def _enhanced_variant_offsets(labels: list[str]) -> dict[str, float]:
+    grouped: dict[str, list[str]] = {}
+    for label in labels:
+        grouped.setdefault(_enhanced_base_tile_permutation_name(label), []).append(label)
+    offsets: dict[str, float] = {}
+    base_offsets = {"baseline": 0.0, "easy": -0.22, "medium": 0.0, "hard": 0.22}
+    for base_name, names in grouped.items():
+        names = sorted(set(names), key=lambda value: ENHANCED_TILE_PERMUTATION_IDS.get(value, 0))
+        spread = [-0.045, 0.0, 0.045] if len(names) > 1 else [0.0]
+        for index, name in enumerate(names):
+            offsets[name] = base_offsets.get(base_name, 0.0) + spread[min(index, len(spread) - 1)]
+    return offsets
+
+
+def _enhanced_color_by_label(labels: list[str]) -> dict[str, object]:
+    colors = plt.get_cmap("tab10")
+    ordered = ["baseline", *ENHANCED_TILE_PERMUTATION_NAMES]
+    label_set = set(labels)
+    return {label: colors(index % 10) for index, label in enumerate(label for label in ordered if label in label_set)}
+
+
+def _plot_enhanced_condition_panel(
+    ax: plt.Axes,
+    frame: pd.DataFrame,
+    *,
+    title: str,
+    aggregate_over_seeds: bool,
+) -> None:
+    accuracy_column = _enhanced_accuracy_column(frame)
+    tile_positions = _enhanced_tile_axis_positions(frame["num_tiles"])
+    labels = sorted(
+        set(frame["tile_permutation_name"]),
+        key=lambda value: ENHANCED_TILE_PERMUTATION_IDS.get(value, 0),
+    )
+    offsets = _enhanced_variant_offsets(labels)
+    colors = _enhanced_color_by_label(labels)
+
+    if aggregate_over_seeds:
+        grouped = (
+            frame.groupby(["tile_permutation_name", "base_permutation_name", "num_tiles"], dropna=False)[
+                accuracy_column
+            ]
+            .agg(["mean", "std", "count"])
+            .reset_index()
+        )
+        grouped["label_order"] = grouped["tile_permutation_name"].map(_enhanced_label_order)
+        grouped = grouped.sort_values(["label_order", "num_tiles"])
+        labeled_permutations: set[str] = set()
+        for _, row in grouped.iterrows():
+            label = str(row["tile_permutation_name"])
+            base_name = str(row["base_permutation_name"])
+            num_tiles = int(row["num_tiles"])
+            yerr = 0.0 if pd.isna(row["std"]) else float(row["std"])
+            legend_label = label if label not in labeled_permutations else "_nolegend_"
+            labeled_permutations.add(label)
+            ax.errorbar(
+                tile_positions[num_tiles] + offsets.get(label, 0.0),
+                float(row["mean"]),
+                yerr=yerr,
+                marker=ENHANCED_MARKERS.get(base_name, "s"),
+                color=colors.get(label),
+                linestyle="None",
+                capsize=3,
+                markersize=6,
+                label=legend_label,
+            )
+    else:
+        labeled_permutations: set[str] = set()
+        frame = frame.copy()
+        frame["label_order"] = frame["tile_permutation_name"].map(_enhanced_label_order)
+        frame = frame.sort_values(["label_order", "num_tiles", "seed"])
+        for _, row in frame.iterrows():
+            label = str(row["tile_permutation_name"])
+            base_name = str(row["base_permutation_name"])
+            num_tiles = int(row["num_tiles"])
+            legend_label = label if label not in labeled_permutations else "_nolegend_"
+            labeled_permutations.add(label)
+            ax.scatter(
+                tile_positions[num_tiles] + offsets.get(label, 0.0),
+                float(row[accuracy_column]),
+                marker=ENHANCED_MARKERS.get(base_name, "s"),
+                color=colors.get(label),
+                alpha=0.58,
+                s=44 if base_name != "baseline" else 58,
+                label=legend_label,
+            )
+        overall = frame.groupby("num_tiles", dropna=False)[accuracy_column].agg(["mean", "std"]).reset_index()
+        ax.errorbar(
+            [tile_positions[int(num_tiles)] for num_tiles in overall["num_tiles"]],
+            overall["mean"],
+            yerr=overall["std"].fillna(0.0),
+            marker="s",
+            color="black",
+            linewidth=1.8,
+            capsize=4,
+            label="grid mean",
+        )
+
+    ax.set_title(title)
+    ax.set_xticks(list(tile_positions.values()), [_enhanced_tile_axis_label(value) for value in tile_positions])
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel("Best validation accuracy")
+    ax.set_ylim(0.5, 1.0)
+    ax.grid(True, alpha=0.25)
+
+
+def _plot_enhanced_confidence_results(
+    raw_results: pd.DataFrame,
+    output_path: Path,
+    *,
+    aggregate_over_seeds: bool,
+    facet_column: str | None = None,
+) -> None:
+    frame = _prepare_enhanced_plot_frame(raw_results)
+    if frame.empty:
+        print(f"Skipping enhanced plot, no completed rows: {output_path}")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if facet_column and facet_column in frame.columns:
+        facet_values = [
+            value
+            for value in [PART2_BASELINE_ABLATION_NAME, PART2_CURRICULUM_ABLATION_NAME]
+            if value in set(frame[facet_column].astype(str))
+        ]
+        if not facet_values:
+            facet_values = sorted(frame[facet_column].dropna().astype(str).unique())
+    else:
+        facet_values = ["Enhanced confidence"]
+        facet_column = None
+
+    fig, axes = plt.subplots(1, len(facet_values), figsize=(9 * len(facet_values), 5.5), squeeze=False)
+    for axis, facet_value in zip(axes[0], facet_values):
+        panel = frame if facet_column is None else frame[frame[facet_column].astype(str) == facet_value]
+        _plot_enhanced_condition_panel(
+            axis,
+            panel,
+            title=ENHANCED_FACET_LABELS.get(str(facet_value), str(facet_value)),
+            aggregate_over_seeds=aggregate_over_seeds,
+        )
+
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=min(7, len(labels)))
+    fig.tight_layout(rect=(0, 0, 1, 0.90 if handles else 1))
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def make_enhanced_confidence_figures() -> None:
+    part1_raw = pd.read_csv(RESULTS_DIR / "part1_enhanced_raw_results.csv")
+    _plot_enhanced_confidence_results(
+        part1_raw,
+        FIGURES_DIR / "part1_enhanced_confidence_all_points.png",
+        aggregate_over_seeds=False,
+    )
+    _plot_enhanced_confidence_results(
+        part1_raw,
+        FIGURES_DIR / "part1_enhanced_confidence_mean_by_seed.png",
+        aggregate_over_seeds=True,
+    )
+
+    part2_raw = pd.read_csv(RESULTS_DIR / "part2_enhanced_raw_results.csv")
+    part2_raw = part2_raw[
+        part2_raw["ablation_name"].astype(str).isin(
+            [PART2_BASELINE_ABLATION_NAME, PART2_CURRICULUM_ABLATION_NAME]
+        )
+    ].copy()
+    _plot_enhanced_confidence_results(
+        part2_raw,
+        FIGURES_DIR / "part2_enhanced_confidence_all_points.png",
+        aggregate_over_seeds=False,
+        facet_column="ablation_name",
+    )
+    _plot_enhanced_confidence_results(
+        part2_raw,
+        FIGURES_DIR / "part2_enhanced_confidence_mean_by_seed.png",
+        aggregate_over_seeds=True,
+        facet_column="ablation_name",
+    )
+
+
 def main() -> None:
     _set_style()
     make_figure_1()
@@ -558,6 +806,7 @@ def main() -> None:
     make_figure_4()
     make_figure_5()
     make_figure_6()
+    make_enhanced_confidence_figures()
 
 
 if __name__ == "__main__":

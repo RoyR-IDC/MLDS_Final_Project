@@ -361,13 +361,13 @@ The curriculum ablations in Part 2 use stage-specific training loaders, but they
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run and should be treated as the less selection-biased validation summary. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it is optimistic as a final performance estimate because it selects the best epoch using the validation set itself.
 
-For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, repeated-seed variability estimates, confidence intervals, or p-values are reported.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the enhanced-confidence MobileNetV3-Small subset adds descriptive two-seed checks for selected Part 1 and Part 2 settings.
 
 \section{Results}
 
 The results are organized according to the three assignment parts. Section~\ref{sec:part1-results} reports the frozen-backbone comparison under deterministic tile permutations. Section~\ref{sec:part2-results} reports the configurable-CNN ablation matrix. Section~\ref{sec:part3-results} reports the model-agnostic hardness metrics and their relationship to validation accuracy.
 
-All result statements in this section should be read as validation-set findings for one train/validation split, one main seed, frozen pretrained backbones, and a limited deterministic permutation matrix with three presets per grid size. They are not independent test-set estimates, and they do not quantify repeated-seed variability. Part 2 comparisons against the regular Part 1 reference baseline are descriptive because the regular reference and the explicit ablation strategies use different training durations.
+All result statements in this section should be read as validation-set findings for one train/validation split, mostly one main seed, frozen pretrained backbones, and limited deterministic permutation matrices. The original main matrix uses three presets per grid size; the enhanced-confidence MobileNetV3-Small subset uses two seeds and six permutation variants per non-baseline grid. These are not independent test-set estimates. Part 2 comparisons against the regular Part 1 reference baseline are descriptive because the regular reference and the explicit ablation strategies use different training durations.
 
 \subsection{Part 1: Frozen-Backbone Baselines}
 \label{sec:part1-results}
@@ -384,6 +384,15 @@ The main Part 1 analysis compares the three ImageNet-1k pretrained backbones und
 \end{figure*}
 
 The frozen-backbone comparison shows a clear architecture effect. DeiT-Tiny and gMLP-S16 remain above 89\% mean best validation accuracy even at 100 tiles, while MobileNetV3-Small drops to 80.36\%. This indicates that their pretrained features and binary heads retain more class-discriminative signal under this fixed matrix, but it should not be read as evidence that the models recover or use the original global layout. Local texture, object-part, color, and background cues may remain sufficient for this dataset. The unfrozen control in Figure~\ref{fig:part1-accuracy} is generally strong for the completed MobileNetV3-Small and gMLP-S16 records, while the zero-shot control falls more sharply as tile count and disruption increase. The zero-shot result is useful because it shows that the native ImageNet head already carries dog/cat signal, but supervised binary-head training is still important under the stronger permutations. Figure~\ref{fig:part1-decomposed-controls} in Section~\ref{sec:additional-information} provides the decomposed views corresponding to the combined comparison.
+
+Figure~\ref{fig:part1-enhanced-confidence} reports the complete enhanced-confidence Part 1 MobileNetV3-Small subset. This additional check expands the MobileNetV3-Small frozen-backbone setting to two training seeds and six permutation variants per non-baseline grid, extending the grid sweep through $14 \times 14$ and $17 \times 17$. The subset is still descriptive rather than a formal confidence-interval analysis, but it provides a more direct view of seed and permutation-variant variability than the original one-seed main matrix.
+
+\begin{figure*}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part1_enhanced_confidence_mean_by_seed}
+  \caption{Complete Part 1 enhanced-confidence subset for MobileNetV3-Small. The plot uses seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with error bars from the available seed values. The one-tile baseline appears once because it is shared by the enhanced run matrix.}
+  \label{fig:part1-enhanced-confidence}
+\end{figure*}
 
 \subsection{Part 2: Configurable-CNN Improvement Strategies}
 \label{sec:part2-results}
@@ -408,6 +417,15 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
   \end{subfigure}
   \caption{Part 2 best-validation-accuracy deltas from the regular Part 1 reference baseline. Positive values indicate higher best validation accuracy than the corresponding regular Part 1 reference. Deltas are relative to the regular Part 1 reference baseline; explicit Part 2 ablations use 30 epochs; the regular Part 1 reference uses 10 epochs; therefore the deltas are descriptive and should not be interpreted as isolated causal effects.}
   \label{fig:part2-ablation}
+\end{figure*}
+
+Figure~\ref{fig:part2-enhanced-confidence} adds the completed enhanced-confidence view for the Part 2 permutation-difficulty curriculum. It compares the enhanced regular Part 1 reference against the enhanced curriculum rows using the same two-seed, six-variant non-baseline grid as the Part 1 enhanced-confidence subset.
+
+\begin{figure*}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part2_enhanced_confidence_mean_by_seed}
+  \caption{Complete Part 2 enhanced-confidence subset for MobileNetV3-Small. The figure compares the enhanced regular Part 1 reference against the enhanced permutation-difficulty curriculum using seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with error bars from the available seed values.}
+  \label{fig:part2-enhanced-confidence}
 \end{figure*}
 
 \subsection{Part 3: Hardness Metrics}
@@ -451,7 +469,7 @@ The hardness metrics provide a compact way to rank the tested permutations. Thei
 
 \section{Limitations}
 
-Several limitations constrain the strength and scope of the conclusions. First, no repeated training seeds are reported, so run-to-run variation is not quantified. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch using the validation set itself; final validation accuracy is the less selection-biased validation summary. Third, the architecture comparison is confounded by parameter count, patch size, tokenization, and feature geometry, so differences between MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 should not be attributed to a single architectural property. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
+Several limitations constrain the strength and scope of the conclusions. First, the main experiment matrix is mostly one-seed, so run-to-run variation is not quantified for the full architecture and ablation comparisons. The enhanced-confidence MobileNetV3-Small subset adds two-seed checks for selected Part 1 and Part 2 settings, but it does not replace repeated-seed evaluation across all models and strategies. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch using the validation set itself; final validation accuracy is the less selection-biased validation summary. Third, the architecture comparison is confounded by parameter count, patch size, tokenization, and feature geometry, so differences between MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 should not be attributed to a single architectural property. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
 
 Part 2 also has an important baseline-comparability limitation. The reported deltas are computed against the regular Part 1 MobileNetV3-Small reference baseline, which is trained for 10 epochs, while the explicit Part 2 ablations are trained for 30 epochs. These deltas therefore combine the ablation intervention with a training-duration difference and should be interpreted descriptively, not as isolated causal effects of each ablation. No epoch-matched regular Part 2 baseline is reported in the saved results; running and comparing against such a baseline is future work rather than a completed result.
 
@@ -465,7 +483,7 @@ Within the scope of the experiments, these results suggest that pretrained visua
 
 The Part 2 ablation results identify promising patterns within the executed 30-epoch ablation set, but they do not show that any ablation definitively improves performance over an epoch-matched regular baseline. The regular reference used for the reported deltas is the 10-epoch Part 1 baseline, so those comparisons are descriptive rather than matched causal estimates.
 
-Future work should include epoch-matched Part 2 regular baselines, repeated training seeds, independent test evaluation, more deterministic and random permutation samples, transfer tests across permutation functions, and experiments on datasets that require stronger global shape reasoning. These extensions have not been performed here. Overall, the study provides preliminary empirical evidence and a reproducible framework for analyzing classification under deterministic spatial permutations, while showing that stronger statistical validation and transfer experiments are needed before drawing broader conclusions about permutation robustness.
+Future work should include epoch-matched Part 2 regular baselines, repeated training seeds across the full model and ablation matrix, independent test evaluation, more deterministic and random permutation samples, transfer tests across permutation functions, and experiments on datasets that require stronger global shape reasoning. These extensions have not been performed here. Overall, the study provides preliminary empirical evidence and a reproducible framework for analyzing classification under deterministic spatial permutations, while showing that stronger statistical validation and transfer experiments are needed before drawing broader conclusions about permutation robustness.
 
 \clearpage
 \onecolumn
@@ -567,7 +585,6 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
 \section{Additional Information}
 \label{sec:additional-information}
 
-\setcounter{figure}{2}
 \begin{figure*}[!htbp]
   \centering
   \begin{subfigure}{0.96\textwidth}
@@ -600,8 +617,6 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \end{subfigure}
   \caption[]{Decomposed Part 1 views, continued. No binary training is performed in the zero-shot control. Dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching the saved code. These controls are included for comparison only.}
 \end{figure*}
-\setcounter{figure}{4}
-
 \begin{figure*}[!htbp]
   \centering
   \begin{subfigure}{0.48\textwidth}
