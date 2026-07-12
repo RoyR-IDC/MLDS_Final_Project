@@ -149,9 +149,10 @@ The easy, medium, and hard presets provide three controlled levels of spatial di
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{part3_hardness_examples_readable}
-  \caption{Illustrative validation image under the deterministic grid and difficulty settings used throughout the experiments. The first column shows one central unpermuted baseline image because the easy, medium, and hard one-tile records are visually identical. Rows correspond to the easy, medium, and hard presets for the nontrivial grids; columns correspond to the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. Metric values are shown below each nontrivial grid image: adjacency destruction (A), global displacement (D), spatial entropy (E), and combined hardness (C). Figure 1 is a qualitative illustration of the deterministic transformations and is not evidence of model performance.}
+  \caption{Illustrative validation image under the deterministic grid and difficulty settings used throughout the experiments. The first column shows one central unpermuted baseline image because the easy, medium, and hard one-tile records are visually identical. Rows correspond to the easy, medium, and hard presets for the nontrivial grids; columns correspond to the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. Metric values below each nontrivial grid image are adjacency destruction (A), global displacement (D), spatial permutation entropy (E), and combined hardness (C). This qualitative example illustrates the deterministic transformations and is not evidence of model performance.}
   \label{fig:data-permutation-examples}
 \end{figure*}
+\clearpage
 
 \section{Methodology}
 
@@ -400,7 +401,7 @@ The main Part 1 analysis compares the three ImageNet-1k pretrained backbones und
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.55\textheight,keepaspectratio]{part1_combined_comparison_readable}
-  \caption{Part 1 mean best validation accuracy as a function of grid size for the three model families and three saved experiment conditions. Solid lines show the main frozen-backbone binary-head setting, dashed lines show the unfrozen pretrained binary-head controls, and dotted lines show the zero-shot native ImageNet-1k-head controls. Model color and marker shape are kept consistent across conditions. Control curves are included for comparison only. No confidence intervals are shown because repeated-seed estimates are not available for the full architecture-control matrix.}
+  \caption{Part 1 mean best validation accuracy as a function of grid size for the three model families and three saved experiment conditions. Solid lines show the main frozen-backbone binary-head setting, dashed lines show the unfrozen pretrained binary-head controls, and dotted lines show the zero-shot native ImageNet-1k-head controls. Values are validation-set summaries averaged over the deterministic difficulty labels at each grid size; the trained binary-head runs use the main seed 42, and the zero-shot controls use no training seed. Model color and marker shape are kept consistent across conditions. Control curves are included for comparison only. No confidence intervals or error bars are shown because repeated-seed estimates are not available for the full architecture-control matrix.}
   \label{fig:part1-accuracy}
 \end{figure*}
 
@@ -411,11 +412,12 @@ Figure~\ref{fig:part1-enhanced-confidence} reports the expanded two-seed Part 1 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part1_enhanced_confidence_mean_by_seed}
-  \caption{Expanded two-seed Part 1 subset for MobileNetV3-Small. The y-axis reports best validation accuracy in percentage points. Each point is one deterministic permutation variant at one grid size, averaged across the completed seed values; error bars show the descriptive standard deviation across those seed values. The six non-baseline variants are \texttt{easy}, \texttt{easy2}, \texttt{medium}, \texttt{medium2}, \texttt{hard}, and \texttt{hard2}. The one-tile baseline appears once because it is shared by the expanded run matrix. These results are descriptive and do not imply statistical significance.}
+  \caption{Expanded two-seed Part 1 subset for MobileNetV3-Small. The y-axis reports best validation accuracy in percentage points. Each point is one deterministic permutation variant at one grid size, averaged across the completed seed values from seeds 42 and 43; error bars show the descriptive standard deviation across those seed values, not standard error or confidence intervals. The six non-baseline variants are \texttt{easy}, \texttt{easy2}, \texttt{medium}, \texttt{medium2}, \texttt{hard}, and \texttt{hard2}. The one-tile baseline appears once because it is shared by the expanded run matrix. These results are descriptive and do not imply statistical significance.}
   \label{fig:part1-enhanced-confidence}
 \end{figure*}
 
 Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV3-Small pattern under the expanded grid and variant set. Mean best validation accuracy declines as tile count increases, from 87.46\% at $4 \times 4$ to 77.40\% at $17 \times 17$ in the saved aggregate, while the across-run spread also grows at larger grids. This is an additional descriptive robustness check for the grid-size pattern in this selected CNN setting, but it does not establish a population confidence interval or a result for the transformer and MLP backbones.
+\clearpage
 
 \subsection{Part 2: Configurable-CNN Strategy Ablations}
 \label{sec:part2-results}
@@ -426,7 +428,7 @@ Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV
   \resizebox{\textwidth}{!}{%
   \begin{tabular}{lrrr}
     \toprule
-    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. regular Part 1 reference} \\
+    \textbf{Part 2 setting} & \textbf{Mean final validation accuracy} & \textbf{Mean best validation accuracy} & \textbf{Mean best-validation delta vs. regular Part 1 reference} \\
     \midrule
     Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
     Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
@@ -438,7 +440,7 @@ Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV
     \bottomrule
   \end{tabular}
   }
-  \caption{Main Part 2 MobileNetV3-Small ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is validation accuracy at the final epoch of the corresponding strategy, and ``Mean best acc.'' is the best validation accuracy reached during that strategy's training run. The regular Part 1 reference uses 10 epochs, while the explicit Part 2 ablations use 30 epochs; therefore the deltas against the regular reference are descriptive and should not be interpreted as isolated causal effects of the ablation alone.}
+  \caption{Main Part 2 MobileNetV3-Small ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final validation accuracy'' is validation accuracy at the final epoch of the corresponding strategy, and ``Mean best validation accuracy'' is the best validation accuracy reached during that strategy's training run. The regular Part 1 reference uses 10 epochs, while the explicit Part 2 ablations use 30 epochs; therefore the deltas against the regular reference are descriptive and should not be interpreted as isolated causal effects of the ablation alone.}
   \label{tab:part2-results}
 \end{table*}
 
@@ -452,7 +454,7 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
   \begin{subfigure}{0.98\textwidth}
     \centering
     \includegraphics[width=\linewidth,height=0.33\textheight,keepaspectratio]{part2_ablation_delta_by_strategy_readable}
-    \caption{Deltas grouped by Part 2 ablation strategy. Marker shape distinguishes difficulty; color and horizontal offsets distinguish grid size.}
+    \caption{Per-record deltas grouped by Part 2 ablation strategy. Marker shape distinguishes difficulty; color and horizontal offsets distinguish grid size.}
   \end{subfigure}
   \vspace{0.7em}
   \begin{subfigure}{0.98\textwidth}
@@ -460,7 +462,7 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
     \includegraphics[width=\linewidth,height=0.33\textheight,keepaspectratio]{part2_ablation_delta_by_grid_readable}
     \caption{Deltas grouped by grid size, with one line per Part 2 strategy. Values are averaged over the easy, medium, and hard labels for readability.}
   \end{subfigure}
-  \caption{Part 2 best-validation-accuracy deltas from the regular Part 1 reference baseline. Positive values indicate higher best validation accuracy than the corresponding regular Part 1 reference. Deltas are relative to the regular Part 1 reference baseline; explicit Part 2 ablations use 30 epochs; the regular Part 1 reference uses 10 epochs; therefore the deltas are descriptive and should not be interpreted as isolated causal effects.}
+  \caption{Part 2 best-validation-accuracy deltas from the regular Part 1 reference baseline, using the main seed 42. Positive values indicate higher best validation accuracy than the corresponding regular Part 1 reference at the same grid size and deterministic difficulty label. The figure shows deltas rather than final validation accuracy. No error bars are shown. The explicit Part 2 ablations use 30 epochs, while the regular Part 1 reference uses 10 epochs; therefore the deltas are descriptive and should not be interpreted as isolated causal effects.}
   \label{fig:part2-ablation}
 \end{figure*}
 
@@ -469,11 +471,12 @@ Figure~\ref{fig:part2-enhanced-confidence} adds the completed expanded two-seed 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part2_enhanced_confidence_mean_by_seed}
-  \caption{Expanded two-seed Part 2 subset for MobileNetV3-Small. The y-axis reports the paired delta in best validation accuracy, in percentage points: permutation-difficulty curriculum minus regular Part 1 reference. Each point is one deterministic permutation variant at one grid size, averaged across paired completed seed deltas; error bars show the descriptive standard deviation across those paired seed deltas. Positive values indicate higher best validation accuracy for the curriculum row in the saved paired aggregate. These results are descriptive and do not imply statistical significance.}
+  \caption{Expanded two-seed Part 2 subset for MobileNetV3-Small. The y-axis reports the paired delta in best validation accuracy, in percentage points: permutation-difficulty curriculum minus regular Part 1 reference for the same seed, grid size, and permutation variant. Each point is one deterministic permutation variant at one grid size, averaged across paired completed seed deltas from seeds 42 and 43; error bars show the descriptive standard deviation across those paired seed deltas, not standard error or confidence intervals. Positive values indicate higher best validation accuracy for the curriculum row in the saved paired aggregate. These results are descriptive and do not imply statistical significance.}
   \label{fig:part2-enhanced-confidence}
 \end{figure*}
 
 Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the permutation-difficulty curriculum at every non-baseline grid in the saved aggregate. The mean best-validation deltas are positive but modest, ranging from about +2.38 to +2.74 percentage points across the $4 \times 4$ through $17 \times 17$ grids. This provides an additional descriptive robustness check for the curriculum row in this MobileNetV3-Small setting, but the subset reruns only this curriculum strategy and remains descriptive because it is not an epoch-matched causal comparison against all Part 2 strategies.
+\clearpage
 
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
@@ -636,10 +639,10 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_accuracy_vs_tiles_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_accuracy_vs_tiles_readable}
     \caption{Main frozen pretrained binary-head experiment.}
   \end{subfigure}
-  \caption{Decomposed Part 1 views corresponding to the combined comparison in Figure~\ref{fig:part1-accuracy}. Validation accuracy is shown as mean best validation accuracy (\%) using the same model colors, model markers, grid labels, and condition line styles as Figure~\ref{fig:part1-accuracy}. No confidence intervals are shown because repeated-seed estimates are not available.}
+  \caption{Decomposed Part 1 view corresponding to the main frozen-backbone curve in Figure~\ref{fig:part1-accuracy}. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. Model colors, model markers, grid labels, and condition line styles match Figure~\ref{fig:part1-accuracy}. No error bars or confidence intervals are shown because repeated-seed estimates are not available for the full architecture-control matrix.}
   \label{fig:part1-decomposed-controls}
 \end{figure*}
 
@@ -648,10 +651,10 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_control_unfrozen_pretrained_binary_head_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_control_unfrozen_pretrained_binary_head_readable}
     \caption{Unfrozen pretrained binary-head control experiment.}
   \end{subfigure}
-  \caption[]{Decomposed Part 1 views, continued. The unfrozen pretrained binary-head controls are included for comparison only.}
+  \caption[]{Decomposed Part 1 view, continued. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. The unfrozen pretrained binary-head controls are included for comparison only; no error bars or confidence intervals are shown.}
 \end{figure*}
 
 \begin{figure*}[!htbp]
@@ -659,59 +662,59 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_control_zero_shot_full_pretrained_head_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_control_zero_shot_full_pretrained_head_readable}
     \caption{Zero-shot native ImageNet-1k-head control experiment.}
   \end{subfigure}
-  \caption[]{Decomposed Part 1 views, continued. No binary training is performed in the zero-shot control. Dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching the saved code. These controls are included for comparison only.}
+  \caption[]{Decomposed Part 1 view, continued. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. No binary training is performed in the zero-shot control. Dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching the saved code. These controls are included for comparison only; no error bars or confidence intervals are shown.}
 \end{figure*}
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_augmentation_patch_shuffle_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_augmentation_patch_shuffle_readable}
     \caption{Patch shuffle.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_regular_augmentations_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_regular_augmentations_readable}
     \caption{Regular augmentations.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for training-time augmentation variants. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. Axis ranges are shared across the intermediate ablation views to support visual comparison. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for training-time augmentation variants, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. Axis ranges are shared across the intermediate ablation views to support visual comparison. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-augmentation}
 \end{figure*}
 
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_mixed_original_permuted_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_mixed_original_permuted_readable}
     \caption{Mixed original/permuted.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_cnn_mlp_head_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_cnn_mlp_head_readable}
     \caption{CNN MLP head.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for mixed-input training and classifier-head capacity. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for mixed-input training and classifier-head capacity, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-head-mix}
 \end{figure*}
 
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_corruption_probability_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_curriculum_corruption_probability_readable}
     \caption{Corruption-probability curriculum.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_permutation_difficulty_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_curriculum_permutation_difficulty_readable}
     \caption{Permutation-difficulty curriculum.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for curriculum variants. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. The explicit curriculum ablations are trained for 30 epochs and are compared descriptively to the 10-epoch regular Part 1 reference. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for curriculum variants, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. The explicit curriculum ablations are trained for 30 epochs and are compared descriptively to the 10-epoch regular Part 1 reference. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-curriculum}
 \end{figure*}
 
@@ -724,7 +727,8 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
 
 \begin{table*}[!htbp]
   \centering
-  \small
+  \scriptsize
+  \renewcommand{\arraystretch}{0.94}
   \resizebox{\textwidth}{!}{%
   \begin{tabular}{p{0.24\textwidth}p{0.68\textwidth}}
     \toprule
