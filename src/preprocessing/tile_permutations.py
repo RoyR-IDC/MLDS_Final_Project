@@ -424,7 +424,7 @@ def build_enhanced_tile_permutation_records(
     seed: int = 42,
     include_baseline: bool = True,
 ) -> list[TilePermutationRecord]:
-    """Build enhanced confidence-experiment records with one shared 1x1 baseline."""
+    """Build expanded two-seed subset records with one shared 1x1 baseline."""
 
     records: list[TilePermutationRecord] = []
     emitted_baseline = False

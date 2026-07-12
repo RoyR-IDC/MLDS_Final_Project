@@ -72,7 +72,7 @@
 \begin{abstract}
 \noindent This report evaluates binary Dogs-versus-Cats classification under fixed deterministic tile-wise image permutations. Each image from the Kaggle Dogs vs Cats dataset is divided into a square grid, its tiles are rearranged by a deterministic permutation, and the same permutation is applied to both training and validation images for a given run. The study is a computer-vision benchmark motivated by structured permutations; it is not a cryptographic security experiment.
 
-\par\smallskip\noindent Part 1 compares frozen ImageNet-1k-pretrained MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 backbones with trained binary classification heads over one unpermuted baseline and deterministic $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids, each paired with easy, medium, and hard presets. Part 1 also includes two additional control experiments: full fine-tuning of the pretrained binary-head models and zero-shot evaluation of each native ImageNet-1k head by comparing summed dog-class and cat-class probabilities. Part 2 evaluates configurable CNN-backbone strategies relative to the regular Part 1 reference baseline, including patch shuffle, regular image augmentation, mixed original/permuted training, a nonlinear MLP classification head, and two curriculum variants. Because the explicit Part 2 ablation runs use 30 epochs while the regular Part 1 reference uses 10 epochs, the Part 2 deltas are descriptive rather than isolated estimates of each intervention. Part 3 computes model-agnostic permutation hardness metrics and joins them to saved configurable-CNN validation results without training additional models.
+\par\smallskip\noindent Part 1 compares frozen ImageNet-1k-pretrained MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 backbones with trained binary classification heads over one unpermuted baseline and deterministic $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids, each paired with easy, medium, and hard presets. Part 1 also includes two additional control experiments: full fine-tuning of the pretrained binary-head models and zero-shot evaluation of each native ImageNet-1k head by comparing summed dog-class and cat-class probabilities. An expanded two-seed MobileNetV3-Small subset increases coverage of seeds, permutation variants, and grid sizes for selected Part 1 and Part 2 settings. Part 2 evaluates configurable CNN-backbone strategies relative to the regular Part 1 reference baseline, including patch shuffle, regular image augmentation, mixed original/permuted training, a nonlinear MLP classification head, and two curriculum variants. Because the explicit Part 2 ablation runs use 30 epochs while the regular Part 1 reference uses 10 epochs, the Part 2 deltas are descriptive rather than isolated estimates of each intervention. Part 3 computes model-agnostic permutation hardness metrics and joins them to saved configurable-CNN validation results without training additional models.
 
 \par\smallskip\noindent The findings are limited to fixed deterministic permutations, one train/validation split, one main seed, frozen pretrained backbones, no independent test set, and exploratory hardness correlations over a small deterministic matrix. Best validation accuracy is optimistic because it selects the best epoch using the validation set itself; final validation accuracy is the less selection-biased validation summary. Within these limits, the results provide preliminary evidence that useful dog/cat cues survive the tested deterministic permutations, but they do not show that the models reconstruct, invert, transfer across, or explicitly learn the original image layout.
 \end{abstract}
@@ -85,7 +85,7 @@
 
 Image classification models are typically evaluated on data whose spatial structure is intact. This report asks how much binary Dogs-versus-Cats classification performance survives when that structure is deliberately disrupted by a fixed tile-wise permutation. Each input image is split into an $N \times N$ grid, the tiles are rearranged by a deterministic mapping, and the classifier must still distinguish dogs from cats on a held-out validation set transformed by the same target permutation.
 
-The main research question is: \emph{under a fixed supervised train/validation split, how do grid size, deterministic permutation preset, and pretrained visual representation affect validation accuracy after tile-wise image permutation?} The report also asks two secondary questions. First, which configurable-CNN training or head modifications improve validation accuracy relative to the regular Part 1 reference baseline? Second, do deterministic, model-agnostic permutation hardness metrics correlate with the observed configurable-CNN best validation accuracy across the final experiment matrix?
+The main research question is: \emph{under a fixed supervised train/validation split, how do grid size, deterministic permutation preset, and pretrained visual representation affect validation accuracy after tile-wise image permutation?} The report also asks two secondary questions. First, which configurable-CNN training or head variants are associated with higher validation accuracy relative to the regular Part 1 reference baseline, recognizing that this comparison is not epoch-matched? Second, do deterministic, model-agnostic permutation hardness metrics correlate with the observed configurable-CNN best validation accuracy across the main deterministic matrix?
 
 The task is motivated by permuted-puzzle problems and cryptographic hardness \citep{boyle2019permuted}, but the cryptographic connection is motivational rather than directly tested. The present image setting is a relaxed empirical analogue: it uses natural images rather than graphs of functions, applies coarse tile-wise rather than pixel-wise permutations, and evaluates supervised classification rather than cryptographic recovery or security. The results should therefore be interpreted as evidence about this computer-vision testbed, not as evidence about cryptographic hardness.
 
@@ -93,11 +93,12 @@ The study contributes a controlled, reproducible empirical benchmark for analyzi
 \begin{itemize}
   \item It defines a deterministic Dogs-versus-Cats tile-wise permutation matrix over one unpermuted baseline and $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids, each crossed with easy, medium, and hard presets.
   \item It compares three frozen ImageNet-1k-pretrained representation families: convolutional MobileNetV3-Small, attention-based DeiT-Tiny, and gMLP-S16.
-  \item It evaluates six configurable-CNN improvement strategies against the regular Part 1 reference baseline: patch shuffle, standard image augmentation, mixed original/permuted training, a nonlinear MLP head, and two curricula. Since the explicit Part 2 ablation runs use 30 epochs and the regular Part 1 reference uses 10 epochs, these deltas are descriptive.
+  \item It evaluates six configurable-CNN strategy variants against the regular Part 1 reference baseline: patch shuffle, standard image augmentation, mixed original/permuted training, a nonlinear MLP head, and two curricula. Since the explicit Part 2 ablation runs use 30 epochs and the regular Part 1 reference uses 10 epochs, these deltas are descriptive.
+  \item It adds an expanded two-seed MobileNetV3-Small subset with six permutation variants per non-baseline grid and additional $14 \times 14$ and $17 \times 17$ grids for selected Part 1 and Part 2 settings.
   \item It quantifies each deterministic permutation with model-agnostic hardness metrics and relates those metrics to held-out validation accuracy.
 \end{itemize}
 
-The report is organized into three experimental components. Part 1 trains model baselines on the one-tile/no-permutation baseline and deterministic tile-wise permutations at $4 \times 4$, $7 \times 7$, and $10 \times 10$ resolution. Part 2 tests improvement strategies for the same permuted setting, including patch shuffle, regular image augmentation, mixed original/permuted training, a larger configurable-CNN classification head, and two curricula. Part 3 computes permutation hardness metrics and joins them to validation accuracy so that image-independent permutation properties can be compared against model performance.
+The report is organized into three experimental components. Part 1 trains model baselines on the one-tile/no-permutation baseline and deterministic tile-wise permutations at $4 \times 4$, $7 \times 7$, and $10 \times 10$ resolution. Part 2 tests configurable-CNN strategy variants for the same permuted setting, including patch shuffle, regular image augmentation, mixed original/permuted training, a larger configurable-CNN classification head, and two curricula. Part 3 computes permutation hardness metrics and joins them to validation accuracy so that image-independent permutation properties can be compared against model performance.
 
 \section{Related Works}
 
@@ -123,7 +124,7 @@ Multilayer perceptrons are usually associated with channel-wise feature recombin
 
 \subsection{Robustness, Augmentation, and Curricula}
 
-The CNN-backbone ablations connect to broader regularization and robustness ideas in deep learning \citep{goodfellow2016deep}. Patch shuffle and regular image augmentations introduce additional stochastic variation during training; such augmentation is a standard way to improve generalization when the training perturbations match useful invariances \citep{shorten2019survey}. Mixed original/permuted training tests whether clean-layout examples help the classifier head fit cues that transfer to the permuted validation distribution. Curriculum learning variants test whether staged exposure to increasing corruption probability or increasing permutation difficulty improves optimization \citep{bengio2009curriculum}. In this report, these methods are evaluated as practical interventions for a frozen pretrained configurable CNN backbone, not as general claims about robustness under all spatial corruptions.
+The CNN-backbone ablations connect to broader regularization and robustness ideas in deep learning \citep{goodfellow2016deep}. Patch shuffle and regular image augmentations introduce additional stochastic variation during training; such augmentation can improve generalization when the training perturbations match useful invariances \citep{shorten2019survey}. Mixed original/permuted training tests whether clean-layout examples are associated with higher validation accuracy on the permuted validation distribution. Curriculum learning variants test whether staged exposure to increasing corruption probability or increasing permutation difficulty changes validation accuracy \citep{bengio2009curriculum}. In this report, these methods are evaluated as practical interventions for a frozen pretrained configurable CNN backbone, not as general claims about robustness under all spatial corruptions.
 
 \section{Data Overview}
 
@@ -137,24 +138,25 @@ The supervised split is stratified with seed 42 and an 80/20 train/validation ra
 
 \subsection{Image Resizing and Model Input}
 
-All images are converted to RGB and resized to a square model input. The standardized timm input resolution is 224 pixels. When a requested tile grid does not divide 224 evenly, preprocessing first resizes to the smallest square size divisible by the grid side length, applies the tile rearrangement on that square tensor, and then center-crops back to 224. For example, a $10 \times 10$ grid uses a temporary $230 \times 230$ tile-compatible resize because 230 is the smallest multiple of 10 above 224. The final model tensor is normalized with ImageNet mean and standard deviation, matching the pretrained checkpoints used in the experiments.
+All images are converted to RGB and resized to a square model input. The standardized timm input resolution is 224 pixels. When a requested tile grid does not divide 224 evenly, preprocessing first resizes to the smallest square size divisible by the grid side length, applies the tile rearrangement on that square tensor, and then center-crops back to 224. For example, a $10 \times 10$ grid uses a temporary $230 \times 230$ tile-compatible resize because 230 is the smallest multiple of 10 above 224. In the expanded two-seed subset, the same rule implies no larger temporary size for $14 \times 14$ because 14 divides 224 exactly, while $17 \times 17$ uses a temporary $238 \times 238$ resize before center-cropping to 224. The final model tensor is normalized with ImageNet mean and standard deviation, matching the pretrained checkpoints used in the experiments.
 
 \subsection{Tile-Permutation Matrix}
 
-For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile-wise permutation is applied across images for a run. The final grid settings are one tile/no permutation, 16 tiles ($4 \times 4$), 49 tiles ($7 \times 7$), and 100 tiles ($10 \times 10$). The one-tile/no-permutation baseline is repeated under the easy, medium, and hard labels only so that each part follows the same four grid settings crossed with three difficulty labels. Aggregate summaries should account for the fact that these three records correspond to the same unpermuted condition rather than three distinct permutations.
+For the unpermuted setting, each image is processed as a normal dog or cat image and used as the benchmark for post-permutation performance. For the permuted setting, each image is divided into a square tile grid and the same deterministic tile-wise permutation is applied across images for a run. The main deterministic matrix uses one tile/no permutation, 16 tiles ($4 \times 4$), 49 tiles ($7 \times 7$), and 100 tiles ($10 \times 10$). The one-tile/no-permutation baseline is repeated under the easy, medium, and hard labels only so that the main matrix follows the same four grid settings crossed with three difficulty labels. The expanded two-seed MobileNetV3-Small subset separately adds $14 \times 14$ and $17 \times 17$ grids and six permutation variants per non-baseline grid. Aggregate summaries should account for the fact that repeated one-tile records correspond to the same unpermuted condition rather than distinct permutations.
 
 The easy, medium, and hard presets provide three controlled levels of spatial disruption at each nontrivial grid size. Easy performs a small number of local swaps and preserves most adjacency structure. Medium increases the fraction of swapped tiles and adds row and column shifts. Hard combines the largest swap fraction, broader swap distance, stronger shifts, and a global reversal. These presets make it possible to compare models not only as the number of tiles increases, but also as the deterministic transformation becomes more disruptive at a fixed grid size. The results reported below describe this specific experimental design.
 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{part3_hardness_examples_readable}
-  \caption{Illustrative validation image under the deterministic grid and difficulty settings used throughout the experiments. The first column shows one central unpermuted baseline image because the easy, medium, and hard one-tile records are visually identical. Rows correspond to the easy, medium, and hard presets for the nontrivial grids; columns correspond to the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. Metric values are shown below each nontrivial grid image: adjacency destruction (A), global displacement (D), spatial entropy (E), and combined hardness (C). Figure 1 is a qualitative illustration of the deterministic transformations and is not evidence of model performance.}
+  \caption{Illustrative validation image under the deterministic grid and difficulty settings used throughout the experiments. The first column shows one central unpermuted baseline image because the easy, medium, and hard one-tile records are visually identical. Rows correspond to the easy, medium, and hard presets for the nontrivial grids; columns correspond to the $4 \times 4$, $7 \times 7$, and $10 \times 10$ grids. Metric values below each nontrivial grid image are adjacency destruction (A), global displacement (D), spatial permutation entropy (E), and combined hardness (C). This qualitative example illustrates the deterministic transformations and is not evidence of model performance.}
   \label{fig:data-permutation-examples}
 \end{figure*}
+\clearpage
 
 \section{Methodology}
 
-The experimental work is organized into three assignment parts. Part 1 establishes baselines by training on the unpermuted task and on fixed deterministic tile-wise permutations. Part 2 reuses the regular Part 1 MobileNetV3-Small configurable-CNN output as the reference baseline and trains improvement ablations on the same task family. Part 3 computes permutation descriptors and correlates them with the validation accuracy observed for the corresponding deterministic records.
+The experimental work is organized into three assignment parts. Part 1 establishes baselines by training on the unpermuted task and on fixed deterministic tile-wise permutations. Part 2 reuses the regular Part 1 MobileNetV3-Small configurable-CNN output as the reference baseline and trains strategy ablations on the same task family. Part 3 computes permutation descriptors and correlates them with the validation accuracy observed for the corresponding deterministic records.
 
 Part 1 compares MobileNetV3-Small, DeiT-Tiny, and gMLP-S16. Part 2 and Part 3 use MobileNetV3-Small for the configurable-CNN experiments. Aggregation reports mean final validation accuracy, mean best validation accuracy, standard deviation across the three deterministic permutation labels at each tile count, and the number of runs. Validation accuracy is the main evaluation metric because the held-out validation set is class-balanced. Final validation accuracy is the less selection-biased validation summary, while best validation accuracy is useful for comparing training behavior across runs but optimistic as a final performance estimate because it selects the best epoch using the validation set itself. Because the regular Part 1 reference runs use 10 epochs whereas the explicit Part 2 ablation runs use 30 epochs, Part 2 comparisons to the regular reference baseline are descriptive rather than clean estimates of causal intervention effects.
 
@@ -166,9 +168,11 @@ The Part 1 control-experiment matrix is reported through three conditions: the m
 
 \subsection{Deterministic Permutation Functions}
 
-Every part uses one shared deterministic permutation construction with three parameter presets: easy, medium, and hard. This makes comparisons across Parts 1, 2, and 3 reproducible and interpretable, because a given difficulty label refers to the same construction wherever it appears.
+The main Part 1, Part 2, and Part 3 matrices use one shared deterministic permutation construction with three parameter presets: easy, medium, and hard. This makes comparisons across the main matrices reproducible and interpretable, because a given difficulty label refers to the same construction wherever it appears.
 
-The construction is parameterized by relative quantities: the fraction of tiles to swap, the maximum swap distance as a fraction of grid width, row and column shift fractions, and whether to apply a global reversal before the shifts and swaps. A global reversal means that the flattened row-major tile order is reversed, sending the first tile to the last position, the second tile to the second-to-last position, and so on before any subsequent shifts or swaps. Relative parameters are used because fixed operation counts are not comparable across grid sizes: two swaps affect 25\% of the tiles in a $4 \times 4$ grid but only 4\% of the tiles in a $10 \times 10$ grid. The easy preset therefore uses a small tile-count-scaled swap fraction and short local movement; medium increases the swap fraction and adds moderate row and column shifts; hard uses the largest swap fraction, broader movement radius, stronger shifts, and a global reversal. For the one-tile baseline, all three labels map to the unpermuted image; the labels are still saved so the experiment matrix remains exactly $4$ grid settings by $3$ presets.
+The construction is parameterized by relative quantities: the fraction of tiles to swap, the maximum swap distance as a fraction of grid width, row and column shift fractions, and whether to apply a global reversal before the shifts and swaps. A global reversal means that the flattened row-major tile order is reversed, sending the first tile to the last position, the second tile to the second-to-last position, and so on before any subsequent shifts or swaps. Relative parameters are used because fixed operation counts are not comparable across grid sizes: two swaps affect 25\% of the tiles in a $4 \times 4$ grid but only 4\% of the tiles in a $10 \times 10$ grid. The easy preset therefore uses a small tile-count-scaled swap fraction and short local movement; medium increases the swap fraction and adds moderate row and column shifts; hard uses the largest swap fraction, broader movement radius, stronger shifts, and a global reversal. For the one-tile baseline, all three labels map to the unpermuted image; the labels are still saved so the main experiment matrix remains exactly $4$ grid settings by $3$ presets. In the expanded two-seed subset, \texttt{easy2}, \texttt{medium2}, and \texttt{hard2} are second deterministic variants of the same respective base difficulty families. They use the corresponding easy, medium, or hard preset parameters, but instantiate a seeded variant with deterministic shift jitter and seeded tile swaps. Thus the six non-baseline labels are \texttt{easy}, \texttt{easy2}, \texttt{medium}, \texttt{medium2}, \texttt{hard}, and \texttt{hard2}.
+
+The expanded two-seed subset is a descriptive robustness check rather than a formal confidence-interval analysis. It is restricted to MobileNetV3-Small, seeds 42 and 43, the six grid sizes $1 \times 1$, $4 \times 4$, $7 \times 7$, $10 \times 10$, $14 \times 14$, and $17 \times 17$, and the six non-baseline permutation variants just defined. For Part 1, it repeats the frozen-backbone MobileNetV3-Small setting. For Part 2, it compares the expanded regular Part 1 reference against only the permutation-difficulty curriculum. It therefore increases coverage of seeds, permutation variants, and grid sizes in selected settings, but it is not evidence that all models or all Part 2 strategies were rerun and is not a basis for formal statistical confidence.
 
 \begin{table}[t]
   \centering
@@ -203,13 +207,13 @@ The regular Part 1 baseline and the explicit Part 2 ablation training runs use I
 
 For trained binary-head runs, the loss is cross-entropy over the two classes. The optimizer is AdamW with learning rate $3 \times 10^{-4}$ and weight decay $1 \times 10^{-4}$. Runs use seed 42. The reported experiments were executed remotely on Google Colab with the Google L4 runtime; in that configuration, the batch size is 64, the dataloader uses 4 workers, and automatic mixed precision is enabled. The local configuration defaults to smaller smoke-test settings, so the reported results should be read as the Colab run matrix.
 
-Part 1 trained binary-head runs train each model/permutation record for 10 epochs; the zero-shot full-head control uses 0 epochs. The explicit Part 2 ablation runs train for 30 epochs. This duration difference prevents a clean causal attribution of Part 2 improvements relative to the regular Part 1 reference baseline, because training intervention and training duration change together in that comparison. In the curriculum ablations, those 30 epochs are distributed across stages as evenly as possible: corruption-probability curriculum uses four stages with probabilities 0.1, 0.3, 0.5, and 0.8, while permutation-difficulty curriculum starts from original images and progresses through $2 \times 2$, $3 \times 3$, $4 \times 4$, and, when needed, the final target grid. Part 3 does not train a model; it computes deterministic permutation metrics and joins them to the saved configurable-CNN accuracies.
+Part 1 trained binary-head runs train each model/permutation record for 10 epochs; the zero-shot full-head control uses 0 epochs. The explicit Part 2 ablation runs train for 30 epochs. This duration difference prevents a clean causal attribution of Part 2 deltas relative to the regular Part 1 reference baseline, because training intervention and training duration change together in that comparison. In the curriculum ablations, those 30 epochs are distributed across stages as evenly as possible: corruption-probability curriculum uses four stages with probabilities 0.1, 0.3, 0.5, and 0.8, while permutation-difficulty curriculum starts from original images and progresses through $2 \times 2$, $3 \times 3$, $4 \times 4$, and, when needed, the final target grid. Part 3 does not train a model; it computes deterministic permutation metrics and joins them to the saved configurable-CNN accuracies.
 
 \subsection{Preprocessing and Training-Only Augmentation}
 
-Section~3 describes the shared resizing, tile-compatible preprocessing, and ImageNet normalization used by the model inputs. The preprocessing order is: resize each image to a tile-compatible square size, apply the run-specific tile permutation, center-crop back to $224 \times 224$ when the tile-compatible size is larger than 224, and normalize with ImageNet mean and standard deviation. Thus, the $10 \times 10$ condition uses a temporary $230 \times 230$ representation before center-cropping to $224 \times 224$; this introduces a small preprocessing difference relative to grid sizes that divide 224 exactly. Training-only perturbations are applied after the target deterministic run condition is defined. Regular augmentation uses random rotation up to 15 degrees, color jitter with brightness/contrast/saturation 0.2 and hue 0.05, resize, tensor conversion, and normalization. Patch shuffle uses a random within-image patch permutation during training only. Validation loaders do not apply these training-only transformations; they use the deterministic target permutation for the run.
+Section~3 describes the shared resizing, tile-compatible preprocessing, and ImageNet normalization used by the model inputs. The preprocessing order is: resize each image to a tile-compatible square size, apply the run-specific tile permutation, center-crop back to $224 \times 224$ when the tile-compatible size is larger than 224, and normalize with ImageNet mean and standard deviation. Thus, the $10 \times 10$ condition uses a temporary $230 \times 230$ representation before center-cropping to $224 \times 224$; this introduces a small preprocessing difference relative to grid sizes that divide 224 exactly. In the expanded two-seed subset, $14 \times 14$ divides 224 exactly and therefore uses $224 \times 224$, whereas $17 \times 17$ uses a temporary $238 \times 238$ representation before the center crop. Training-only perturbations are applied after the target deterministic run condition is defined. Regular augmentation uses random rotation up to 15 degrees, color jitter with brightness/contrast/saturation 0.2 and hue 0.05, resize, tensor conversion, and normalization. Patch shuffle uses a random within-image patch permutation during training only. Validation loaders do not apply these training-only transformations; they use the deterministic target permutation for the run.
 
-\subsection{Improvement Strategies}
+\subsection{Strategy Ablations}
 
 Part 2 evaluates training strategies against the regular Part 1 MobileNetV3-Small configurable-CNN reference baseline. The main distinction is whether a strategy adds stochastic training views, mixes clean and permuted inputs, changes the classifier head, or changes the order in which the model sees easy and hard inputs. In all cases, validation is performed on the held-out validation images with the target permutation and without training-only perturbations. Because the reference baseline and the explicit ablation runs use different training durations, the comparisons in this section should be interpreted descriptively.
 
@@ -221,11 +225,11 @@ The regular baseline is the Part 1 MobileNetV3-Small configurable-CNN output use
 
 \subsubsection{Patch Shuffle}
 
-Patch shuffle tests whether additional local layout disruption during training improves performance on the fixed target permutation. The target permutation remains the run-level task definition, but each training example can receive an independently sampled within-image patch permutation. In the implementation, the shuffle probability is 1.0, so a batch of size $B$ contains $B$ shuffled training views and an epoch contains $N_{\mathrm{train}}$ shuffled views. Validation is fixed to the target deterministic permutation and does not use patch shuffle. The stored dataset size does not increase because shuffled views replace the current batch examples rather than being appended.
+Patch shuffle tests whether additional local layout disruption during training is associated with higher validation accuracy on the fixed target permutation. The target permutation remains the run-level task definition, but each training example can receive an independently sampled within-image patch permutation. In the implementation, the shuffle probability is 1.0, so a batch of size $B$ contains $B$ shuffled training views and an epoch contains $N_{\mathrm{train}}$ shuffled views. Validation is fixed to the target deterministic permutation and does not use patch shuffle. The stored dataset size does not increase because shuffled views replace the current batch examples rather than being appended.
 
 \subsubsection{Regular Augmentations}
 
-Regular augmentation tests whether generic image-level variation helps the frozen CNN head fit dog-versus-cat cues that transfer to the target tile permutation. During training, each processed example receives a stochastic image-level transform after the target run condition is defined. The strategy has one stage and trains for 30 epochs in the saved Part 2 ablation matrix. Validation uses the deterministic target permutation without training-only augmentation. The stored dataset size remains 20,000 training images; the method produces one stochastic view per processed example and stores no additional images.
+Regular augmentation tests whether generic image-level variation is associated with higher validation accuracy for the frozen CNN head on the target tile permutation. During training, each processed example receives a stochastic image-level transform after the target run condition is defined. The strategy has one stage and trains for 30 epochs in the saved Part 2 ablation matrix. Validation uses the deterministic target permutation without training-only augmentation. The stored dataset size remains 20,000 training images; the method produces one stochastic view per processed example and stores no additional images.
 
 \subsubsection{Mixed Original/Permuted Training}
 
@@ -233,7 +237,7 @@ Mixed original/permuted training tests whether clean-layout examples stabilize t
 
 \subsubsection{CNN MLP Head}
 
-The CNN MLP-head ablation keeps the frozen configurable CNN backbone but replaces the linear classifier with a small MLP classification head. This tests whether additional trainable capacity at the classifier stage helps when the frozen backbone features remain informative but may be less linearly separable after spatial disruption. The data, target permutations, validation loader, and 30-epoch Part 2 ablation schedule remain fixed relative to the other explicit Part 2 improvement runs; the intentional training-time change is the classifier head. The stored dataset size does not change. Improved results in this ablation are preliminary evidence that head capacity is relevant under the frozen-backbone setup, but they are not definitive because the regular Part 1 reference baseline uses a shorter 10-epoch training duration.
+The CNN MLP-head ablation keeps the frozen configurable CNN backbone but replaces the linear classifier with a small MLP classification head. This tests whether additional trainable capacity at the classifier stage is associated with higher validation accuracy when the frozen backbone features remain informative but may be less linearly separable after spatial disruption. The data, target permutations, validation loader, and 30-epoch Part 2 ablation schedule remain fixed relative to the other explicit Part 2 strategy runs; the intentional training-time change is the classifier head. The stored dataset size does not change. Positive deltas for this ablation are descriptive evidence that head capacity may be relevant under the frozen-backbone setup, but they are not definitive because the regular Part 1 reference baseline uses a shorter 10-epoch training duration.
 
 \subsubsection{Corruption-Probability Curriculum}
 
@@ -355,22 +359,40 @@ Tables~\ref{tab:model-architecture-comparison}--\ref{tab:part1-pretraining-heads
 
 All experiments use the same 20,000/5,000 split described in the data overview. Table~\ref{tab:part1-train-validation} summarizes how that split is reused in the Part 1 runs.
 
-The curriculum ablations in Part 2 use stage-specific training loaders, but they do not create separate held-out validation splits per stage. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run. The saved explicit Part 2 ablation runs use 30 epochs, so curriculum comparisons are not explained by a shorter training schedule for the other improvement runs in the current matrix.
+The curriculum ablations in Part 2 use stage-specific training loaders, but they do not create separate held-out validation splits per stage. Across both curricula, validation remains the same 5,000-image held-out loader for the final target run. The saved explicit Part 2 ablation runs use 30 epochs, so curriculum comparisons are not explained by a shorter training schedule for the other explicit strategy runs in the current matrix.
 
 \section{Evaluation Protocol}
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run and should be treated as the less selection-biased validation summary. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it is optimistic as a final performance estimate because it selects the best epoch using the validation set itself.
 
-For Part 3, the joined hardness table keeps the 12 deterministic records in the final configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the enhanced-confidence MobileNetV3-Small subset adds descriptive two-seed checks for selected Part 1 and Part 2 settings.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the main configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings.
 
 \section{Results}
 
 The results are organized according to the three assignment parts. Section~\ref{sec:part1-results} reports the frozen-backbone comparison under deterministic tile permutations. Section~\ref{sec:part2-results} reports the configurable-CNN ablation matrix. Section~\ref{sec:part3-results} reports the model-agnostic hardness metrics and their relationship to validation accuracy.
 
-All result statements in this section should be read as validation-set findings for one train/validation split, mostly one main seed, frozen pretrained backbones, and limited deterministic permutation matrices. The original main matrix uses three presets per grid size; the enhanced-confidence MobileNetV3-Small subset uses two seeds and six permutation variants per non-baseline grid. These are not independent test-set estimates. Part 2 comparisons against the regular Part 1 reference baseline are descriptive because the regular reference and the explicit ablation strategies use different training durations.
+All result statements in this section should be read as validation-set findings for one train/validation split, mostly one main seed, frozen pretrained backbones, and limited deterministic permutation matrices. The original main matrix uses three presets per grid size; the expanded MobileNetV3-Small subset uses two seeds and six permutation variants per non-baseline grid. These are not independent test-set estimates and should not be read as formal confidence-interval analyses. Part 2 comparisons against the regular Part 1 reference baseline are descriptive because the regular reference and the explicit ablation strategies use different training durations.
 
 \subsection{Part 1: Frozen-Backbone Baselines}
 \label{sec:part1-results}
+
+\begin{table*}[!t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
+    \midrule
+    MobileNetV3-Small & 91.82\% (0.19 pp) & 86.93\% (4.07 pp) & 84.92\% (7.56 pp) & 80.36\% (10.03 pp) \\
+    DeiT-Tiny & 98.75\% (0.03 pp) & 97.23\% (1.23 pp) & 97.08\% (1.84 pp) & 92.97\% (5.19 pp) \\
+    gMLP-S16 & 99.09\% (0.01 pp) & 97.16\% (1.67 pp) & 96.11\% (3.59 pp) & 89.47\% (8.95 pp) \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Main Part 1 frozen-backbone results by model family and tile count. Each entry reports mean best validation accuracy over the three deterministic difficulty labels at that tile count; values in parentheses are standard deviations in percentage points across those labels from \texttt{part1\_aggregated\_results.csv}. These are validation-set summaries, not independent test-set estimates or confidence intervals.}
+  \label{tab:part1-results}
+\end{table*}
 
 Table~\ref{tab:part1-results} summarizes the frozen-backbone architecture comparison by tile count, and Figure~\ref{fig:part1-accuracy} visualizes the main comparison together with the two saved controls. The notebook records the main frozen-backbone runs, the unfrozen control, and the zero-shot control with explicit condition labels so those results can be reported separately.
 
@@ -379,27 +401,52 @@ The main Part 1 analysis compares the three ImageNet-1k pretrained backbones und
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.55\textheight,keepaspectratio]{part1_combined_comparison_readable}
-  \caption{Part 1 mean best validation accuracy as a function of grid size for the three model families and three saved experiment conditions. Solid lines show the main frozen-backbone binary-head setting, dashed lines show the unfrozen pretrained binary-head controls, and dotted lines show the zero-shot native ImageNet-1k-head controls. Model color and marker shape are kept consistent across conditions. Control curves are included for comparison only. The saved DeiT-Tiny unfrozen control is incomplete and contains only the no-permutation record, so it is shown as a single dashed marker rather than a full curve. No confidence intervals are shown because repeated-seed estimates are not available.}
+  \caption{Part 1 mean best validation accuracy as a function of grid size for the three model families and three saved experiment conditions. Solid lines show the main frozen-backbone binary-head setting, dashed lines show the unfrozen pretrained binary-head controls, and dotted lines show the zero-shot native ImageNet-1k-head controls. Values are validation-set summaries averaged over the deterministic difficulty labels at each grid size; the trained binary-head runs use the main seed 42, and the zero-shot controls use no training seed. Model color and marker shape are kept consistent across conditions. Control curves are included for comparison only. No confidence intervals or error bars are shown because repeated-seed estimates are not available for the full architecture-control matrix.}
   \label{fig:part1-accuracy}
 \end{figure*}
 
-The frozen-backbone comparison shows a clear architecture effect. DeiT-Tiny and gMLP-S16 remain above 89\% mean best validation accuracy even at 100 tiles, while MobileNetV3-Small drops to 80.36\%. This indicates that their pretrained features and binary heads retain more class-discriminative signal under this fixed matrix, but it should not be read as evidence that the models recover or use the original global layout. Local texture, object-part, color, and background cues may remain sufficient for this dataset. The unfrozen control in Figure~\ref{fig:part1-accuracy} is generally strong for the completed MobileNetV3-Small and gMLP-S16 records, while the zero-shot control falls more sharply as tile count and disruption increase. The zero-shot result is useful because it shows that the native ImageNet head already carries dog/cat signal, but supervised binary-head training is still important under the stronger permutations. Figure~\ref{fig:part1-decomposed-controls} in Section~\ref{sec:additional-information} provides the decomposed views corresponding to the combined comparison.
+The frozen-backbone comparison shows architecture-family differences in validation accuracy. DeiT-Tiny and gMLP-S16 remain above 89\% mean best validation accuracy even at 100 tiles, while MobileNetV3-Small drops to 80.36\%. This indicates that their pretrained features and binary heads yield higher class-discriminative validation performance under this fixed matrix, but it should not be read as evidence that the models recover or use the original global layout. Local texture, object-part, color, and background cues may remain sufficient for this dataset. The unfrozen control in Figure~\ref{fig:part1-accuracy} is generally strong across the completed model records, while the zero-shot control falls more sharply as tile count and disruption increase. The zero-shot result is useful because it shows that the native ImageNet head already carries dog/cat signal, but supervised binary-head training is still important under the stronger permutations. Figure~\ref{fig:part1-decomposed-controls} in Section~\ref{sec:additional-information} provides the decomposed views corresponding to the combined comparison.
 
-Figure~\ref{fig:part1-enhanced-confidence} reports the complete enhanced-confidence Part 1 MobileNetV3-Small subset. This additional check expands the MobileNetV3-Small frozen-backbone setting to two training seeds and six permutation variants per non-baseline grid, extending the grid sweep through $14 \times 14$ and $17 \times 17$. The subset is still descriptive rather than a formal confidence-interval analysis, but it provides a more direct view of seed and permutation-variant variability than the original one-seed main matrix.
+Figure~\ref{fig:part1-enhanced-confidence} reports the expanded two-seed Part 1 MobileNetV3-Small subset. This descriptive robustness check expands the MobileNetV3-Small frozen-backbone setting to two training seeds and six permutation variants per non-baseline grid, extending the grid sweep through $14 \times 14$ and $17 \times 17$. The subset is not a formal confidence-interval analysis, but it provides an additional descriptive view of seed and permutation-variant variability relative to the original one-seed main matrix.
 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part1_enhanced_confidence_mean_by_seed}
-  \caption{Complete Part 1 enhanced-confidence subset for MobileNetV3-Small. The plot uses seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with error bars from the available seed values. The one-tile baseline appears once because it is shared by the enhanced run matrix.}
+  \caption{Expanded two-seed Part 1 subset for MobileNetV3-Small. The y-axis reports best validation accuracy in percentage points. Each point is one deterministic permutation variant at one grid size, averaged across the completed seed values from seeds 42 and 43; error bars show the descriptive standard deviation across those seed values, not standard error or confidence intervals. The six non-baseline variants are \texttt{easy}, \texttt{easy2}, \texttt{medium}, \texttt{medium2}, \texttt{hard}, and \texttt{hard2}. The one-tile baseline appears once because it is shared by the expanded run matrix. These results are descriptive and do not imply statistical significance.}
   \label{fig:part1-enhanced-confidence}
 \end{figure*}
 
-\subsection{Part 2: Configurable-CNN Improvement Strategies}
+Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV3-Small pattern under the expanded grid and variant set. Mean best validation accuracy declines as tile count increases, from 87.46\% at $4 \times 4$ to 77.40\% at $17 \times 17$ in the saved aggregate, while the across-run spread also grows at larger grids. This is an additional descriptive robustness check for the grid-size pattern in this selected CNN setting, but it does not establish a population confidence interval or a result for the transformer and MLP backbones.
+\clearpage
+
+\subsection{Part 2: Configurable-CNN Strategy Ablations}
 \label{sec:part2-results}
+
+\begin{table*}[!t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Part 2 setting} & \textbf{Mean final validation accuracy} & \textbf{Mean best validation accuracy} & \textbf{Mean best-validation delta vs. regular Part 1 reference} \\
+    \midrule
+    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
+    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
+    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
+    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
+    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
+    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
+    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Main Part 2 MobileNetV3-Small ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final validation accuracy'' is validation accuracy at the final epoch of the corresponding strategy, and ``Mean best validation accuracy'' is the best validation accuracy reached during that strategy's training run. The regular Part 1 reference uses 10 epochs, while the explicit Part 2 ablations use 30 epochs; therefore the deltas against the regular reference are descriptive and should not be interpreted as isolated causal effects of the ablation alone.}
+  \label{tab:part2-results}
+\end{table*}
 
 Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. Figure~\ref{fig:part2-ablation} shows each strategy's delta from the regular Part 1 reference baseline in two complementary views.
 
-The Part 2 matrix reports each explicit ablation against the regular Part 1 reference baseline at the same grid size and deterministic difficulty label. In the updated aggregate summary, the CNN MLP head attains the highest mean best validation accuracy among the explicit Part 2 strategies and has the largest mean best-validation delta relative to the grid-level reference (+8.49 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean improvement and is negative for the 100-tile aggregate, suggesting that additional random local shuffling is not uniformly helpful under the final fixed validation permutations. The explicit Part 2 ablations train for 30 epochs while the regular Part 1 reference baseline trains for 10 epochs, so the reported deltas are descriptive. In particular, the observed delta relative to the regular Part 1 reference should not be interpreted as an isolated effect of the head alone. Comparisons among the explicit Part 2 strategies are more internally comparable than deltas against the 10-epoch Part 1 reference, because the explicit ablation strategies use the same 30-epoch duration.
+The Part 2 matrix reports each explicit ablation against the regular Part 1 reference baseline at the same grid size and deterministic difficulty label. In the updated aggregate summary, the CNN MLP head has the highest mean best validation accuracy among the explicit Part 2 strategies and the largest mean best-validation delta relative to the grid-level reference (+8.49 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean delta and is negative for the 100-tile aggregate, suggesting that additional random local shuffling was not uniformly associated with higher validation accuracy under the main fixed validation permutations. The explicit Part 2 ablations train for 30 epochs while the regular Part 1 reference baseline trains for 10 epochs, so the reported deltas are descriptive. In particular, the observed delta relative to the regular Part 1 reference should not be interpreted as an isolated effect of the head alone. Comparisons among the explicit Part 2 strategies are more internally comparable than deltas against the 10-epoch Part 1 reference, because the explicit ablation strategies use the same 30-epoch duration.
 
 \setcounter{figure}{3}
 \begin{figure*}[!htbp]
@@ -407,7 +454,7 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
   \begin{subfigure}{0.98\textwidth}
     \centering
     \includegraphics[width=\linewidth,height=0.33\textheight,keepaspectratio]{part2_ablation_delta_by_strategy_readable}
-    \caption{Deltas grouped by Part 2 ablation strategy. Marker shape distinguishes difficulty; color and horizontal offsets distinguish grid size.}
+    \caption{Per-record deltas grouped by Part 2 ablation strategy. Marker shape distinguishes difficulty; color and horizontal offsets distinguish grid size.}
   \end{subfigure}
   \vspace{0.7em}
   \begin{subfigure}{0.98\textwidth}
@@ -415,18 +462,21 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
     \includegraphics[width=\linewidth,height=0.33\textheight,keepaspectratio]{part2_ablation_delta_by_grid_readable}
     \caption{Deltas grouped by grid size, with one line per Part 2 strategy. Values are averaged over the easy, medium, and hard labels for readability.}
   \end{subfigure}
-  \caption{Part 2 best-validation-accuracy deltas from the regular Part 1 reference baseline. Positive values indicate higher best validation accuracy than the corresponding regular Part 1 reference. Deltas are relative to the regular Part 1 reference baseline; explicit Part 2 ablations use 30 epochs; the regular Part 1 reference uses 10 epochs; therefore the deltas are descriptive and should not be interpreted as isolated causal effects.}
+  \caption{Part 2 best-validation-accuracy deltas from the regular Part 1 reference baseline, using the main seed 42. Positive values indicate higher best validation accuracy than the corresponding regular Part 1 reference at the same grid size and deterministic difficulty label. The figure shows deltas rather than final validation accuracy. No error bars are shown. The explicit Part 2 ablations use 30 epochs, while the regular Part 1 reference uses 10 epochs; therefore the deltas are descriptive and should not be interpreted as isolated causal effects.}
   \label{fig:part2-ablation}
 \end{figure*}
 
-Figure~\ref{fig:part2-enhanced-confidence} adds the completed enhanced-confidence view for the Part 2 permutation-difficulty curriculum. It compares the enhanced regular Part 1 reference against the enhanced curriculum rows using the same two-seed, six-variant non-baseline grid as the Part 1 enhanced-confidence subset.
+Figure~\ref{fig:part2-enhanced-confidence} adds the completed expanded two-seed view for the Part 2 permutation-difficulty curriculum as a paired delta plot. Each delta subtracts the expanded regular Part 1 reference from the expanded curriculum result for the same seed, grid size, and permutation variant.
 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part2_enhanced_confidence_mean_by_seed}
-  \caption{Complete Part 2 enhanced-confidence subset for MobileNetV3-Small. The figure compares the enhanced regular Part 1 reference against the enhanced permutation-difficulty curriculum using seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with error bars from the available seed values.}
+  \caption{Expanded two-seed Part 2 subset for MobileNetV3-Small. The y-axis reports the paired delta in best validation accuracy, in percentage points: permutation-difficulty curriculum minus regular Part 1 reference for the same seed, grid size, and permutation variant. Each point is one deterministic permutation variant at one grid size, averaged across paired completed seed deltas from seeds 42 and 43; error bars show the descriptive standard deviation across those paired seed deltas, not standard error or confidence intervals. Positive values indicate higher best validation accuracy for the curriculum row in the saved paired aggregate. These results are descriptive and do not imply statistical significance.}
   \label{fig:part2-enhanced-confidence}
 \end{figure*}
+
+Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the permutation-difficulty curriculum at every non-baseline grid in the saved aggregate. The mean best-validation deltas are positive but modest, ranging from about +2.38 to +2.74 percentage points across the $4 \times 4$ through $17 \times 17$ grids. This provides an additional descriptive robustness check for the curriculum row in this MobileNetV3-Small setting, but the subset reruns only this curriculum strategy and remains descriptive because it is not an epoch-matched causal comparison against all Part 2 strategies.
+\clearpage
 
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
@@ -455,31 +505,31 @@ Table~\ref{tab:part3-correlations} reports exploratory correlations between dete
   \end{flushleft}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. In the nine-row non-baseline scope, all four hardness metrics were negatively correlated with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9100 and Spearman correlation -0.9372. Because $N=9$ is very small, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained 12-row full scope and one-baseline-row scope give similar but baseline-weighted sensitivity views in the saved correlation CSV.
+Part 3 provides a ranking lens for the deterministic permutations. In the nine-row non-baseline scope, all four hardness metrics had negative exploratory correlations with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9100 and Spearman correlation -0.9372. Because $N=9$ is very small, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained 12-row full scope and one-baseline-row scope give baseline-weighted sensitivity views in the saved correlation CSV.
 
 \clearpage
 
 \section{Discussion}
 
-The experiments show that Dogs-versus-Cats classification remains possible after fixed deterministic tile permutations, but performance still depends on grid size, permutation preset, and representation family. DeiT-Tiny and gMLP-S16 preserve higher validation accuracy than MobileNetV3-Small under the strongest tested grids, suggesting that the frozen token-based representations expose more usable dog/cat signal in this protocol. This should not be read as evidence that the models reconstruct, invert, transfer across permutations, explicitly learn the original layout, or solve permutation hardness; local texture, object-part, color, and background cues may remain sufficient for this dataset.
+The experiments show that Dogs-versus-Cats classification remains possible after fixed deterministic tile permutations, but validation accuracy still depends on grid size, permutation preset, and representation family. DeiT-Tiny and gMLP-S16 have higher validation accuracy than MobileNetV3-Small under the strongest tested grids, suggesting that the frozen token-based representations expose more usable dog/cat signal in this protocol. This should not be read as evidence that the models reconstruct, invert, transfer across permutations, explicitly learn the original layout, or solve permutation hardness; local texture, object-part, color, and background cues may remain sufficient for this dataset.
 
-Within the executed 30-epoch Part 2 ablation set, the CNN MLP head and curriculum-style strategies are promising relative to adding random patch shuffle alone. The CNN MLP head attains the highest mean best validation accuracy among the explicit Part 2 strategies, which is consistent with the possibility that frozen convolutional features remain informative but are easier to use with a more flexible classifier head after spatial disruption. However, the observed delta relative to the regular Part 1 reference baseline should not be interpreted as an isolated effect of the head alone, because the regular reference was trained for 10 epochs rather than 30. Stronger causal conclusions about head capacity or curricula would require an epoch-matched regular baseline.
+Within the executed 30-epoch Part 2 ablation set, the CNN MLP head and curriculum-style strategies have higher validation summaries than random patch shuffle alone. The CNN MLP head attains the highest mean best validation accuracy among the explicit Part 2 strategies, which is consistent with the possibility that frozen convolutional features remain informative but are easier to use with a more flexible classifier head after spatial disruption. However, the observed delta relative to the regular Part 1 reference baseline should not be interpreted as an isolated effect of the head alone, because the regular reference was trained for 10 epochs rather than 30. Stronger causal conclusions about head capacity or curricula would require an epoch-matched regular baseline.
 
-The hardness metrics provide a compact way to rank the tested permutations. Their negative correlations with MobileNetV3-Small accuracy, especially adjacency destruction, support the intuition that disrupting local neighborhoods is harmful for a frozen CNN. Because this analysis uses only nine non-baseline permutation records, it is best treated as hypothesis-generating rather than a stable statistical estimate.
+The hardness metrics provide a compact way to rank the tested permutations. Their negative exploratory correlations with MobileNetV3-Small accuracy, especially adjacency destruction, are consistent with the intuition that disrupting local neighborhoods is harmful for a frozen CNN. Because this analysis uses only nine non-baseline permutation records, it is best treated as hypothesis-generating rather than a stable statistical estimate.
 
 \section{Limitations}
 
-Several limitations constrain the strength and scope of the conclusions. First, the main experiment matrix is mostly one-seed, so run-to-run variation is not quantified for the full architecture and ablation comparisons. The enhanced-confidence MobileNetV3-Small subset adds two-seed checks for selected Part 1 and Part 2 settings, but it does not replace repeated-seed evaluation across all models and strategies. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch using the validation set itself; final validation accuracy is the less selection-biased validation summary. Third, the architecture comparison is confounded by parameter count, patch size, tokenization, and feature geometry, so differences between MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 should not be attributed to a single architectural property. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
+Several limitations constrain the strength and scope of the conclusions. First, the main experiment matrix is mostly one-seed, so run-to-run variation is not quantified for the full architecture and ablation comparisons. The expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings by increasing coverage of seeds, permutation variants, and grid sizes, but it does not replace repeated-seed evaluation across all models and strategies. Second, no independent labeled test set is used, so validation accuracy may overstate final generalization. Best validation accuracy is especially optimistic because it selects the best epoch using the validation set itself; final validation accuracy is the less selection-biased validation summary. Third, the architecture comparison is confounded by parameter count, patch size, tokenization, and feature geometry, so differences between MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 should not be attributed to a single architectural property. Fourth, the frozen-backbone setup limits conclusions about how fully trainable models would adapt to tile-wise permutations.
 
 Part 2 also has an important baseline-comparability limitation. The reported deltas are computed against the regular Part 1 MobileNetV3-Small reference baseline, which is trained for 10 epochs, while the explicit Part 2 ablations are trained for 30 epochs. These deltas therefore combine the ablation intervention with a training-duration difference and should be interpreted descriptively, not as isolated causal effects of each ablation. No epoch-matched regular Part 2 baseline is reported in the saved results; running and comparing against such a baseline is future work rather than a completed result.
 
-The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the reported hardness-correlation analysis uses only nine non-baseline permutation records. The study does not test unseen permutations, transfer across permutations, reconstruction, inversion, explicit learning of the original layout, or cryptographic security. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 improvement strategy. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
+The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the reported hardness-correlation analysis uses only nine non-baseline permutation records. The study does not test unseen permutations, transfer across permutations, reconstruction, inversion, explicit learning of the original layout, or cryptographic security. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 strategy variant. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
 
 \section{Conclusion and Future Work}
 
 This report presents a reproducible Dogs-versus-Cats testbed for studying fixed tile-wise image permutations. The implementation uses MobileNetV3-Small, DeiT-Tiny, and gMLP-S16 as the ImageNet-1k-only pretrained backbone set. The experiment matrix is designed to test whether fixed permutations reduce validation accuracy without eliminating class-discriminative signal, and whether the effect differs between convolutional, transformer, and MLP-style vision backbones.
 
-Within the scope of the experiments, these results suggest that pretrained visual representations can preserve useful dog/cat information even when global image layout is disrupted by the tested deterministic tile-wise permutations. They also suggest that local adjacency destruction may be a useful model-agnostic descriptor of permutation difficulty for frozen CNNs in this matrix. The results do not prove that models reconstruct, invert, or explicitly learn the permutation, and they do not establish general robustness to unseen permutations, transfer across permutations, or cryptographic hardness.
+Within the scope of the experiments, these results suggest that pretrained visual representations can preserve useful dog/cat information even when global image layout is disrupted by the tested deterministic tile-wise permutations. They also suggest, in a small exploratory analysis, that local adjacency destruction may be a useful model-agnostic descriptor of permutation difficulty for frozen CNNs in this matrix. The results do not prove that models reconstruct, invert, or explicitly learn the permutation, and they do not establish general robustness to unseen permutations, transfer across permutations, or cryptographic hardness.
 
 The Part 2 ablation results identify promising patterns within the executed 30-epoch ablation set, but they do not show that any ablation definitively improves performance over an epoch-matched regular baseline. The regular reference used for the reported deltas is the 10-epoch Part 1 baseline, so those comparisons are descriptive rather than matched causal estimates.
 
@@ -589,10 +639,10 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_accuracy_vs_tiles_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_accuracy_vs_tiles_readable}
     \caption{Main frozen pretrained binary-head experiment.}
   \end{subfigure}
-  \caption{Decomposed Part 1 views corresponding to the combined comparison in Figure~\ref{fig:part1-accuracy}. Validation accuracy is shown as mean best validation accuracy (\%) using the same model colors, model markers, grid labels, and condition line styles as Figure~\ref{fig:part1-accuracy}. No confidence intervals are shown because repeated-seed estimates are not available.}
+  \caption{Decomposed Part 1 view corresponding to the main frozen-backbone curve in Figure~\ref{fig:part1-accuracy}. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. Model colors, model markers, grid labels, and condition line styles match Figure~\ref{fig:part1-accuracy}. No error bars or confidence intervals are shown because repeated-seed estimates are not available for the full architecture-control matrix.}
   \label{fig:part1-decomposed-controls}
 \end{figure*}
 
@@ -601,10 +651,10 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_control_unfrozen_pretrained_binary_head_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_control_unfrozen_pretrained_binary_head_readable}
     \caption{Unfrozen pretrained binary-head control experiment.}
   \end{subfigure}
-  \caption[]{Decomposed Part 1 views, continued. The saved DeiT-Tiny unfrozen control is incomplete and contains only the no-permutation record, so it is shown as a single marker rather than a complete curve.}
+  \caption[]{Decomposed Part 1 view, continued. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. The unfrozen pretrained binary-head controls are included for comparison only; no error bars or confidence intervals are shown.}
 \end{figure*}
 
 \begin{figure*}[!htbp]
@@ -612,59 +662,59 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \centering
   \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{part1_control_zero_shot_full_pretrained_head_readable}
+    \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{part1_control_zero_shot_full_pretrained_head_readable}
     \caption{Zero-shot native ImageNet-1k-head control experiment.}
   \end{subfigure}
-  \caption[]{Decomposed Part 1 views, continued. No binary training is performed in the zero-shot control. Dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching the saved code. These controls are included for comparison only.}
+  \caption[]{Decomposed Part 1 view, continued. The y-axis reports mean best validation accuracy (\%) over deterministic difficulty labels at each grid size. No binary training is performed in the zero-shot control. Dog probability is computed by summing ImageNet-1k class indices 151--268, and cat probability is computed by summing domestic-cat indices 281--285, matching the saved code. These controls are included for comparison only; no error bars or confidence intervals are shown.}
 \end{figure*}
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_augmentation_patch_shuffle_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_augmentation_patch_shuffle_readable}
     \caption{Patch shuffle.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_regular_augmentations_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_regular_augmentations_readable}
     \caption{Regular augmentations.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for training-time augmentation variants. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. Axis ranges are shared across the intermediate ablation views to support visual comparison. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for training-time augmentation variants, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. Axis ranges are shared across the intermediate ablation views to support visual comparison. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-augmentation}
 \end{figure*}
 
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_mixed_original_permuted_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_mixed_original_permuted_readable}
     \caption{Mixed original/permuted.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_cnn_mlp_head_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_cnn_mlp_head_readable}
     \caption{CNN MLP head.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for mixed-input training and classifier-head capacity. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for mixed-input training and classifier-head capacity, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-head-mix}
 \end{figure*}
 
 \begin{figure*}[!htbp]
   \centering
-  \begin{subfigure}{0.48\textwidth}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_corruption_probability_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_curriculum_corruption_probability_readable}
     \caption{Corruption-probability curriculum.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}{0.48\textwidth}
+  \vspace{0.7em}
+  \begin{subfigure}{0.96\textwidth}
     \centering
-    \includegraphics[width=\linewidth]{intermediate/part2_ablation_curriculum_permutation_difficulty_readable}
+    \includegraphics[width=\linewidth,height=0.36\textheight,keepaspectratio]{intermediate/part2_ablation_curriculum_permutation_difficulty_readable}
     \caption{Permutation-difficulty curriculum.}
   \end{subfigure}
-  \caption{Intermediate Part 2 ablation views for curriculum variants. Solid lines show the ablation; dashed lines show the regular Part 1 reference baseline. The explicit curriculum ablations are trained for 30 epochs and are compared descriptively to the 10-epoch regular Part 1 reference. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
+  \caption{Intermediate Part 2 ablation views for curriculum variants, using the main seed 42. The y-axis reports best validation accuracy; solid lines show the ablation, and dashed lines show the regular Part 1 reference baseline. The explicit curriculum ablations are trained for 30 epochs and are compared descriptively to the 10-epoch regular Part 1 reference. No error bars are shown. These appendix figures are intermediate diagnostic views, not separate statistical tests.}
   \label{fig:part2-intermediate-ablation-curriculum}
 \end{figure*}
 
@@ -677,7 +727,8 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
 
 \begin{table*}[!htbp]
   \centering
-  \small
+  \scriptsize
+  \renewcommand{\arraystretch}{0.94}
   \resizebox{\textwidth}{!}{%
   \begin{tabular}{p{0.24\textwidth}p{0.68\textwidth}}
     \toprule
@@ -685,7 +736,7 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
     \midrule
     Dataset source & Kaggle Dogs vs Cats labeled training images; the supervised experiments use the labeled 25,000-image portion. \\
     Train/validation split procedure & Stratified class-balanced split; validation fraction 0.2; test fraction 0.0; split seed 42. \\
-    Image preprocessing & Resize to a tile-compatible square size, apply the tile permutation, center-crop back to 224 when required, and normalize with ImageNet mean and standard deviation. The $10 \times 10$ condition uses a temporary $230 \times 230$ representation before center-cropping to 224. \\
+    Image preprocessing & Resize to a tile-compatible square size, apply the tile permutation, center-crop back to 224 when required, and normalize with ImageNet mean and standard deviation. The $10 \times 10$ condition uses a temporary $230 \times 230$ representation before center-cropping to 224. In the expanded two-seed subset, $14 \times 14$ uses 224 directly and $17 \times 17$ uses a temporary $238 \times 238$ representation before center-cropping. \\
     Tile transform details & Tiles are square non-overlapping tensor blocks after resizing; the permutation copies source tiles into output positions with no interpolation during tile rearrangement; preset parameters are listed in Table~\ref{tab:permutation-presets}. \\
     Optimization & AdamW; learning rate $3 \times 10^{-4}$; weight decay $1 \times 10^{-4}$; cross-entropy loss; batch size 64 and 4 dataloader workers in the Google Colab L4-runtime runs; no learning-rate scheduler is used. \\
     Training duration & Part 1 trained binary-head runs: 10 epochs. Explicit Part 2 ablation runs: 30 epochs. Zero-shot control: 0 epochs. \\
@@ -701,46 +752,6 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \begin{flushleft}
   \footnotesize\emph{Note.} Part 2 deltas against the regular Part 1 reference are descriptive because the reference and ablation runs are not duration-matched.
   \end{flushleft}
-\end{table*}
-
-\begin{table*}[!htbp]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrrr}
-    \toprule
-    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
-    \midrule
-    MobileNetV3-Small & 91.82\% (0.19 pp) & 86.93\% (4.07 pp) & 84.92\% (7.56 pp) & 80.36\% (10.03 pp) \\
-    DeiT-Tiny & 98.75\% (0.03 pp) & 97.23\% (1.23 pp) & 97.08\% (1.84 pp) & 92.97\% (5.19 pp) \\
-    gMLP-S16 & 99.09\% (0.01 pp) & 97.16\% (1.67 pp) & 96.11\% (3.59 pp) & 89.47\% (8.95 pp) \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 1 mean best validation accuracy by model and tile count, mean over deterministic difficulty labels. Values in parentheses are standard deviations in percentage points from \texttt{part1\_aggregated\_results.csv}. Each model/tile-count aggregate contains three records.}
-  \label{tab:part1-results}
-\end{table*}
-
-\begin{table*}[!htbp]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrr}
-    \toprule
-    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. regular Part 1 reference} \\
-    \midrule
-    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
-    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
-    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
-    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
-    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
-    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
-    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are descriptive because the regular Part 1 reference was trained for 10 epochs, whereas explicit Part 2 ablation runs were trained for 30 epochs.}
-  \label{tab:part2-results}
 \end{table*}
 
 \begin{table}[!htbp]
