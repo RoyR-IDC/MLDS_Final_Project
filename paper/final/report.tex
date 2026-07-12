@@ -393,7 +393,7 @@ Figure~\ref{fig:part1-enhanced-confidence} reports the expanded two-seed Part 1 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part1_enhanced_confidence_mean_by_seed}
-  \caption{Expanded two-seed Part 1 subset for MobileNetV3-Small. The plot uses seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with descriptive error bars from the available seed values. The one-tile baseline appears once because it is shared by the expanded run matrix.}
+  \caption{Expanded two-seed Part 1 subset for MobileNetV3-Small. The y-axis reports best validation accuracy in percentage points. Each point is one deterministic permutation variant at one grid size, averaged across the completed seed values; error bars show the descriptive standard deviation across those seed values. The six non-baseline variants are \texttt{easy}, \texttt{easy2}, \texttt{medium}, \texttt{medium2}, \texttt{hard}, and \texttt{hard2}. The one-tile baseline appears once because it is shared by the expanded run matrix. These results are descriptive and do not imply statistical significance.}
   \label{fig:part1-enhanced-confidence}
 \end{figure*}
 
@@ -424,12 +424,12 @@ The Part 2 matrix reports each explicit ablation against the regular Part 1 refe
   \label{fig:part2-ablation}
 \end{figure*}
 
-Figure~\ref{fig:part2-enhanced-confidence} adds the completed expanded two-seed view for the Part 2 permutation-difficulty curriculum. It compares the expanded regular Part 1 reference against the expanded curriculum rows using the same two-seed, six-variant non-baseline grid as the Part 1 robustness check.
+Figure~\ref{fig:part2-enhanced-confidence} adds the completed expanded two-seed view for the Part 2 permutation-difficulty curriculum as a paired delta plot. Each delta subtracts the expanded regular Part 1 reference from the expanded curriculum result for the same seed, grid size, and permutation variant.
 
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=\textwidth,height=0.50\textheight,keepaspectratio]{part2_enhanced_confidence_mean_by_seed}
-  \caption{Expanded two-seed Part 2 subset for MobileNetV3-Small. The figure compares the expanded regular Part 1 reference against the expanded permutation-difficulty curriculum using seeds 42 and 43, six permutation variants per non-baseline grid, and additional grids through $14 \times 14$ and $17 \times 17$. Points show mean best validation accuracy for each permutation variant across completed seeds, with descriptive error bars from the available seed values.}
+  \caption{Expanded two-seed Part 2 subset for MobileNetV3-Small. The y-axis reports the paired delta in best validation accuracy, in percentage points: permutation-difficulty curriculum minus regular Part 1 reference. Each point is one deterministic permutation variant at one grid size, averaged across paired completed seed deltas; error bars show the descriptive standard deviation across those paired seed deltas. Positive values favor the curriculum row. These results are descriptive and do not imply statistical significance.}
   \label{fig:part2-enhanced-confidence}
 \end{figure*}
 

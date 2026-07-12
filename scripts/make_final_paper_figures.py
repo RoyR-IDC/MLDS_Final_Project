@@ -86,6 +86,42 @@ ENHANCED_TILE_PERMUTATION_NAMES = ("easy", "easy2", "medium", "medium2", "hard",
 ENHANCED_TILE_PERMUTATION_IDS = {
     name: index for index, name in enumerate(ENHANCED_TILE_PERMUTATION_NAMES, start=1)
 }
+ENHANCED_GRID_ORDER = [1, 16, 49, 100, 196, 289]
+ENHANCED_GRID_LABELS = {
+    1: "1x1\n1 tile",
+    16: "4x4\n16 tiles",
+    49: "7x7\n49 tiles",
+    100: "10x10\n100 tiles",
+    196: "14x14\n196 tiles",
+    289: "17x17\n289 tiles",
+}
+ENHANCED_VARIANT_LABELS = {
+    "baseline": "1x1 baseline",
+    "easy": "easy",
+    "easy2": "easy2",
+    "medium": "medium",
+    "medium2": "medium2",
+    "hard": "hard",
+    "hard2": "hard2",
+}
+ENHANCED_VARIANT_COLORS = {
+    "baseline": "#555555",
+    "easy": "#0072B2",
+    "easy2": "#56B4E9",
+    "medium": "#E69F00",
+    "medium2": "#7F6D00",
+    "hard": "#D55E00",
+    "hard2": "#CC79A7",
+}
+ENHANCED_VARIANT_MARKERS = {
+    "baseline": "D",
+    "easy": "o",
+    "easy2": "P",
+    "medium": "s",
+    "medium2": "X",
+    "hard": "^",
+    "hard2": "v",
+}
 ENHANCED_MARKERS = {"easy": "o", "medium": "x", "hard": "^", "baseline": "D"}
 PART2_BASELINE_ABLATION_NAME = "regular_part1"
 PART2_CURRICULUM_ABLATION_NAME = "curriculum_permutation_difficulty"
@@ -117,6 +153,14 @@ def _save(fig: plt.Figure, stem: str) -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURES_DIR / f"{stem}.pdf", bbox_inches="tight")
     fig.savefig(FIGURES_DIR / f"{stem}.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_to_path(fig: plt.Figure, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    if output_path.suffix.lower() == ".png":
+        fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -605,13 +649,14 @@ def _prepare_enhanced_plot_frame(raw_results: pd.DataFrame) -> pd.DataFrame:
 
 
 def _enhanced_tile_axis_positions(num_tiles_values: pd.Series) -> dict[int, int]:
-    values = sorted({int(value) for value in num_tiles_values if not pd.isna(value)})
+    present = {int(value) for value in num_tiles_values if not pd.isna(value)}
+    values = [value for value in ENHANCED_GRID_ORDER if value in present]
     return {value: index for index, value in enumerate(values)}
 
 
 def _enhanced_tile_axis_label(num_tiles: int) -> str:
-    if num_tiles == 1:
-        return "1x1"
+    if num_tiles in ENHANCED_GRID_LABELS:
+        return ENHANCED_GRID_LABELS[num_tiles]
     tiles_per_side = int(num_tiles**0.5)
     return f"{tiles_per_side}x{tiles_per_side}" if tiles_per_side * tiles_per_side == num_tiles else str(num_tiles)
 
@@ -631,10 +676,135 @@ def _enhanced_variant_offsets(labels: list[str]) -> dict[str, float]:
 
 
 def _enhanced_color_by_label(labels: list[str]) -> dict[str, object]:
-    colors = plt.get_cmap("tab10")
     ordered = ["baseline", *ENHANCED_TILE_PERMUTATION_NAMES]
     label_set = set(labels)
-    return {label: colors(index % 10) for index, label in enumerate(label for label in ordered if label in label_set)}
+    return {
+        label: ENHANCED_VARIANT_COLORS.get(label, "#333333")
+        for label in ordered
+        if label in label_set
+    }
+
+
+def _enhanced_completed_percent_frame(raw_results: pd.DataFrame) -> pd.DataFrame:
+    frame = _prepare_enhanced_plot_frame(raw_results)
+    accuracy_column = _enhanced_accuracy_column(frame)
+    frame = frame.copy()
+    frame["best_val_accuracy_pct"] = frame[accuracy_column].astype(float) * 100.0
+    frame["num_tiles"] = frame["num_tiles"].astype(int)
+    return frame
+
+
+def _plot_part1_enhanced_mean_by_seed(raw_results: pd.DataFrame, output_path: Path) -> None:
+    frame = _enhanced_completed_percent_frame(raw_results)
+    grouped = (
+        frame.groupby(["tile_permutation_name", "num_tiles"], dropna=False)["best_val_accuracy_pct"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+    grouped["label_order"] = grouped["tile_permutation_name"].map(_enhanced_label_order)
+    grouped = grouped.sort_values(["label_order", "num_tiles"])
+
+    tile_positions = _enhanced_tile_axis_positions(grouped["num_tiles"])
+    fig, ax = plt.subplots(figsize=(11.2, 6.2))
+    for label in ["baseline", *ENHANCED_TILE_PERMUTATION_NAMES]:
+        subset = grouped[grouped["tile_permutation_name"] == label]
+        if subset.empty:
+            continue
+        x_values = [tile_positions[int(value)] for value in subset["num_tiles"]]
+        yerr = subset["std"].fillna(0.0).to_numpy()
+        ax.errorbar(
+            x_values,
+            subset["mean"],
+            yerr=yerr,
+            color=ENHANCED_VARIANT_COLORS.get(label, "#333333"),
+            marker=ENHANCED_VARIANT_MARKERS.get(label, "o"),
+            linestyle="-" if label != "baseline" else "None",
+            linewidth=1.7,
+            markersize=7.5,
+            capsize=3.5,
+            label=ENHANCED_VARIANT_LABELS.get(label, label),
+        )
+
+    ax.set_title(
+        "Part 1 expanded MobileNetV3-Small subset\n"
+        "Mean best validation accuracy by deterministic permutation variant",
+        fontsize=15,
+        pad=12,
+    )
+    ax.set_xticks(list(tile_positions.values()), [_enhanced_tile_axis_label(value) for value in tile_positions])
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel("Mean best validation accuracy (%)")
+    ax.set_ylim(60, 100)
+    ax.grid(True, axis="y", alpha=0.28)
+    ax.legend(loc="lower left", ncol=2, frameon=True, title="Permutation variant")
+    fig.tight_layout()
+    _save_to_path(fig, output_path)
+
+
+def _plot_part2_enhanced_delta(raw_results: pd.DataFrame, output_path: Path) -> None:
+    frame = _enhanced_completed_percent_frame(raw_results)
+    frame = frame[
+        frame["ablation_name"].astype(str).isin(
+            [PART2_BASELINE_ABLATION_NAME, PART2_CURRICULUM_ABLATION_NAME]
+        )
+    ].copy()
+    key_columns = ["seed", "num_tiles", "tile_permutation_id", "tile_permutation_name"]
+    paired = frame.pivot_table(
+        index=key_columns,
+        columns="ablation_name",
+        values="best_val_accuracy_pct",
+        aggfunc="first",
+    ).reset_index()
+    paired = paired.dropna(subset=[PART2_BASELINE_ABLATION_NAME, PART2_CURRICULUM_ABLATION_NAME])
+    paired = paired[paired["num_tiles"].astype(int) > 1].copy()
+    paired["delta_pp"] = paired[PART2_CURRICULUM_ABLATION_NAME] - paired[PART2_BASELINE_ABLATION_NAME]
+
+    grouped = (
+        paired.groupby(["tile_permutation_name", "num_tiles"], dropna=False)["delta_pp"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+    grouped["label_order"] = grouped["tile_permutation_name"].map(_enhanced_label_order)
+    grouped = grouped.sort_values(["label_order", "num_tiles"])
+
+    tile_positions = _enhanced_tile_axis_positions(grouped["num_tiles"])
+    fig, ax = plt.subplots(figsize=(11.2, 6.2))
+    ax.axhline(0, color="#333333", linewidth=1.2, linestyle="--", alpha=0.8)
+    for label in ENHANCED_TILE_PERMUTATION_NAMES:
+        subset = grouped[grouped["tile_permutation_name"] == label]
+        if subset.empty:
+            continue
+        x_values = [tile_positions[int(value)] for value in subset["num_tiles"]]
+        yerr = subset["std"].fillna(0.0).to_numpy()
+        ax.errorbar(
+            x_values,
+            subset["mean"],
+            yerr=yerr,
+            color=ENHANCED_VARIANT_COLORS.get(label, "#333333"),
+            marker=ENHANCED_VARIANT_MARKERS.get(label, "o"),
+            linestyle="-",
+            linewidth=1.7,
+            markersize=7.5,
+            capsize=3.5,
+            label=ENHANCED_VARIANT_LABELS.get(label, label),
+        )
+
+    ax.set_title(
+        "Part 2 expanded MobileNetV3-Small subset\n"
+        "Permutation-difficulty curriculum delta vs regular reference",
+        fontsize=15,
+        pad=12,
+    )
+    ax.set_xticks(list(tile_positions.values()), [_enhanced_tile_axis_label(value) for value in tile_positions])
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel("Delta in best validation accuracy (percentage points)")
+    ymin = min(-1.0, float(grouped["mean"].min() - grouped["std"].fillna(0.0).max() - 0.5))
+    ymax = max(5.0, float(grouped["mean"].max() + grouped["std"].fillna(0.0).max() + 0.5))
+    ax.set_ylim(ymin, ymax)
+    ax.grid(True, axis="y", alpha=0.28)
+    ax.legend(loc="upper left", ncol=2, frameon=True, title="Permutation variant")
+    fig.tight_layout()
+    _save_to_path(fig, output_path)
 
 
 def _plot_enhanced_condition_panel(
@@ -777,6 +947,10 @@ def make_enhanced_confidence_figures() -> None:
         FIGURES_DIR / "part1_enhanced_confidence_mean_by_seed.png",
         aggregate_over_seeds=True,
     )
+    _plot_part1_enhanced_mean_by_seed(
+        part1_raw,
+        FIGURES_DIR / "part1_enhanced_confidence_mean_by_seed.png",
+    )
 
     part2_raw = pd.read_csv(RESULTS_DIR / "part2_enhanced_raw_results.csv")
     part2_raw = part2_raw[
@@ -795,6 +969,10 @@ def make_enhanced_confidence_figures() -> None:
         FIGURES_DIR / "part2_enhanced_confidence_mean_by_seed.png",
         aggregate_over_seeds=True,
         facet_column="ablation_name",
+    )
+    _plot_part2_enhanced_delta(
+        part2_raw,
+        FIGURES_DIR / "part2_enhanced_confidence_mean_by_seed.png",
     )
 
 
