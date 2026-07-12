@@ -914,7 +914,7 @@ def _plot_enhanced_confidence_results(
         if not facet_values:
             facet_values = sorted(frame[facet_column].dropna().astype(str).unique())
     else:
-        facet_values = ["Enhanced confidence"]
+        facet_values = ["Expanded two-seed subset"]
         facet_column = None
 
     fig, axes = plt.subplots(1, len(facet_values), figsize=(9 * len(facet_values), 5.5), squeeze=False)
