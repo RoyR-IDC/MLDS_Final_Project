@@ -375,6 +375,24 @@ All result statements in this section should be read as validation-set findings 
 \subsection{Part 1: Frozen-Backbone Baselines}
 \label{sec:part1-results}
 
+\begin{table*}[!t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
+    \midrule
+    MobileNetV3-Small & 91.82\% (0.19 pp) & 86.93\% (4.07 pp) & 84.92\% (7.56 pp) & 80.36\% (10.03 pp) \\
+    DeiT-Tiny & 98.75\% (0.03 pp) & 97.23\% (1.23 pp) & 97.08\% (1.84 pp) & 92.97\% (5.19 pp) \\
+    gMLP-S16 & 99.09\% (0.01 pp) & 97.16\% (1.67 pp) & 96.11\% (3.59 pp) & 89.47\% (8.95 pp) \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Main Part 1 frozen-backbone results by model family and tile count. Each entry reports mean best validation accuracy over the three deterministic difficulty labels at that tile count; values in parentheses are standard deviations in percentage points across those labels from \texttt{part1\_aggregated\_results.csv}. These are validation-set summaries, not independent test-set estimates or confidence intervals.}
+  \label{tab:part1-results}
+\end{table*}
+
 Table~\ref{tab:part1-results} summarizes the frozen-backbone architecture comparison by tile count, and Figure~\ref{fig:part1-accuracy} visualizes the main comparison together with the two saved controls. The notebook records the main frozen-backbone runs, the unfrozen control, and the zero-shot control with explicit condition labels so those results can be reported separately.
 
 The main Part 1 analysis compares the three ImageNet-1k pretrained backbones under the same deterministic permutation matrix. If the hardest conditions remain far above chance, one plausible explanation is that tile permutation preserves local texture, color, object-part, and background cues, and ImageNet-trained classifiers are known to rely heavily on texture and other local cues \citep{geirhos2019imagenet,hermann2020origins}. The notebook includes explicit checks of label order, validation balance, train/validation separation, and the hard-row calculation before drawing conclusions from the controls.
@@ -401,6 +419,28 @@ Figure~\ref{fig:part1-enhanced-confidence} shows that the MobileNetV3-Small tren
 
 \subsection{Part 2: Configurable-CNN Improvement Strategies}
 \label{sec:part2-results}
+
+\begin{table*}[!t]
+  \centering
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. regular Part 1 reference} \\
+    \midrule
+    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
+    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
+    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
+    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
+    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
+    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
+    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
+    \bottomrule
+  \end{tabular}
+  }
+  \caption{Main Part 2 MobileNetV3-Small ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is validation accuracy at the final epoch of the corresponding strategy, and ``Mean best acc.'' is the best validation accuracy reached during that strategy's training run. The regular Part 1 reference uses 10 epochs, while the explicit Part 2 ablations use 30 epochs; therefore the deltas against the regular reference are descriptive and should not be interpreted as isolated causal effects of the ablation alone.}
+  \label{tab:part2-results}
+\end{table*}
 
 Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. Figure~\ref{fig:part2-ablation} shows each strategy's delta from the regular Part 1 reference baseline in two complementary views.
 
@@ -708,46 +748,6 @@ H.~Touvron, M.~Cord, M.~Douze, F.~Massa, A.~Sablayrolles, and H.~Jégou.
   \begin{flushleft}
   \footnotesize\emph{Note.} Part 2 deltas against the regular Part 1 reference are descriptive because the reference and ablation runs are not duration-matched.
   \end{flushleft}
-\end{table*}
-
-\begin{table*}[!htbp]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrrr}
-    \toprule
-    \textbf{Model} & \textbf{1 tile best} & \textbf{16 tiles best} & \textbf{49 tiles best} & \textbf{100 tiles best} \\
-    \midrule
-    MobileNetV3-Small & 91.82\% (0.19 pp) & 86.93\% (4.07 pp) & 84.92\% (7.56 pp) & 80.36\% (10.03 pp) \\
-    DeiT-Tiny & 98.75\% (0.03 pp) & 97.23\% (1.23 pp) & 97.08\% (1.84 pp) & 92.97\% (5.19 pp) \\
-    gMLP-S16 & 99.09\% (0.01 pp) & 97.16\% (1.67 pp) & 96.11\% (3.59 pp) & 89.47\% (8.95 pp) \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 1 mean best validation accuracy by model and tile count, mean over deterministic difficulty labels. Values in parentheses are standard deviations in percentage points from \texttt{part1\_aggregated\_results.csv}. Each model/tile-count aggregate contains three records.}
-  \label{tab:part1-results}
-\end{table*}
-
-\begin{table*}[!htbp]
-  \centering
-  \small
-  \resizebox{\textwidth}{!}{%
-  \begin{tabular}{lrrr}
-    \toprule
-    \textbf{Part 2 setting} & \textbf{Mean final acc.} & \textbf{Mean best acc.} & \textbf{Mean best delta vs. regular Part 1 reference} \\
-    \midrule
-    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
-    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
-    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
-    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
-    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
-    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
-    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
-    \bottomrule
-  \end{tabular}
-  }
-  \caption{Part 2 MobileNetV3-Small CNN ablation summary from \texttt{part2\_aggregated\_results.csv}. ``Mean final acc.'' is the validation accuracy at the final epoch of the corresponding strategy. ``Mean best acc.'' is the best validation accuracy reached during that same strategy's training run. Deltas are descriptive because the regular Part 1 reference was trained for 10 epochs, whereas explicit Part 2 ablation runs were trained for 30 epochs.}
-  \label{tab:part2-results}
 \end{table*}
 
 \begin{table}[!htbp]
