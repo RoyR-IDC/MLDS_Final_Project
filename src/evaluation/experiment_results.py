@@ -1084,7 +1084,15 @@ PART3_METRIC_COLUMNS = [
     "spatial_permutation_entropy",
     "combined_hardness_score",
 ]
-PART3_CORRELATION_SCOPES = ("all_rows", "one_baseline_row", "non_baseline_rows")
+PART3_WITHIN_GRID_CORRELATION_SCOPE = "within_grid_non_baseline"
+PART3_GRID_STANDARDIZED_CORRELATION_SCOPE = "grid_standardized_non_baseline"
+PART3_CORRELATION_SCOPES = (
+    "all_rows",
+    "one_baseline_row",
+    "non_baseline_rows",
+    PART3_WITHIN_GRID_CORRELATION_SCOPE,
+    PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+)
 PART3_JOIN_KEY_COLUMNS = ["tiles_per_side", "num_tiles", "tile_permutation_id"]
 
 
@@ -1109,7 +1117,11 @@ def _part3_correlation_input_frame(joined: pd.DataFrame, analysis_scope: str) ->
 
     frame = _normalize_part3_joined_columns(joined)
     baseline_mask = _part3_baseline_mask(frame)
-    if analysis_scope == "non_baseline_rows":
+    if analysis_scope in {
+        "non_baseline_rows",
+        PART3_WITHIN_GRID_CORRELATION_SCOPE,
+        PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+    }:
         frame = frame[~baseline_mask].copy()
     elif analysis_scope == "one_baseline_row":
         baseline_rows = frame[baseline_mask].head(1).copy()
@@ -1328,30 +1340,144 @@ def load_part1_model_results(
     return model_results
 
 
+def _metric_accuracy_correlation_values(frame: pd.DataFrame, metric: str) -> tuple[float, float]:
+    """Return Pearson and Spearman correlations for one metric frame."""
+
+    frame_any = cast(Any, frame)
+    if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
+        return float("nan"), float("nan")
+    pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
+    spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
+    return pearson, spearman
+
+
+def _part3_correlation_row(
+    *,
+    group_name: str,
+    analysis_scope: str,
+    metric: str,
+    frame: pd.DataFrame,
+    tiles_per_side: object = pd.NA,
+    num_tiles: object = pd.NA,
+) -> dict[str, Any]:
+    """Return one Part 3 metric-accuracy correlation row."""
+
+    pearson, spearman = _metric_accuracy_correlation_values(frame, metric)
+    return {
+        "group": group_name,
+        "analysis_scope": analysis_scope,
+        "tiles_per_side": tiles_per_side,
+        "num_tiles": num_tiles,
+        "metric": metric,
+        "pearson": pearson,
+        "spearman": spearman,
+        "n": len(frame),
+    }
+
+
+def _part3_within_grid_correlation_rows(
+    scoped: pd.DataFrame,
+    *,
+    group_name: str,
+) -> list[dict[str, Any]]:
+    """Return within-grid non-baseline correlations for each metric."""
+
+    if "tiles_per_side" not in scoped.columns or "num_tiles" not in scoped.columns:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    scoped = cast(pd.DataFrame, scoped.dropna(subset=["tiles_per_side", "num_tiles"]))
+    grouped = scoped.groupby(["tiles_per_side", "num_tiles"], dropna=False, sort=True)
+    for (tiles_per_side, num_tiles), group in grouped:
+        for metric in PART3_METRIC_COLUMNS:
+            frame = cast(pd.DataFrame, group.dropna(subset=[metric, "best_val_accuracy"]))
+            rows.append(
+                _part3_correlation_row(
+                    group_name=group_name,
+                    analysis_scope=PART3_WITHIN_GRID_CORRELATION_SCOPE,
+                    tiles_per_side=tiles_per_side,
+                    num_tiles=num_tiles,
+                    metric=metric,
+                    frame=frame,
+                )
+            )
+    return rows
+
+
+def _within_grid_z_score(values: pd.Series) -> pd.Series:
+    """Return within-grid population z-scores, preserving NaN for constant groups."""
+
+    standard_deviation = values.std(ddof=0)
+    if pd.isna(standard_deviation) or float(standard_deviation) == 0.0:
+        return pd.Series(float("nan"), index=values.index)
+    return (values - values.mean()) / standard_deviation
+
+
+def _part3_grid_standardized_correlation_rows(
+    scoped: pd.DataFrame,
+    *,
+    group_name: str,
+) -> list[dict[str, Any]]:
+    """Return pooled correlations after within-grid z-score standardization."""
+
+    if "tiles_per_side" not in scoped.columns or "num_tiles" not in scoped.columns:
+        return []
+
+    scoped = cast(pd.DataFrame, scoped.dropna(subset=["tiles_per_side", "num_tiles"]))
+    if scoped.empty:
+        return []
+
+    grouped = scoped.groupby(["tiles_per_side", "num_tiles"], dropna=False)
+    standardized = scoped.copy()
+    standardized["best_val_accuracy_grid_z"] = grouped["best_val_accuracy"].transform(_within_grid_z_score)
+
+    rows: list[dict[str, Any]] = []
+    for metric in PART3_METRIC_COLUMNS:
+        metric_column = f"{metric}_grid_z"
+        standardized[metric_column] = grouped[metric].transform(_within_grid_z_score)
+        frame = cast(
+            pd.DataFrame,
+            standardized[[metric_column, "best_val_accuracy_grid_z"]]
+            .dropna()
+            .rename(
+                columns={
+                    metric_column: metric,
+                    "best_val_accuracy_grid_z": "best_val_accuracy",
+                }
+            ),
+        )
+        rows.append(
+            _part3_correlation_row(
+                group_name=group_name,
+                analysis_scope=PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+                metric=metric,
+                frame=frame,
+            )
+        )
+    return rows
+
+
 def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "resnet18") -> pd.DataFrame:
     """Compute accuracy correlations for each Part 3 hardness metric."""
 
     rows: list[dict[str, Any]] = []
     for analysis_scope in PART3_CORRELATION_SCOPES:
         scoped = _part3_correlation_input_frame(joined, analysis_scope)
+        if analysis_scope == PART3_WITHIN_GRID_CORRELATION_SCOPE:
+            rows.extend(_part3_within_grid_correlation_rows(scoped, group_name=group_name))
+            continue
+        if analysis_scope == PART3_GRID_STANDARDIZED_CORRELATION_SCOPE:
+            rows.extend(_part3_grid_standardized_correlation_rows(scoped, group_name=group_name))
+            continue
         for metric in PART3_METRIC_COLUMNS:
             frame = cast(pd.DataFrame, scoped.dropna(subset=[metric, "best_val_accuracy"]))
-            frame_any = cast(Any, frame)
-            if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
-                pearson = float("nan")
-                spearman = float("nan")
-            else:
-                pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
-                spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
             rows.append(
-                {
-                    "group": group_name,
-                    "analysis_scope": analysis_scope,
-                    "metric": metric,
-                    "pearson": pearson,
-                    "spearman": spearman,
-                    "n": len(frame),
-                }
+                _part3_correlation_row(
+                    group_name=group_name,
+                    analysis_scope=analysis_scope,
+                    metric=metric,
+                    frame=frame,
+                )
             )
     return pd.DataFrame(rows)
 

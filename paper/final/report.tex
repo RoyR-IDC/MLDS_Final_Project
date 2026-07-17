@@ -315,17 +315,17 @@ This is the closed form of the implementation's row/column reversal maximum. A l
 
 \subsubsection{Spatial Permutation Entropy}
 
-This metric asks whether tile movement follows a simple pattern or many different movement patterns. It combines movement direction with distance tier and computes entropy over the resulting bins across all tiles. More varied movement directions and distances mean the permutation is less orderly.
+This metric asks whether tile movement follows a simple pattern or many different movement patterns. It combines movement direction with distance tier and computes entropy over the resulting movement bins. A movement bin is simply one category in the finite set of possible movement categories, such as stationary, north-near, or southeast-far. More varied movement directions and distances mean the permutation is less orderly.
 
-For each tile, we compute
+Let $N$ be the side length of the square tile grid, so the image has $N^2$ source tiles. Let $i$ index one source tile, with $i \in \{1,\ldots,N^2\}$. Let $(r_i, c_i)$ be the original row and column of source tile $i$, and let $(r'_i, c'_i)$ be the row and column where that same source tile lands after the permutation. For each tile $i$, the row-column movement vector is
 \[
 \Delta_i = (r'_i-r_i,\ c'_i-c_i)
 \]
-and assign it to a movement bin
+where $\Delta_i$ records how far tile $i$ moved vertically and horizontally. Each $\Delta_i$ is assigned to a movement bin
 \[
 b_i = (\mathrm{direction}(\Delta_i),\ \mathrm{distanceTier}(\Delta_i)).
 \]
-The direction is one of
+Here $b_i$ is the movement-bin label for tile $i$. The direction part of $b_i$ is one of
 \[
 \{\mathrm{stationary}, N, S, E, W, NE, NW, SE, SW\}.
 \]
@@ -333,11 +333,12 @@ For non-stationary tiles, the normalized Manhattan distance is
 \[
 d_i = \frac{|r'_i-r_i| + |c'_i-c_i|}{2(N-1)}.
 \]
-The distance tier is near when $0 < d_i \leq 1/3$, medium when $1/3 < d_i \leq 2/3$, and far when $2/3 < d_i \leq 1$. Stationary tiles use a single stationary bin. If $p_b$ is the empirical probability of movement bin $b$, the normalized entropy is
+The scalar $d_i$ lies in $[0,1]$ and records the distance tier used in $b_i$: near when $0 < d_i \leq 1/3$, medium when $1/3 < d_i \leq 2/3$, and far when $2/3 < d_i \leq 1$. Stationary tiles use a single stationary bin. Let $b$ denote one possible movement bin, and let $p_b$ be the empirical probability of bin $b$, meaning the fraction of the $N^2$ tiles whose assigned bin $b_i$ equals $b$. The normalized entropy is
 \[
-E = \frac{-\sum_b p_b \log p_b}{\log(N^2)}.
+E = \frac{-\sum_b p_b \log p_b}{\log K_{\mathrm{eff}}}, \qquad
+K_{\mathrm{eff}} = \min(N^2, K_N).
 \]
-This denominator is the implementation-specific normalization used for the reported values. It normalizes by the number of tiles, even though the movement-bin alphabet is coarser than the set of all possible tile destinations. A low value means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances.
+The summation runs over all movement bins that appear in the permutation. $K_N$ is the number of movement bins that are reachable by the implemented direction/distance-tier binning on an $N \times N$ grid. The effective support $K_{\mathrm{eff}}$ uses the smaller of $N^2$ and $K_N$ because entropy is estimated from only $N^2$ tile movements: even if more movement-bin categories exist, a permutation with $N^2$ tiles cannot occupy more than $N^2$ bins. Thus the maximum possible empirical entropy is bounded by both $\log(N^2)$, the sample-count limit, and $\log K_N$, the movement-bin-set limit. A low value of $E$ means that movement is structured or concentrated in a small number of movement patterns. A high value means that the permutation contains diverse movement directions and distances.
 
 \subsubsection{Combined Hardness Score}
 
@@ -372,7 +373,7 @@ The curriculum ablations in Part 2 use stage-specific training loaders, but they
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run and should be treated as the less selection-biased validation summary. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it is optimistic as a final performance estimate because it selects the best epoch using the validation set itself.
 
-For Part 3, the joined hardness table keeps the 12 deterministic records in the main configurable-CNN matrix for traceability. The reported correlation table uses the nine non-baseline permutation rows, so the clean repeated baseline does not dominate the association. The original 12-row view and one-baseline-row view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the main configurable-CNN matrix for traceability. The reported correlation tables use within-grid Pearson correlations and a grid-standardized pooled Pearson view, so grid size and repeated clean baselines do not drive the displayed associations. The pooled 12-row view, one-baseline-row view, and pooled nine-row non-baseline view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings.
 
 \section{Results}
 
@@ -487,29 +488,49 @@ Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the 
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
 
-Table~\ref{tab:part3-correlations} reports exploratory correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy under the nine non-baseline permutation records. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, and Figure~\ref{fig:part3-hardness-grid-metrics} in the Additional Information section visualizes all four hardness metrics by grid size and deterministic difficulty label.
+Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy. Each grid-size column uses only the three non-baseline permutation records for that grid. Table~\ref{tab:part3-grid-standardized-correlations} adds a grid-normalized pooled view over the same nine non-baseline records. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, and Figure~\ref{fig:part3-hardness-grid-metrics} in the Additional Information section visualizes all four hardness metrics by grid size and deterministic difficulty label.
 
 \begin{table}[t]
   \centering
   \reporttablesize
-  \begin{tabular}{lrr}
+  \begin{tabular}{lrrr}
     \toprule
-    \textbf{Hardness metric} & \textbf{Pearson} & \textbf{Spearman} \\
+    \textbf{Hardness metric} & \textbf{$4 \times 4$ Pearson} & \textbf{$7 \times 7$ Pearson} & \textbf{$10 \times 10$ Pearson} \\
     \midrule
-    Global displacement & -0.7093 & -0.6167 \\
-    Adjacency destruction & -0.9100 & -0.9372 \\
-    Spatial entropy & -0.6116 & -0.6333 \\
-    Combined hardness & -0.8331 & -0.8667 \\
+    Global displacement & -0.8689 & -0.8303 & -0.9053 \\
+    Adjacency destruction & -0.9832 & -0.9952 & -0.9546 \\
+    Spatial entropy & -0.9578 & -0.9807 & -0.9911 \\
+    Combined hardness & -0.9603 & -0.9794 & -0.9760 \\
     \bottomrule
   \end{tabular}
-  \caption{Part 3 exploratory correlations between MobileNetV3-Small best validation accuracy and permutation metrics over the nine non-baseline permutation records ($N=9$ for each row). Negative values indicate that larger hardness scores are associated with lower validation accuracy in this matrix.}
+  \caption{Part 3 exploratory within-grid Pearson correlations between MobileNetV3-Small best validation accuracy and permutation metrics. Each value uses the three non-baseline deterministic permutation records for that grid size ($N=3$). Negative values indicate that larger hardness scores are associated with lower validation accuracy within that grid.}
   \label{tab:part3-correlations}
   \begin{flushleft}
-  \reporttablenotesize\emph{Note.} No p-values, confidence intervals, or repeated-seed estimates are reported.
+  \reporttablenotesize\emph{Note.} The within-grid Spearman correlations were validated but omitted from the table because each grid has only three records. With three records, Spearman values are very coarse and become $-1$ whenever the metric ranking is exactly the reverse of the accuracy ranking. No p-values, confidence intervals, or repeated-seed estimates are reported.
   \end{flushleft}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. In the nine-row non-baseline scope, all four hardness metrics had negative exploratory correlations with MobileNetV3-Small best validation accuracy. Adjacency destruction had the largest-magnitude single-metric association, with Pearson correlation -0.9100 and Spearman correlation -0.9372. Because $N=9$ is very small, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained 12-row full scope and one-baseline-row scope give baseline-weighted sensitivity views in the saved correlation CSV.
+\begin{table}[t]
+  \centering
+  \reporttablesize
+  \begin{tabular}{lr}
+    \toprule
+    \textbf{Hardness metric} & \textbf{Grid-normalized pooled Pearson} \\
+    \midrule
+    Global displacement & -0.8682 \\
+    Adjacency destruction & -0.9777 \\
+    Spatial entropy & -0.9765 \\
+    Combined hardness & -0.9719 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Part 3 exploratory grid-normalized pooled Pearson correlations over the nine non-baseline deterministic permutation records ($N=9$). Within each grid size, each metric and best validation accuracy are converted to z-scores before pooling, so the table uses all non-baseline records while removing grid-level mean and scale differences.}
+  \label{tab:part3-grid-standardized-correlations}
+  \begin{flushleft}
+  \reporttablenotesize\emph{Note.} This table is an additional sensitivity view, not a replacement for the within-grid correlations in Table~\ref{tab:part3-correlations}.
+  \end{flushleft}
+\end{table}
+
+Part 3 provides a ranking lens for the deterministic permutations. Within each grid size, all four hardness metrics had negative exploratory Pearson correlations with MobileNetV3-Small best validation accuracy. Spatial entropy is normalized by the effective movement-bin set, and the displayed correlations are computed within grid size, avoiding grid-size confounding from pooled comparisons. The grid-normalized pooled table gives a second view that uses all nine non-baseline records after removing grid-level mean and scale differences. Because each within-grid correlation uses only three deterministic records and the pooled view is still based on only nine records, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained pooled 12-row, one-baseline-row, and nine-row non-baseline scopes give sensitivity views in the saved correlation CSV.
 
 \clearpage
 
@@ -519,7 +540,7 @@ The experiments show that Dogs-versus-Cats classification remains possible after
 
 Within the executed 30-epoch Part 2 ablation set, the CNN MLP head and curriculum-style strategies have higher validation summaries than random patch shuffle alone. The CNN MLP head attains the highest mean best validation accuracy among the explicit Part 2 strategies, which is consistent with the possibility that frozen convolutional features remain informative but are easier to use with a more flexible classifier head after spatial disruption. However, the observed delta relative to the regular Part 1 reference baseline should not be interpreted as an isolated effect of the head alone, because the regular reference was trained for 10 epochs rather than 30. Stronger causal conclusions about head capacity or curricula would require an epoch-matched regular baseline.
 
-The hardness metrics provide a compact way to rank the tested permutations. Their negative exploratory correlations with MobileNetV3-Small accuracy, especially adjacency destruction, are consistent with the intuition that disrupting local neighborhoods is harmful for a frozen CNN. Because this analysis uses only nine non-baseline permutation records, it is best treated as hypothesis-generating rather than a stable statistical estimate.
+The hardness metrics provide a compact way to rank the tested permutations. Their negative exploratory within-grid correlations with MobileNetV3-Small accuracy are consistent with the intuition that disrupting local neighborhoods is harmful for a frozen CNN. Because each displayed Part 3 correlation uses only three non-baseline permutation records for one grid size, it is best treated as hypothesis-generating rather than a stable statistical estimate.
 
 \section{Limitations}
 
@@ -527,7 +548,7 @@ Several limitations constrain the strength and scope of the conclusions. First, 
 
 Part 2 also has an important baseline-comparability limitation. The reported deltas are computed against the regular Part 1 MobileNetV3-Small reference baseline, which is trained for 10 epochs, while the explicit Part 2 ablations are trained for 30 epochs. These deltas therefore combine the ablation intervention with a training-duration difference and should be interpreted descriptively, not as isolated causal effects of each ablation. No epoch-matched regular Part 2 baseline is reported in the saved results; running and comparing against such a baseline is future work rather than a completed result.
 
-The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the reported hardness-correlation analysis uses only nine non-baseline permutation records. The study does not test unseen permutations, transfer across permutations, reconstruction, inversion, explicit learning of the original layout, or cryptographic security. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 strategy variant. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
+The experimental matrix is also limited. The deterministic matrix contains only three permutation presets per grid size, and the reported hardness-correlation analysis therefore has only three records per within-grid correlation. The study does not test unseen permutations, transfer across permutations, reconstruction, inversion, explicit learning of the original layout, or cryptographic security. Full fine-tuning is included only as a Part 1 control rather than as the main training regime or a Part 2 strategy variant. Finally, Dogs-versus-Cats may remain classifiable from local texture, object-part, or background cues even when global structure is disrupted. The report therefore does not directly distinguish learning or compensating for a fixed permutation from exploiting remaining class-discriminative cues.
 
 \section{Conclusion and Future Work}
 
