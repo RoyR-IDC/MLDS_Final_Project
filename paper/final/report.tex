@@ -373,7 +373,7 @@ The curriculum ablations in Part 2 use stage-specific training loaders, but they
 
 Validation accuracy is the main metric throughout the report because the held-out validation set is class-balanced, with equal numbers of cats and dogs. Final validation accuracy reports the value at the end of the configured training run and should be treated as the less selection-biased validation summary. Best validation accuracy reports the maximum validation accuracy reached during training and is useful for comparing training behavior, but it is optimistic as a final performance estimate because it selects the best epoch using the validation set itself.
 
-For Part 3, the joined hardness table keeps the 12 deterministic records in the main configurable-CNN matrix for traceability. The reported correlation tables use within-grid Pearson correlations and a grid-standardized pooled Pearson view, so grid size and repeated clean baselines do not drive the displayed associations. The pooled 12-row view, one-baseline-row view, and pooled nine-row non-baseline view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings.
+For Part 3, the joined hardness table keeps the 12 deterministic records in the main configurable-CNN matrix for traceability. The reported correlation tables use within-grid Pearson correlations and a second Pearson correlation after normalizing each grid and combining the nine permuted rows, so grid size and repeated clean baselines do not drive the displayed associations. The pooled 12-row view, one-baseline-row view, and pooled nine-row non-baseline view are retained as sensitivity checks in the saved CSV outputs. The correlations should therefore be treated as exploratory descriptors of this controlled matrix rather than definitive statistical estimates. No independent test-set measurements, confidence intervals, or p-values are reported. The main experiment matrix is mostly one-seed; the expanded two-seed MobileNetV3-Small subset adds descriptive checks for selected Part 1 and Part 2 settings.
 
 \section{Results}
 
@@ -488,7 +488,7 @@ Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the 
 \subsection{Part 3: Hardness Metrics}
 \label{sec:part3-results}
 
-Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy. Each grid-size column uses only the three non-baseline permutation records for that grid. Table~\ref{tab:part3-grid-standardized-correlations} adds a grid-normalized pooled view over the same nine non-baseline records. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, and Figure~\ref{fig:part3-hardness-grid-metrics} in the Additional Information section visualizes all four hardness metrics by grid size and deterministic difficulty label.
+Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson correlations between deterministic hardness metrics and MobileNetV3-Small best validation accuracy. Each grid-size column uses only the three non-baseline permutation records for that grid. Table~\ref{tab:part3-grid-standardized-correlations} adds a simple grid-normalized check over the same nine non-baseline records: it first expresses each row relative to the other rows from the same grid size, then computes one Pearson correlation after combining those nine adjusted rows. Figure~\ref{fig:data-permutation-examples} shows the corresponding image-level examples, and Figure~\ref{fig:part3-hardness-grid-metrics} in the Additional Information section visualizes all four hardness metrics by grid size and deterministic difficulty label.
 
 \begin{table}[t]
   \centering
@@ -503,7 +503,7 @@ Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson corre
     Combined hardness & -0.9603 & -0.9794 & -0.9760 \\
     \bottomrule
   \end{tabular}
-  \caption{Part 3 exploratory within-grid Pearson correlations between MobileNetV3-Small best validation accuracy and permutation metrics. Each value uses the three non-baseline deterministic permutation records for that grid size ($N=3$). Negative values indicate that larger hardness scores are associated with lower validation accuracy within that grid.}
+  \caption{Part 3 exploratory within-grid Pearson correlations between MobileNetV3-Small best validation accuracy and permutation metrics. Each value uses the three non-baseline deterministic permutation records for that grid size ($n=3$). Negative values indicate that larger hardness scores are associated with lower validation accuracy within that grid.}
   \label{tab:part3-correlations}
   \begin{flushleft}
   \reporttablenotesize\emph{Note.} The within-grid Spearman correlations were validated but omitted from the table because each grid has only three records. With three records, Spearman values are very coarse and become $-1$ whenever the metric ranking is exactly the reverse of the accuracy ranking. No p-values, confidence intervals, or repeated-seed estimates are reported.
@@ -515,7 +515,7 @@ Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson corre
   \reporttablesize
   \begin{tabular}{lr}
     \toprule
-    \textbf{Hardness metric} & \textbf{Grid-normalized pooled Pearson} \\
+    \textbf{Hardness metric} & \textbf{Pearson after grid normalization} \\
     \midrule
     Global displacement & -0.8682 \\
     Adjacency destruction & -0.9777 \\
@@ -523,14 +523,14 @@ Table~\ref{tab:part3-correlations} reports exploratory within-grid Pearson corre
     Combined hardness & -0.9719 \\
     \bottomrule
   \end{tabular}
-  \caption{Part 3 exploratory grid-normalized pooled Pearson correlations over the nine non-baseline deterministic permutation records ($N=9$). Within each grid size, each metric and best validation accuracy are converted to z-scores before pooling, so the table uses all non-baseline records while removing grid-level mean and scale differences.}
+  \caption{Part 3 exploratory Pearson correlations after grid normalization over the nine non-baseline deterministic permutation records ($n=9$). For each grid size separately, the three metric values are centered and scaled by subtracting that grid's mean and dividing by that grid's standard deviation; best validation accuracy is adjusted the same way. The adjusted rows are then combined and correlated once. This keeps the table to one value per metric while preventing differences between grid sizes from driving the correlation.}
   \label{tab:part3-grid-standardized-correlations}
   \begin{flushleft}
-  \reporttablenotesize\emph{Note.} This table is an additional sensitivity view, not a replacement for the within-grid correlations in Table~\ref{tab:part3-correlations}.
+  \reporttablenotesize\emph{Note.} This table is an additional sensitivity view, not a replacement for the within-grid correlations in Table~\ref{tab:part3-correlations}. ``Pooled'' means that the nine normalized non-baseline rows are analyzed together in one Pearson correlation.
   \end{flushleft}
 \end{table}
 
-Part 3 provides a ranking lens for the deterministic permutations. Within each grid size, all four hardness metrics had negative exploratory Pearson correlations with MobileNetV3-Small best validation accuracy. Spatial entropy is normalized by the effective movement-bin set, and the displayed correlations are computed within grid size, avoiding grid-size confounding from pooled comparisons. The grid-normalized pooled table gives a second view that uses all nine non-baseline records after removing grid-level mean and scale differences. Because each within-grid correlation uses only three deterministic records and the pooled view is still based on only nine records, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained pooled 12-row, one-baseline-row, and nine-row non-baseline scopes give sensitivity views in the saved correlation CSV.
+Part 3 provides a ranking lens for the deterministic permutations. Within each grid size, all four hardness metrics had negative exploratory Pearson correlations with MobileNetV3-Small best validation accuracy. Spatial entropy is normalized by the effective movement-bin set, and the main displayed correlations are computed within grid size, avoiding grid-size confounding from pooled comparisons. Table~\ref{tab:part3-grid-standardized-correlations} gives a second, still descriptive, view that uses all nine non-baseline records after putting each grid on its own relative scale. Because each within-grid correlation uses only three deterministic records and the normalized pooled view is still based on only nine records, these correlations are exploratory descriptors of this specific matrix rather than stable statistical estimates. The retained pooled 12-row, one-baseline-row, and nine-row non-baseline scopes give sensitivity views in the saved correlation CSV.
 
 \clearpage
 
