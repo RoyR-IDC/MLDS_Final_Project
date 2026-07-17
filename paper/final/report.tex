@@ -130,7 +130,7 @@ The CNN-backbone ablations connect to broader regularization and robustness idea
 
 \subsection{Dataset Source and Image Sizes}
 
-The dataset is Kaggle's Dogs vs Cats image dataset. The labeled portion contains 25,000 RGB JPEG images, with 12,500 cat images and 12,500 dog images. Original image dimensions are heterogeneous: in the local dataset copy, widths range from 42 to 1050 pixels and heights range from 32 to 768 pixels, with 8,513 unique width-height pairs. The most common sizes are approximately $500 \times 374$ and $499 \times 375$, but the preprocessing pipeline resizes images before tiling so that all model inputs in a run have a consistent square resolution.
+The dataset is Kaggle's Dogs vs Cats image dataset. The reported experiments use the canonical labeled training subset of 25,000 RGB JPEG images, with 12,500 cat images and 12,500 dog images. This corresponds to the \texttt{cat.0.jpg}--\texttt{cat.12499.jpg} and \texttt{dog.0.jpg}--\texttt{dog.12499.jpg} files; duplicate-suffixed local files, if present, are not part of the reported run matrix. Original image dimensions are heterogeneous: in this canonical labeled subset, widths range from 42 to 1050 pixels and heights range from 32 to 768 pixels, with 8,513 unique width-height pairs. The most common sizes are approximately $500 \times 374$ and $499 \times 375$, but the preprocessing pipeline resizes images before tiling so that all model inputs in a run have a consistent square resolution.
 
 \subsection{Supervised Split}
 
@@ -430,13 +430,13 @@ Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV
     \toprule
     \textbf{Part 2 setting} & \textbf{Mean final validation accuracy} & \textbf{Mean best validation accuracy} & \textbf{Mean best-validation delta vs. regular Part 1 reference} \\
     \midrule
-    Regular Part 1 baseline & 83.25\% & 83.48\% & 0.00 pp \\
-    Patch shuffle & 84.99\% & 85.18\% & +1.71 pp \\
-    Regular augmentations & 87.93\% & 87.98\% & +4.50 pp \\
-    Mixed original/permuted & 87.75\% & 87.83\% & +4.36 pp \\
-    CNN MLP head & 91.57\% & 91.97\% & +8.49 pp \\
-    Corruption-probability curriculum & 88.29\% & 88.41\% & +4.93 pp \\
-    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +4.91 pp \\
+    Regular Part 1 baseline & 86.01\% & 86.01\% & 0.00 pp \\
+    Patch shuffle & 84.99\% & 85.19\% & -0.82 pp \\
+    Regular augmentations & 87.93\% & 87.98\% & +1.97 pp \\
+    Mixed original/permuted & 87.75\% & 87.83\% & +1.83 pp \\
+    CNN MLP head & 91.57\% & 91.97\% & +5.96 pp \\
+    Corruption-probability curriculum & 88.29\% & 88.41\% & +2.40 pp \\
+    Permutation-difficulty curriculum & 88.30\% & 88.39\% & +2.38 pp \\
     \bottomrule
   \end{tabular}
   }
@@ -444,9 +444,9 @@ Figure~\ref{fig:part1-enhanced-confidence} shows the same qualitative MobileNetV
   \label{tab:part2-results}
 \end{table*}
 
-Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. Figure~\ref{fig:part2-ablation} shows each strategy's delta from the regular Part 1 reference baseline in two complementary views.
+Table~\ref{tab:part2-results} reports the MobileNetV3-Small CNN ablation summary from the updated Part 2 aggregate CSV. The six explicit ablation rows each summarize 12 deterministic records; the regular baseline row summarizes the current regular-Part-1 aggregate used as the grid-level reference. This regular baseline is the same MobileNetV3-Small frozen-backbone reference summarized in Table~\ref{tab:part1-results}, whose four tile-count means average to 86.01\%. Figure~\ref{fig:part2-ablation} shows each strategy's delta from the regular Part 1 reference baseline in two complementary views.
 
-The Part 2 matrix reports each explicit ablation against the regular Part 1 reference baseline at the same grid size and deterministic difficulty label. In the updated aggregate summary, the CNN MLP head has the highest mean best validation accuracy among the explicit Part 2 strategies and the largest mean best-validation delta relative to the grid-level reference (+8.49 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean delta and is negative for the 100-tile aggregate, suggesting that additional random local shuffling was not uniformly associated with higher validation accuracy under the main fixed validation permutations. The explicit Part 2 ablations train for 30 epochs while the regular Part 1 reference baseline trains for 10 epochs, so the reported deltas are descriptive. In particular, the observed delta relative to the regular Part 1 reference should not be interpreted as an isolated effect of the head alone. Comparisons among the explicit Part 2 strategies are more internally comparable than deltas against the 10-epoch Part 1 reference, because the explicit ablation strategies use the same 30-epoch duration.
+The Part 2 matrix reports each explicit ablation against the regular Part 1 reference baseline at the same grid size and deterministic difficulty label. In the updated aggregate summary, the CNN MLP head has the highest mean best validation accuracy among the explicit Part 2 strategies and the largest mean best-validation delta relative to the grid-level reference (+5.96 percentage points), followed by the two curriculum variants and regular augmentations. Patch shuffle has the smallest mean delta and is negative on average, suggesting that additional random local shuffling was not uniformly associated with higher validation accuracy under the main fixed validation permutations. The explicit Part 2 ablations train for 30 epochs while the regular Part 1 reference baseline trains for 10 epochs, so the reported deltas are descriptive. In particular, the observed delta relative to the regular Part 1 reference should not be interpreted as an isolated effect of the head alone. Comparisons among the explicit Part 2 strategies are more internally comparable than deltas against the 10-epoch Part 1 reference, because the explicit ablation strategies use the same 30-epoch duration.
 
 \setcounter{figure}{3}
 \begin{figure*}[!htbp]
@@ -475,7 +475,7 @@ Figure~\ref{fig:part2-enhanced-confidence} adds the completed expanded two-seed 
   \label{fig:part2-enhanced-confidence}
 \end{figure*}
 
-Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the permutation-difficulty curriculum at every non-baseline grid in the saved aggregate. The mean best-validation deltas are positive but modest, ranging from about +2.38 to +2.74 percentage points across the $4 \times 4$ through $17 \times 17$ grids. This provides an additional descriptive robustness check for the curriculum row in this MobileNetV3-Small setting, but the subset reruns only this curriculum strategy and remains descriptive because it is not an epoch-matched causal comparison against all Part 2 strategies.
+Figure~\ref{fig:part2-enhanced-confidence} shows positive paired deltas for the permutation-difficulty curriculum at every non-baseline grid in the saved aggregate. The mean best-validation deltas are positive but modest, ranging from about +2.38 pp to +2.74 pp across the $4 \times 4$ through $17 \times 17$ grids. This provides an additional descriptive robustness check for the curriculum row in this MobileNetV3-Small setting, but the subset reruns only this curriculum strategy and remains descriptive because it is not an epoch-matched causal comparison against all Part 2 strategies.
 \clearpage
 
 \subsection{Part 3: Hardness Metrics}
