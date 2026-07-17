@@ -1966,7 +1966,13 @@ def test_part3_correlation_input_scopes_deduplicate_and_exclude_baseline_rows():
     one_baseline = correlation_input[correlation_input["analysis_scope"] == "one_baseline_row"]
     non_baseline = correlation_input[correlation_input["analysis_scope"] == "non_baseline_rows"]
 
-    assert counts == {"all_rows": 12, "non_baseline_rows": 9, "one_baseline_row": 10}
+    assert counts == {
+        "all_rows": 12,
+        "grid_standardized_non_baseline": 9,
+        "non_baseline_rows": 9,
+        "one_baseline_row": 10,
+        "within_grid_non_baseline": 9,
+    }
     assert one_baseline["num_tiles"].eq(1).sum() == 1
     assert one_baseline.loc[one_baseline["num_tiles"] == 1, "tile_permutation_name"].tolist() == ["baseline"]
     assert non_baseline["num_tiles"].eq(1).sum() == 0
@@ -1987,28 +1993,51 @@ def test_part3_correlations_include_analysis_scopes_and_scope_sample_sizes():
                 "combined_hardness_score": 0.00,
             }
         )
-    for index in range(9):
-        rows.append(
-            {
-                "tiles_per_side": 4 + index,
-                "num_tiles": 16 + index,
-                "tile_permutation_id": (index % 3) + 1,
-                "best_val_accuracy": 0.88 - 0.01 * index,
-                "global_tile_displacement": 0.10 + 0.03 * index,
-                "adjacency_destruction_hardness": 0.20 + 0.04 * index,
-                "spatial_permutation_entropy": 0.15 + 0.02 * index,
-                "combined_hardness_score": 0.18 + 0.03 * index,
-            }
-        )
+    for grid_index, tiles_per_side in enumerate([4, 7, 10]):
+        for tile_permutation_id in [1, 2, 3]:
+            metric_offset = grid_index * 0.02
+            rows.append(
+                {
+                    "tiles_per_side": tiles_per_side,
+                    "num_tiles": tiles_per_side * tiles_per_side,
+                    "tile_permutation_id": tile_permutation_id,
+                    "best_val_accuracy": 0.90 - 0.03 * tile_permutation_id - metric_offset,
+                    "global_tile_displacement": 0.10 * tile_permutation_id + metric_offset,
+                    "adjacency_destruction_hardness": 0.20 * tile_permutation_id + metric_offset,
+                    "spatial_permutation_entropy": 0.15 * tile_permutation_id + metric_offset,
+                    "combined_hardness_score": 0.18 * tile_permutation_id + metric_offset,
+                }
+            )
 
     correlations = compute_part3_metric_correlations(pd.DataFrame(rows))
 
-    assert set(correlations["analysis_scope"]) == {"all_rows", "one_baseline_row", "non_baseline_rows"}
+    assert set(correlations["analysis_scope"]) == {
+        "all_rows",
+        "grid_standardized_non_baseline",
+        "one_baseline_row",
+        "non_baseline_rows",
+        "within_grid_non_baseline",
+    }
     assert correlations.groupby("analysis_scope")["n"].first().to_dict() == {
         "all_rows": 12,
+        "grid_standardized_non_baseline": 9,
         "non_baseline_rows": 9,
         "one_baseline_row": 10,
+        "within_grid_non_baseline": 3,
     }
+    within_grid = correlations[correlations["analysis_scope"] == "within_grid_non_baseline"]
+    assert len(within_grid) == 12
+    assert within_grid["tiles_per_side"].notna().all()
+    assert within_grid["num_tiles"].notna().all()
+    assert set(within_grid["tiles_per_side"]) == {4, 7, 10}
+    assert set(within_grid["num_tiles"]) == {16, 49, 100}
+    assert within_grid["n"].eq(3).all()
+    grid_standardized = correlations[correlations["analysis_scope"] == "grid_standardized_non_baseline"]
+    assert len(grid_standardized) == 4
+    assert grid_standardized["tiles_per_side"].isna().all()
+    assert grid_standardized["num_tiles"].isna().all()
+    assert grid_standardized["n"].eq(9).all()
+    assert np.allclose(grid_standardized["pearson"], -1.0)
 
 
 def test_part3_correlations_are_finite_for_non_constant_accuracy():

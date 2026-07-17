@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from typing import Sequence
 
 import numpy as np
@@ -184,7 +185,7 @@ def compute_spatial_permutation_entropy(
     _, counts = np.unique(np.asarray(bins, dtype=object), return_counts=True)
     probabilities = counts.astype(float) / float(tile_permutation_values.size)
     entropy = -float(np.sum(probabilities * np.log(probabilities)))
-    maximum = math.log(tile_permutation_values.size)
+    maximum = math.log(_spatial_entropy_max_bin_count(tiles_per_side, tile_permutation_values.size))
     if maximum == 0.0:
         return 0.0
     return _clip_unit(entropy / maximum)
@@ -339,6 +340,34 @@ def _movement_bin(displacement: np.ndarray, tiles_per_side: int) -> str:
     else:
         tier = "far"
     return f"{direction}:{tier}"
+
+
+@lru_cache(maxsize=None)
+def _movement_bin_alphabet_size(tiles_per_side: int) -> int:
+    """Return the number of movement bins reachable on a square tile grid."""
+
+    _validate_tiles_per_side(tiles_per_side)
+    bins: set[str] = set()
+    for source_row in range(tiles_per_side):
+        for source_col in range(tiles_per_side):
+            for destination_row in range(tiles_per_side):
+                for destination_col in range(tiles_per_side):
+                    bins.add(
+                        _movement_bin(
+                            np.asarray(
+                                [destination_row - source_row, destination_col - source_col],
+                                dtype=np.intp,
+                            ),
+                            tiles_per_side,
+                        )
+                    )
+    return len(bins)
+
+
+def _spatial_entropy_max_bin_count(tiles_per_side: int, num_tiles: int) -> int:
+    """Return the effective support size for spatial entropy normalization."""
+
+    return min(num_tiles, _movement_bin_alphabet_size(tiles_per_side))
 
 
 def _validate_tiles_per_side(tiles_per_side: int) -> None:

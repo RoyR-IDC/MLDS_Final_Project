@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from src.evaluation.tile_permutation_difficulty import (
@@ -6,6 +8,8 @@ from src.evaluation.tile_permutation_difficulty import (
     compute_combined_hardness,
     compute_global_displacement,
     compute_spatial_permutation_entropy,
+    _movement_bin,
+    _movement_bin_alphabet_size,
 )
 from src.preprocessing.tile_permutations import identity_tile_permutation
 
@@ -24,6 +28,34 @@ def test_spatial_permutation_entropy_baseline_and_1x1_are_zero():
 
 def test_spatial_permutation_entropy_is_bounded():
     assert 0.0 <= compute_spatial_permutation_entropy([8, 1, 6, 3, 4, 5, 2, 7, 0], 3) <= 1.0
+
+
+def test_spatial_permutation_entropy_normalizes_by_effective_bin_alphabet():
+    tiles_per_side = 10
+    tile_permutation = list(reversed(range(tiles_per_side * tiles_per_side)))
+    destination_by_source = [0] * len(tile_permutation)
+    for destination, source in enumerate(tile_permutation):
+        destination_by_source[source] = destination
+
+    bins = []
+    for source, destination in enumerate(destination_by_source):
+        source_row, source_col = divmod(source, tiles_per_side)
+        destination_row, destination_col = divmod(destination, tiles_per_side)
+        bins.append(
+            _movement_bin(
+                [destination_row - source_row, destination_col - source_col],
+                tiles_per_side,
+            )
+        )
+    probabilities = [bins.count(movement_bin) / len(bins) for movement_bin in set(bins)]
+    raw_entropy = -sum(probability * math.log(probability) for probability in probabilities)
+    effective_support = min(len(tile_permutation), _movement_bin_alphabet_size(tiles_per_side))
+
+    entropy = compute_spatial_permutation_entropy(tile_permutation, tiles_per_side)
+
+    assert effective_support < len(tile_permutation)
+    assert entropy == pytest.approx(raw_entropy / math.log(effective_support))
+    assert entropy != pytest.approx(raw_entropy / math.log(len(tile_permutation)))
 
 
 def test_spatial_permutation_entropy_is_higher_for_mixed_than_structured_movement():
