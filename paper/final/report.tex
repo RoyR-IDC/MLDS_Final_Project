@@ -257,7 +257,7 @@ The permutation-difficulty curriculum changes the spatial difficulty presented d
 
 \subsection{Tile Permutation Hardness Metrics}
 
-We describe each tested deterministic tile permutation using three complementary, model-agnostic axes and a fourth combined score. These metrics are descriptors of the permutations used in this experiment; they should not be read as intrinsic difficulty measures for all model classes. Let the image be divided into an $N \times N$ grid. For each source tile $i$, let $(r_i, c_i)$ denote its original row and column, and let $(r'_i, c'_i)$ denote its destination after applying the permutation.
+We describe each tested deterministic tile permutation using three complementary, model-agnostic axes and a fourth combined score, summarized in Table~\ref{tab:tile-permutation-hardness-metrics}. These metrics are descriptors of the permutations used in this experiment; they should not be read as intrinsic difficulty measures for all model classes. Let the image be divided into an $N \times N$ grid. For each source tile $i$, let $(r_i, c_i)$ denote its original row and column, and let $(r'_i, c'_i)$ denote its destination after applying the permutation.
 
 \begin{table}[t]
   \centering
@@ -561,7 +561,7 @@ The Part 2 ablation results identify promising patterns within the executed 30-e
 Future work should include epoch-matched Part 2 regular baselines, repeated training seeds across the full model and ablation matrix, independent test evaluation, more deterministic and random permutation samples, transfer tests across permutation functions, and experiments on datasets that require stronger global shape reasoning. These extensions have not been performed here. Overall, the study provides preliminary empirical evidence and a reproducible framework for analyzing classification under deterministic spatial permutations, while showing that stronger statistical validation and transfer experiments are needed before drawing broader conclusions about permutation robustness.
 
 \clearpage
-\begin{thebibliography}{16}
+\begin{thebibliography}{14}
 
 \bibitem[Bengio et~al.(2009)]{bengio2009curriculum}
 Y.~Bengio, J.~Louradour, R.~Collobert, and J.~Weston.
@@ -604,12 +604,6 @@ I.~Goodfellow, Y.~Bengio, and A.~Courville.
 \newblock \emph{Deep Learning}.
 \newblock MIT Press, 2016.
 \newblock \url{https://www.deeplearningbook.org/}.
-
-\bibitem[He et~al.(2016)]{he2016deep}
-K.~He, X.~Zhang, S.~Ren, and J.~Sun.
-\newblock Deep residual learning for image recognition.
-\newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition}, pages 770--778, 2016.
-\newblock \url{https://doi.org/10.1109/CVPR.2016.90}.
 
 \bibitem[Hermann et~al.(2020)]{hermann2020origins}
 K.~L. Hermann, T.~Chen, and S.~Kornblith.
