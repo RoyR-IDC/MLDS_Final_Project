@@ -311,7 +311,12 @@ N^3, & \text{if } N \text{ is even}, \\
 N(N^2 - 1), & \text{if } N \text{ is odd}.
 \end{cases}
 \]
-This is the closed form of the implementation's row/column reversal maximum. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
+This is the closed form of the implementation's row/column reversal maximum. The derivation separates Manhattan distance into row and column contributions. Along one axis, each coordinate $0,\ldots,N-1$ appears $N$ times, once for each tile in that row or column. The largest total one-axis displacement pairs the sorted source coordinates with the reversed destination coordinates, giving
+\[
+N \sum_{k=0}^{N-1} |(N-1-k)-k|
+= N \sum_{k=0}^{N-1} |N-1-2k|.
+\]
+There are two axes, so the maximum total Manhattan displacement is twice this quantity. If $N$ is even, the absolute values are paired odd distances whose sum is $N^2/2$ along one unweighted axis, giving $D_{\max}=2N(N^2/2)=N^3$. If $N$ is odd, the middle coordinate maps to itself and the paired even distances sum to $(N^2-1)/2$, giving $D_{\max}=2N((N^2-1)/2)=N(N^2-1)$. A low value indicates that tiles remain close to their original locations. A high value indicates large-scale spatial relocation.
 
 \subsubsection{Spatial Permutation Entropy}
 
