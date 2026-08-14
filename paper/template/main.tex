@@ -1,0 +1,204 @@
+\documentclass[12pt,twocolumn]{article}
+
+% Packages
+\usepackage{graphicx}
+\usepackage{sectsty}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage[numbers]{natbib}
+
+% Margins
+\geometry{
+  top=1in,
+  bottom=1in,
+  left=1in,
+  right=1in
+}
+
+% Header & Footer
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{14.5pt}
+\fancyhead[L]{Project Name Here}
+\fancyhead[R]{\thepage}
+% \fancyfoot[L]{Students: Student 1, Student 2 \quad Advisors: Advisor 1, Advisor 2}
+% \fancyfoot[R]{\today}
+
+% Section Styling
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% Title, Authors, and Institutions
+\title{
+    \Huge \textbf{Final Project Report}\\[1em]
+    \Large \textbf{Project Name}
+}
+\author{%
+  \textbf{Student 1}\\
+  Reichman University\\
+  \texttt{ID: 12345678}%
+  \and
+  \textbf{Student 2}\\
+  Reichman University\\
+  \texttt{ID: 87654321}%
+}
+\date{\today}
+
+\begin{document}
+
+% Create a full-width title block before the two-column content starts.
+\twocolumn[{
+\centering
+\includegraphics[width=0.4\textwidth]{images/runi_logo.png}\\[1em]
+{\LARGE Reichman University}\\[1em]
+{\large Efi Arazi School of Computer Science}\\[1em]
+{\large M.Sc. Program in Machine Learning and Data Science}\\[1em]
+\vspace{2.5em}
+
+
+
+
+
+
+
+{\Huge Final Project Report}\\[1.5em]
+{\Large Project Name}\\[1em]
+{\small \textbf{Student 1} \quad \texttt{ID: 123456789} \quad \textbf{Student 2} \quad \texttt{ID: 987654321}}\\[1em]
+{\small \textbf{Advisors:} Advisor 1 (ABC University) \space --- \space Advisor 2 (XYZ Research Lab)}\\[1em]
+{\small \today}\\[1em]
+\begin{flushleft}
+\begin{abstract}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec odio. Praesent libero. Sed cursus ante dapibus diam. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Aenean lacinia bibendum nulla sed consectetur.Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec odio. Praesent libero. Sed cursus ante dapibus diam. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Aenean lacinia bibendum nulla sed consectetur.Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec odio. Praesent libero. Sed cursus ante dapibus diam. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Aenean lacinia bibendum nulla sed consectetur.
+\end{abstract}
+\end{flushleft}
+
+\vspace{1em}
+}]
+\clearpage
+\twocolumn
+
+\section{Introduction}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Donec sollicitudin molestie malesuada. Proin eget tortor risus. Nulla quis lorem ut libero malesuada feugiat.
+
+In hac habitasse platea dictumst. Sed porttitor lectus nibh. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus. Cras ultricies ligula sed magna dictum porta. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Mauris blandit aliquet \citet{he2016deep} elit, eget tincidunt nibh pulvinar a.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec rutrum congue leo eget malesuada. Curabitur aliquet quam id dui posuere blandit. Pellentesque in ipsum id orci porta dapibus. Proin eget tortor risus. Vivamus suscipit tortor eget felis porttitor volutpat.
+
+Aliquam sit amet gravida nibh, facilisis gravida odio. Phasellus quis lectus nulla. Nulla facilisi. Donec tempor, urna vel elementum fermentum, magna arcu vehicula urna, at tincidunt odio elit eu quam.
+
+\section{Related Works}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Donec sollicitudin molestie malesuada. Proin eget tortor risus. Nulla quis lorem ut libero malesuada feugiat.
+
+In hac habitasse platea dictumst. Sed porttitor lectus nibh. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus. Cras ultricies ligula sed magna dictum porta. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Mauris blandit aliquet elit, eget tincidunt nibh pulvinar a.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec rutrum congue leo eget malesuada. Curabitur aliquet quam id dui posuere blandit. Pellentesque in ipsum id orci porta dapibus. Proin eget tortor risus. Vivamus suscipit tortor eget felis porttitor volutpat.
+
+Aliquam sit amet gravida nibh, facilisis gravida odio. Phasellus quis lectus nulla. Nulla facilisi. Donec tempor, urna vel elementum fermentum, magna arcu vehicula urna, at tincidunt odio elit eu quam.
+
+\section{Data Overview}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Donec sollicitudin molestie malesuada. Proin eget tortor risus. Nulla quis lorem ut libero malesuada feugiat.
+
+In hac habitasse platea dictumst. Sed porttitor lectus nibh. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus. Cras ultricies ligula sed magna dictum porta. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Mauris blandit aliquet elit, eget tincidunt nibh pulvinar a.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec rutrum congue leo eget malesuada. Curabitur aliquet quam id dui posuere blandit. Pellentesque in ipsum id orci porta dapibus. Proin eget tortor risus. Vivamus suscipit tortor eget felis porttitor volutpat.
+
+Aliquam sit amet gravida nibh, facilisis gravida odio. Phasellus quis lectus nulla. Nulla facilisi. Donec tempor, urna vel elementum fermentum, magna arcu vehicula urna, at tincidunt odio elit eu quam.
+
+
+\section{Methodology}
+
+Curabitur arcu erat, accumsan id imperdiet et, porttitor at sem. Donec sollicitudin molestie malesuada. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi \citet{krizhevsky2012imagenet}.
+
+Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Donec velit neque, auctor sit amet aliquam vel, ullamcorper sit amet ligula. Sed porttitor lectus nibh. Pellentesque in ipsum id orci porta dapibus. Suspendisse potenti.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris blandit aliquet elit, eget tincidunt nibh pulvinar a. Proin eget tortor risus. Quisque velit nisi, pretium ut lacinia in, elementum id enim. Nulla quis lorem ut libero malesuada feugiat.
+
+Curabitur aliquet quam id dui posuere blandit. Donec rutrum congue leo eget malesuada. Vivamus suscipit tortor eget felis porttitor volutpat. Integer aliquet, massa id lobortis dictum, urna mi bibendum elit, quis gravida sem purus ut nulla.
+
+\section{Results and Discussion}
+
+\subsection{Analysis}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus suscipit tortor eget felis porttitor volutpat. Donec rutrum congue leo eget malesuada. Nulla quis lorem ut libero malesuada feugiat. \citet{vaswani2017attention}
+
+Sed porttitor lectus nibh. Mauris blandit aliquet elit, eget tincidunt nibh pulvinar a. Proin eget tortor risus. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Ut id quam id odio porta efficitur.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+
+\subsection{Results}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.7\linewidth]{images/example1.png} % Replace with your image file if available
+  \caption{Lorem ipsum dolor sit amet, consectetur adipiscing elit.}
+  \label{fig:example}
+\end{figure}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{|c|c|c|}
+    \hline
+    \textbf{Item} & \textbf{Value} & \textbf{Remark} \\
+    \hline
+    A & 123 & Lorem ipsum \\
+    \hline
+    B & 456 & Dolor sit amet \\
+    \hline
+    C & 789 & Consectetur \\
+    \hline
+  \end{tabular}
+  \caption{Table caption: Lorem ipsum dolor sit amet.}
+  \label{tab:example}
+\end{table}
+
+Lorem ipsum dolor sit  amet, consectetur adipiscing elit. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Donec velit neque, auctor sit amet aliquam vel, ullamcorper sit amet ligula. Integer aliquet, massa id lobortis dictum, urna mi bibendum elit, quis gravida sem purus ut nulla. Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
+According to \citet{goodfellow2016deep}, the approach yields better results. Additional research also supports these findings \citep{bishop2006pattern}. Nullam quis risus eget urna mollis ornare vel eu leo. Donec sed odio dui. Cras justo odio, dapibus ac facilisis in, egestas eget quam. Donec ullamcorper nulla non metus auctor fringilla.
+
+\section{Discussion}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed porttitor lectus nibh. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus.
+
+Sed porttitor lectus nibh. Vivamus suscipit tortor eget felis porttitor volutpat. Donec rutrum congue leo eget malesuada. Quisque velit nisi, pretium ut lacinia in, elementum id enim. Ut id quam id odio porta efficitur.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+\section{Conclusion and Future Work}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed porttitor lectus nibh. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus.
+
+Sed porttitor lectus nibh. Vivamus suscipit tortor eget felis porttitor volutpat. Donec rutrum congue leo eget malesuada. Quisque velit nisi, pretium ut lacinia in, elementum id enim. Ut id quam id odio porta efficitur.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+\clearpage
+
+% Switch to one-column for References
+\onecolumn
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\twocolumn
+\section{Appendix}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed porttitor lectus nibh. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi. Curabitur non nulla sit amet nisl tempus convallis quis ac lectus.
+
+Sed porttitor lectus nibh. Vivamus suscipit tortor eget felis porttitor volutpat. Donec rutrum congue leo eget malesuada. Quisque velit nisi, pretium ut lacinia in, elementum id enim. Ut id quam id odio porta efficitur.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus magna justo, lacinia eget consectetur sed, convallis at tellus. Proin eget tortor risus. Morbi leo risus, porta ac consectetur ac, vestibulum at eros.
+
+
+\end{document}

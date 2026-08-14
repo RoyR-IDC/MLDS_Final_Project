@@ -2,21 +2,507 @@
 
 from __future__ import annotations
 
+import json
 import os
 import random
-from typing import Any, Dict, List, Mapping, Sequence
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Sequence, cast
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import pandas as pd
 import torch
+from torch._C import device as TorchDevice
+from tqdm.auto import tqdm
 
-from src.preprocessing.dogs_cats import Sample, discover_samples, stratified_split
-from src.preprocessing.permutations import PermutationRecord
+from src.evaluation.tile_permutation_difficulty import (
+    compute_adjacency_destruction_hardness,
+    compute_combined_hardness,
+    compute_global_displacement,
+    compute_spatial_permutation_entropy,
+)
+from src.experiments.results import (
+    aggregate_accuracy,
+    build_result_row,
+    experiment_intermediate_figure_path,
+    experiment_output_paths,
+    save_aggregated_accuracy,
+    save_rows,
+)
+from src.models.registry import SUPPORTED_MODEL_NAMES, validate_model_name
+from src.preprocessing.samples import Sample, discover_samples, stratified_split
+from src.preprocessing.tile_permutations import (
+    base_tile_permutation_name,
+    build_tile_permutation_records,
+    tile_permutation_from_jsonable,
+    tile_permutation_to_jsonable,
+)
 from src.utils.config import CVExperimentConfig
 from src.utils.io import ensure_dir, save_csv
 
 
-def get_device(config: CVExperimentConfig) -> torch.device:
+__all__ = [
+    "aggregate_accuracy",
+    "build_result_row",
+    "experiment_intermediate_figure_path",
+    "experiment_output_paths",
+    "save_aggregated_accuracy",
+    "save_rows",
+    "refresh_part2_ablation_comparison_figure",
+]
+
+
+PERMUTATION_MARKERS = {
+    "easy": "o",
+    "medium": "x",
+    "hard": "^",
+    "baseline": "D",
+    "unknown": "s",
+}
+PERMUTATION_X_OFFSETS = {
+    "easy": -1.5,
+    "medium": -0.5,
+    "hard": 0.5,
+    "baseline": 1.5,
+    "unknown": 0.0,
+}
+ACCURACY_Y_LIMITS = (0.50, 1.00)
+CONDITION_LABELS = {
+    "easy": "easy",
+    "medium": "medium",
+    "hard": "hard",
+    "baseline": "Baseline: no permutation",
+    "unknown": "unknown",
+}
+PART2_DELTA_REFERENCE_LABEL = "Matched Part 1 grid baseline reference"
+PART2_DEFAULT_PART1_BASELINE_CONDITION = "frozen_pretrained_binary_head"
+
+
+def _read_csv_dataframe(path: str) -> pd.DataFrame:
+    """Read a CSV as a DataFrame with a narrowed static type."""
+
+    return cast(pd.DataFrame, pd.read_csv(path))
+
+
+def _as_axes(axis: object) -> Axes:
+    """Narrow matplotlib's broad ``subplots`` return type for single-axis plots."""
+
+    return cast(Axes, axis)
+
+
+def _sorted_dataframe(frame: pd.DataFrame, by: Sequence[str] | str, *, na_position: str = "last") -> pd.DataFrame:
+    """Return a sorted DataFrame with a narrowed static type."""
+
+    return cast(pd.DataFrame, frame.sort_values(by, na_position=na_position))
+
+
+def _reset_dataframe_index(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return a DataFrame with a reset index and a narrowed static type."""
+
+    return cast(pd.DataFrame, frame.reset_index(drop=True))
+
+
+def _archive_existing_figure(output_path: str) -> str | None:
+    """Rename an existing figure with a timestamp before writing a fresh one."""
+
+    path = Path(output_path)
+    if not path.exists():
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_path = path.with_name(f"{path.stem}_{timestamp}{path.suffix}")
+    suffix_index = 1
+    while archive_path.exists():
+        archive_path = path.with_name(f"{path.stem}_{timestamp}_{suffix_index}{path.suffix}")
+        suffix_index += 1
+    path.rename(archive_path)
+    return str(archive_path)
+
+
+def _copy_existing_figure_as_original(output_path: str, original_stem_suffix: str = "original") -> str | None:
+    """Copy an existing figure to a stable original-file path before overwriting it."""
+
+    path = Path(output_path)
+    if not path.exists():
+        return None
+
+    original_path = path.with_name(f"{path.stem}_{original_stem_suffix}{path.suffix}")
+    if original_path.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_path = path.with_name(f"{path.stem}_{original_stem_suffix}_{timestamp}{path.suffix}")
+        suffix_index = 1
+        while original_path.exists():
+            original_path = path.with_name(
+                f"{path.stem}_{original_stem_suffix}_{timestamp}_{suffix_index}{path.suffix}"
+            )
+            suffix_index += 1
+
+    shutil.copy2(path, original_path)
+    return str(original_path)
+
+
+def _permutation_marker_name(value: object) -> str:
+    """Return a normalized marker key for a tile permutation difficulty label."""
+
+    if value is None or (isinstance(value, float) and bool(pd.isna(value))):
+        return "baseline"
+    name = base_tile_permutation_name(str(value).strip().lower())
+    return name if name in PERMUTATION_MARKERS else "unknown"
+
+
+def _is_missing_scalar(value: object) -> bool:
+    return value is None or (isinstance(value, float) and bool(pd.isna(value)))
+
+
+def _accuracy_plot_marker_name(row: pd.Series) -> str:
+    """Return the marker key for accuracy-vs-tiles raw condition points."""
+
+    num_tiles = row.get("num_tiles")
+    tiles_per_side = row.get("tiles_per_side")
+    tile_permutation = row.get("tile_permutation")
+    if (
+        (num_tiles is not None and not pd.isna(num_tiles) and int(num_tiles) == 1)
+        or _is_missing_scalar(tiles_per_side)
+        or _is_missing_scalar(tile_permutation)
+    ):
+        return "baseline"
+    return _permutation_marker_name(row.get("tile_permutation_name"))
+
+
+def _tile_grid_label(value: object) -> str:
+    """Return a readable tile-grid label."""
+
+    if value is None or (isinstance(value, float) and bool(pd.isna(value))):
+        return "1x1"
+    tiles_per_side = int(value)
+    return f"{tiles_per_side}x{tiles_per_side}"
+
+
+def _single_value_label(frame: pd.DataFrame, column: str) -> str | None:
+    if column not in frame.columns:
+        return None
+    values = [str(value) for value in frame[column].dropna().unique()]
+    return values[0] if len(values) == 1 else None
+
+
+def _plot_title(base_title: str, *, frame: pd.DataFrame, model_column: str = "model_name") -> str:
+    model_name = _single_value_label(frame, model_column)
+    ablation_name = _single_value_label(frame, "ablation_name")
+    context = " / ".join(value for value in [model_name, ablation_name] if value)
+    return f"{context}: {base_title}" if context else base_title
+
+
+def _two_line_plot_title(title: str) -> str:
+    """Split contextual plot titles across two lines for readability."""
+
+    if ": " in title:
+        return title.replace(": ", "\n", 1)
+    if " vs " in title:
+        return title.replace(" vs ", "\nvs ", 1)
+    return title
+
+
+def _model_values(frame: pd.DataFrame, model_column: str) -> list[str]:
+    if model_column not in frame.columns:
+        return []
+    return [str(value) for value in frame[model_column].dropna().unique()]
+
+
+def _color_by_model(model_values: Sequence[str]) -> dict[str, str]:
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    if not color_cycle:
+        return {}
+    known_colors = {
+        model_name: color_cycle[index % len(color_cycle)]
+        for index, model_name in enumerate(SUPPORTED_MODEL_NAMES)
+    }
+    extra_names = sorted(model_name for model_name in model_values if model_name not in known_colors)
+    extra_colors = {
+        model_name: color_cycle[(len(SUPPORTED_MODEL_NAMES) + index) % len(color_cycle)]
+        for index, model_name in enumerate(extra_names)
+    }
+    return {model_name: known_colors.get(model_name, extra_colors.get(model_name, "")) for model_name in model_values}
+
+
+def _tile_axis_label(value: object) -> str:
+    num_tiles = int(value)
+    if num_tiles == 1:
+        return "1"
+    tiles_per_side = int(num_tiles ** 0.5)
+    if tiles_per_side * tiles_per_side == num_tiles:
+        return f"{tiles_per_side}x{tiles_per_side}"
+    return str(num_tiles)
+
+
+def _tile_axis_positions(values: Sequence[object]) -> dict[int, int]:
+    tick_values = sorted({int(value) for value in values if not pd.isna(value)})
+    return {value: index for index, value in enumerate(tick_values)}
+
+
+def _is_intermediate_accuracy_plot(output_path: str, title: str | None) -> bool:
+    if title is not None:
+        return title.startswith("Intermediate Model Plot:")
+    return f"{os.sep}intermediate{os.sep}" in output_path
+
+
+def _set_tile_axis_ticks(ax: Axes, values: Sequence[object]) -> dict[int, int]:
+    tile_positions = _tile_axis_positions(values)
+    tick_values = list(tile_positions)
+    ax.set_xticks(
+        [tile_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+    return tile_positions
+
+
+def _condition_marker_kwargs(marker_name: str, *, color: str | None, alpha: float = 0.78) -> dict[str, Any]:
+    marker = PERMUTATION_MARKERS[marker_name]
+    kwargs: dict[str, Any] = {
+        "marker": marker,
+        "s": 72 if marker_name == "baseline" else 58,
+        "alpha": alpha,
+        "color": color,
+        "linewidths": 1.1,
+    }
+    if marker != "x":
+        kwargs["edgecolors"] = "black"
+    return kwargs
+
+
+def _raw_accuracy_column(raw_results: pd.DataFrame) -> str:
+    if "best_val_accuracy" in raw_results.columns:
+        return "best_val_accuracy"
+    if "val_accuracy" in raw_results.columns:
+        return "val_accuracy"
+    raise ValueError("raw_results must contain best_val_accuracy or val_accuracy")
+
+
+def _with_num_tiles(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return a frame with ``num_tiles`` populated from ``tiles_per_side`` if needed."""
+
+    frame = frame.copy()
+    if "num_tiles" in frame.columns or "tiles_per_side" not in frame.columns:
+        return frame
+    frame["num_tiles"] = [
+        1 if pd.isna(tiles_per_side) else int(tiles_per_side) * int(tiles_per_side)
+        for tiles_per_side in frame["tiles_per_side"]
+    ]
+    return frame
+
+
+def _scatter_raw_accuracy_vs_tiles(
+    ax: Axes,
+    raw_results: pd.DataFrame | None,
+    *,
+    model_column: str,
+    color_by_model: dict[str, str],
+    tile_positions: dict[int, int],
+    alpha: float = 0.78,
+) -> None:
+    """Overlay raw permutation results on an accuracy-vs-tiles axis."""
+
+    if raw_results is None or raw_results.empty or "num_tiles" not in raw_results.columns:
+        return
+
+    raw = raw_results.copy()
+    accuracy_column = _raw_accuracy_column(raw)
+    if "tile_permutation_name" not in raw.columns:
+        raw["tile_permutation_name"] = None
+
+    for _, row in raw.iterrows():
+        num_tiles = int(row["num_tiles"])
+        if num_tiles not in tile_positions:
+            continue
+        marker_name = _accuracy_plot_marker_name(row)
+        offset = PERMUTATION_X_OFFSETS[marker_name] * 0.045
+        model_name = str(row.get(model_column, "raw"))
+        ax.scatter(
+            tile_positions[num_tiles] + offset,
+            row[accuracy_column],
+            **_condition_marker_kwargs(
+                marker_name,
+                color=color_by_model.get(model_name),
+                alpha=alpha,
+            ),
+            label="_nolegend_",
+        )
+
+
+def _condition_legend_handles(marker_names: Sequence[str] = ("easy", "medium", "hard", "baseline")) -> list[plt.Line2D]:
+    handles = []
+    for name in marker_names:
+        marker = PERMUTATION_MARKERS[name]
+        handles.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker=marker,
+                color="0.25",
+                markeredgecolor="black" if marker != "x" else "0.25",
+                linestyle="None",
+                markersize=7,
+                label=CONDITION_LABELS[name],
+            )
+        )
+    return handles
+
+
+def _add_permutation_marker_legend(
+    ax: Axes,
+    *,
+    loc: str = "best",
+    bbox_to_anchor: tuple[float, float] | None = None,
+    marker_names: Sequence[str] = ("easy", "medium", "hard", "baseline"),
+) -> Any | None:
+    """Add a compact legend for raw permutation marker shapes."""
+
+    if not marker_names:
+        return None
+    marker_legend = ax.legend(
+        handles=_condition_legend_handles(marker_names),
+        title="Condition",
+        loc=loc,
+        bbox_to_anchor=bbox_to_anchor,
+    )
+    if marker_legend is not None:
+        ax.add_artist(marker_legend)
+    return marker_legend
+
+
+def _part2_delta_reference_handle() -> plt.Line2D:
+    return plt.Line2D(
+        [0],
+        [0],
+        color="0.25",
+        linewidth=1.0,
+        linestyle="--",
+        alpha=0.8,
+        label=PART2_DELTA_REFERENCE_LABEL,
+    )
+
+
+def _part2_part1_baseline_condition(config: CVExperimentConfig) -> str:
+    return str(
+        getattr(
+            config,
+            "part1_baseline_condition",
+            PART2_DEFAULT_PART1_BASELINE_CONDITION,
+        )
+    )
+
+
+def _filter_part1_baseline_for_part2(part1_results: pd.DataFrame, config: CVExperimentConfig) -> pd.DataFrame:
+    """Scope Part 1 model rows to the baseline condition matched by Part 2."""
+
+    condition = _part2_part1_baseline_condition(config)
+    candidate_masks: list[pd.Series] = []
+    if "experiment_condition" in part1_results.columns:
+        candidate_masks.append(part1_results["experiment_condition"].astype(str) == condition)
+    if "ablation_name" in part1_results.columns:
+        candidate_masks.append(part1_results["ablation_name"].astype(str) == condition)
+    if {"freeze_backbone", "classification_head"}.issubset(part1_results.columns):
+        freeze_backbone = part1_results["freeze_backbone"].astype(str).str.lower()
+        classification_head = part1_results["classification_head"]
+        classification_head_text = classification_head.astype(str).str.lower()
+        if condition == "frozen_pretrained_binary_head":
+            candidate_masks.append(freeze_backbone.eq("true") & classification_head.isna())
+        elif condition == "unfrozen_pretrained_binary_head":
+            candidate_masks.append(
+                freeze_backbone.eq("false") & classification_head_text.isin({"binary_linear", "linear"})
+            )
+
+    for mask in candidate_masks:
+        filtered = part1_results[mask].copy()
+        if not filtered.empty:
+            return cast(pd.DataFrame, filtered)
+    return part1_results.copy()
+
+
+def add_part2_grid_baseline_deltas(
+    aggregated: pd.DataFrame,
+    raw_results: pd.DataFrame | None = None,
+    *,
+    baseline_name: str = "regular_part1",
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Add grid-matched Part 1 baseline deltas to Part 2 result frames."""
+
+    if aggregated.empty or "ablation_name" not in aggregated.columns:
+        return aggregated.copy(), None if raw_results is None else raw_results.copy()
+
+    key_columns = ["tiles_per_side", "num_tiles"]
+    aggregated_with_delta = _with_num_tiles(aggregated)
+    baseline_rows = aggregated_with_delta[aggregated_with_delta["ablation_name"] == baseline_name]
+    if baseline_rows.empty:
+        aggregated_with_delta["delta_vs_grid_baseline"] = pd.NA
+    else:
+        baseline_by_grid = (
+            baseline_rows.groupby(key_columns, dropna=False)["mean_best_epoch_val_accuracy"].mean().reset_index()
+        )
+        baseline_by_grid = baseline_by_grid.rename(
+            columns={"mean_best_epoch_val_accuracy": "_grid_baseline_best_val_accuracy"}
+        )
+        aggregated_with_delta = aggregated_with_delta.merge(baseline_by_grid, on=key_columns, how="left")
+        aggregated_with_delta["delta_vs_grid_baseline"] = (
+            aggregated_with_delta["mean_best_epoch_val_accuracy"]
+            - aggregated_with_delta["_grid_baseline_best_val_accuracy"]
+        )
+
+    if raw_results is None:
+        return aggregated_with_delta, None
+
+    raw_with_delta = _with_num_tiles(raw_results)
+    if raw_with_delta.empty or "ablation_name" not in raw_with_delta.columns:
+        return aggregated_with_delta, raw_with_delta
+
+    accuracy_column = _raw_accuracy_column(raw_with_delta)
+    raw_baseline = raw_with_delta[raw_with_delta["ablation_name"] == baseline_name]
+    if raw_baseline.empty:
+        raw_with_delta["delta_vs_grid_baseline"] = pd.NA
+        return aggregated_with_delta, raw_with_delta
+
+    exact_key_columns = [*key_columns, "tile_permutation_id"]
+    exact_baseline = raw_baseline.groupby(exact_key_columns, dropna=False)[accuracy_column].mean().reset_index()
+    exact_baseline = exact_baseline.rename(columns={accuracy_column: "_exact_baseline_best_val_accuracy"})
+    grid_baseline = raw_baseline.groupby(key_columns, dropna=False)[accuracy_column].mean().reset_index()
+    grid_baseline = grid_baseline.rename(columns={accuracy_column: "_grid_baseline_best_val_accuracy"})
+
+    raw_with_delta = raw_with_delta.merge(exact_baseline, on=exact_key_columns, how="left")
+    raw_with_delta = raw_with_delta.merge(grid_baseline, on=key_columns, how="left")
+    raw_with_delta["_matched_baseline_best_val_accuracy"] = raw_with_delta[
+        "_exact_baseline_best_val_accuracy"
+    ].fillna(raw_with_delta["_grid_baseline_best_val_accuracy"])
+    raw_with_delta["delta_vs_grid_baseline"] = (
+        raw_with_delta[accuracy_column] - raw_with_delta["_matched_baseline_best_val_accuracy"]
+    )
+    return aggregated_with_delta, raw_with_delta
+
+
+def _is_part2_baseline_ablation(frame: pd.DataFrame, baseline_name: str = "regular_part1") -> pd.Series:
+    """Return a mask for Part 2 rows that represent the matched Part 1 baseline."""
+
+    if "ablation_name" not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    return frame["ablation_name"].astype(str) == baseline_name
+
+
+def _part3_metric_slug(metric: str) -> str:
+    return "combined_hardness" if metric == "combined_hardness_score" else metric
+
+
+def _part3_metric_grid_plot_paths(figures_dir: str, metric: str) -> dict[str, str]:
+    metric_slug = _part3_metric_slug(metric)
+    return {
+        "grid_hardness": os.path.join(figures_dir, f"part3_{metric_slug}_grid_vs_hardness.png"),
+        "grid_hardness_accuracy_3d": os.path.join(
+            figures_dir,
+            f"part3_{metric_slug}_grid_hardness_accuracy_3d.png",
+        ),
+    }
+
+
+def get_device(config: CVExperimentConfig) -> TorchDevice:
     """Return a configured device, falling back to CPU when needed.
 
     Args:
@@ -26,11 +512,18 @@ def get_device(config: CVExperimentConfig) -> torch.device:
         Torch device selected from the config.
     """
 
-    requested = str(config.device)
+    requested = str(config.device).lower()
     if requested == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = TorchDevice("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Selected device: {device}")
         return device
-    device = torch.device(requested)
+    device = TorchDevice(requested)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA was requested, but no CUDA GPU is available. In Colab, choose "
+            "Runtime > Change runtime type > GPU, then reconnect and rerun setup."
+        )
+    print(f"Selected device: {device}")
     return device
 
 
@@ -50,6 +543,34 @@ def _build_balanced_sample_subset(samples: list[Sample], limit: int, seed: int) 
     return balanced
 
 
+def _maybe_stage_colab_data_dir(config: CVExperimentConfig) -> str:
+    """Stage Drive-backed Colab data only when the active runtime is Colab."""
+
+    data_dir = str(config.data_dir)
+    if not bool(getattr(config, "using_google_colab", False)):
+        return data_dir
+
+    from src.utils.colab import stage_colab_data_to_local_disk
+
+    return stage_colab_data_to_local_disk(
+        data_dir,
+        local_data_dir=getattr(
+            config,
+            "colab_local_data_dir",
+            "/content/MLDS_Final_Project/data/dogs-vs-cats/train",
+        ),
+        enabled=bool(getattr(config, "stage_colab_data_to_local_disk", True)),
+        using_google_colab=True,
+    )
+
+
+def stage_configured_colab_data_dir(config: CVExperimentConfig) -> str:
+    """Apply the configured Colab data-staging policy and update ``config.data_dir``."""
+
+    config.data_dir = _maybe_stage_colab_data_dir(config)
+    return str(config.data_dir)
+
+
 def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list[Sample], list[Sample], list[Sample]]:
     """Discover and split configured Dogs vs Cats samples.
 
@@ -61,6 +582,7 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list
         Tuple of train, validation, and test sample lists.
     """
 
+    stage_configured_colab_data_dir(config)
     samples = discover_samples(config.data_dir)
     if config.sample_data and config.sample_limit is not None:
         samples = _build_balanced_sample_subset(samples, config.sample_limit, seed)
@@ -74,203 +596,1106 @@ def load_experiment_samples(config: CVExperimentConfig, seed: int) -> tuple[list
     return split_samples
 
 
-def build_result_row(
+def load_part1_model_baseline_raw_rows(
     config: CVExperimentConfig,
-    run_id: str,
     model_name: str,
-    record: PermutationRecord,
-    seed: int,
-    metrics: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Build one experiment result row for repeated accuracy measurements."""
+    ablation_name: str = "regular_part1",
+) -> list[dict[str, Any]]:
+    """Load raw Part 1 rows for one model and retag them for Part 2 comparison."""
 
-    row = {
-        'part': config.part,
-        'run_id': run_id,
-        'config_name': config.config_name,
-        'model_name': model_name,
-        'grid_size': record.grid_size,
-        'num_tiles': record.grid_size * record.grid_size,
-        'permutation_id': record.permutation_id,
-        'permutation_seed': record.permutation_seed,
-        'seed': seed,
-        **metrics,
-    }
-    return row
+    raw_path = os.path.join(config.results_dir, "part1_raw_results.csv")
+    if not os.path.exists(raw_path):
+        return []
 
+    part1_raw = _read_csv_dataframe(raw_path)
+    if "model_name" not in part1_raw.columns:
+        return []
 
-def _csv_safe_value(value: Any) -> Any:
-    """Convert array-like experiment values into CSV-friendly scalars/strings."""
+    part1_raw_any = cast(Any, part1_raw)
+    baseline = cast(pd.DataFrame, part1_raw_any[part1_raw_any["model_name"] == model_name].copy())
+    baseline = _filter_part1_baseline_for_part2(baseline, config)
+    if baseline.empty:
+        return []
 
-    if isinstance(value, torch.Tensor):
-        tensor = value.detach().cpu()
-        if tensor.numel() == 1:
-            return tensor.item()
-        return str(tensor.tolist())
-
-    if isinstance(value, Mapping):
-        return str({str(key): _csv_safe_value(nested_value) for key, nested_value in value.items()})
-
-    if isinstance(value, (list, tuple)):
-        return str([_csv_safe_value(item) for item in value])
-
-    tolist = getattr(value, "tolist", None)
-    if callable(tolist) and not isinstance(value, (str, bytes)):
-        converted = tolist()
-        if converted is value:
-            return value
-        return _csv_safe_value(converted)
-
-    item = getattr(value, "item", None)
-    if callable(item) and not isinstance(value, (str, bytes)):
-        try:
-            return item()
-        except (TypeError, ValueError):
-            return value
-
-    return value
+    baseline["part"] = config.part
+    baseline["config_name"] = config.config_name
+    baseline["ablation_name"] = ablation_name
+    if "run_id" not in baseline.columns:
+        baseline["run_id"] = "part1_regular_training"
+    return cast(list[dict[str, Any]], cast(Any, baseline).to_dict("records"))
 
 
-def _csv_safe_rows(rows: Sequence[Mapping[Any, Any]]) -> list[dict[str, Any]]:
-    """Return rows with string column names and scalar/string values."""
+def load_part1_model_baseline_aggregated(
+    config: CVExperimentConfig,
+    model_name: str,
+    ablation_name: str = "regular_part1",
+) -> pd.DataFrame:
+    """Load aggregated Part 1 rows for one model and retag them for Part 2 comparison."""
 
-    safe_rows = []
-    for row in rows:
-        safe_rows.append({str(key): _csv_safe_value(value) for key, value in row.items()})
-    return safe_rows
+    aggregated_path = os.path.join(config.results_dir, "part1_aggregated_results.csv")
+    raw_path = os.path.join(config.results_dir, "part1_raw_results.csv")
+    source_path = aggregated_path if os.path.exists(aggregated_path) else raw_path
+    if not os.path.exists(source_path):
+        print(f"Part 1 results were not found. Run Part 1 first to include the regular {model_name} baseline.")
+        return pd.DataFrame()
 
+    part1_results = _read_csv_dataframe(source_path)
+    if "model_name" not in part1_results.columns:
+        return pd.DataFrame()
 
-def aggregate_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame:
-    """Aggregate accuracy columns for repeated experiment runs.
+    part1_results_any = cast(Any, part1_results)
+    baseline = cast(pd.DataFrame, part1_results_any[part1_results_any["model_name"] == model_name].copy())
+    baseline = _filter_part1_baseline_for_part2(baseline, config)
+    if baseline.empty:
+        print(f"Part 1 results exist, but no rows were found for {model_name}.")
+        return pd.DataFrame()
 
-    Args:
-        raw_results: Per-run result table.
-        group_columns: Columns used to group repeated measurements.
+    if "mean_best_epoch_val_accuracy" not in baseline.columns:
+        if not {"val_accuracy", "best_val_accuracy"}.issubset(baseline.columns):
+            raise ValueError(
+                "Part 1 aggregated results use an unsupported schema. "
+                "Rerun Part 1 to regenerate aggregate columns with explicit final_epoch/best_epoch names."
+            )
+        baseline = cast(pd.DataFrame, aggregate_accuracy(
+            cast(pd.DataFrame, baseline),
+            group_columns=["model_name", "tiles_per_side", "num_tiles"],
+        ))
 
-    Returns:
-        Aggregated result table with mean, standard deviation, and counts.
-    """
-
-    aggregated_results = (
-        raw_results.groupby(list(group_columns), dropna=False)
-        .agg(
-            mean_val_accuracy=("val_accuracy", "mean"),
-            std_val_accuracy=("val_accuracy", "std"),
-            mean_best_val_accuracy=("best_val_accuracy", "mean"),
-            std_best_val_accuracy=("best_val_accuracy", "std"),
-            n_runs=("val_accuracy", "count"),
-        )
-        .reset_index()
-    )
-    return aggregated_results
-
-
-def experiment_output_paths(results_dir: str, figures_dir: str, part_name: str) -> Dict[str, str]:
-    """Return standard output paths for a notebook-owned experiment.
-
-    Args:
-        results_dir: Directory for CSV result files.
-        figures_dir: Directory for saved figures.
-        part_name: Experiment prefix such as ``part1`` or ``part2``.
-
-    Returns:
-        Mapping of stable artifact names to filesystem paths.
-    """
-
-    figure_name = "accuracy_vs_tiles" if part_name == "part1" else "ablation_comparison"
-    output_paths = {
-        "raw_results": os.path.join(results_dir, f"{part_name}_raw_results.csv"),
-        "aggregated_results": os.path.join(results_dir, f"{part_name}_aggregated_results.csv"),
-        "figure": os.path.join(figures_dir, f"{part_name}_{figure_name}.png"),
-    }
-    if part_name == "part1":
-        output_paths["permutations"] = os.path.join(results_dir, "part1_permutations.csv")
-    return output_paths
+    baseline["ablation_name"] = ablation_name
+    baseline["config_name"] = config.config_name
+    return baseline
 
 
-def save_rows(rows: Sequence[Mapping[Any, Any]], output_path: str) -> None:
-    """Save experiment rows to CSV.
-
-    Args:
-        rows: Result rows to save.
-        output_path: Destination CSV path.
-    """
-
-    save_csv(_csv_safe_rows(rows), output_path)
-
-
-def save_aggregated_accuracy(raw_results: pd.DataFrame, group_columns: Sequence[str], output_path: str) -> pd.DataFrame:
-    """Aggregate raw results and save the aggregated table.
-
-    Args:
-        raw_results: Per-run result table.
-        group_columns: Columns used for aggregation.
-        output_path: Destination CSV path.
-
-    Returns:
-        Aggregated accuracy table.
-    """
-
-    aggregated_results = aggregate_accuracy(raw_results, group_columns)
-    ensure_dir(os.path.dirname(output_path) or ".")
-    aggregated_results.to_csv(output_path, index=False)
-    return aggregated_results
-
-
-def plot_accuracy_vs_tiles(aggregated: pd.DataFrame, output_path: str, model_column: str = "model_name") -> None:
+def plot_accuracy_vs_tiles(
+    aggregated: pd.DataFrame,
+    output_path: str,
+    model_column: str = "model_name",
+    raw_results: pd.DataFrame | None = None,
+    title: str | None = None,
+) -> None:
     """Save an accuracy-vs-number-of-tiles plot.
 
     Args:
         aggregated: Aggregated result table.
         output_path: Destination path for the figure.
         model_column: Column used to split one curve per model.
+        raw_results: Optional raw result table to overlay individual permutations.
+        title: Optional explicit plot title.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
-    fig, ax = plt.subplots(figsize=(8, 5))
+    aggregated = _with_num_tiles(aggregated)
+    raw_results = None if raw_results is None else _with_num_tiles(raw_results)
+    model_values = _model_values(aggregated, model_column)
+    color_by_model = _color_by_model(model_values)
+    is_intermediate_plot = _is_intermediate_accuracy_plot(output_path, title)
+
+    fig, axis = plt.subplots(figsize=(9, 5.5))
+    ax = _as_axes(axis)
+    x_values = list(aggregated["num_tiles"])
+    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
+        x_values.extend(list(raw_results["num_tiles"]))
+    tile_positions = _set_tile_axis_ticks(ax, x_values)
     for model_name, group in aggregated.groupby(model_column):
-        group = group.sort_values("num_tiles")
-        ax.errorbar(
-            group["num_tiles"],
-            group["mean_best_val_accuracy"],
-            yerr=group["std_best_val_accuracy"].fillna(0.0),
-            marker="o",
-            label=str(model_name),
+        group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
+        line_label = (
+            "Mean across permutations"
+            if is_intermediate_plot and model_column == "model_name"
+            else str(model_name)
         )
-    ax.set_xlabel("Number of tiles")
+        line_x_values = [tile_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
+        ax.plot(
+            line_x_values,
+            group["mean_best_epoch_val_accuracy"],
+            marker=None if is_intermediate_plot else "o",
+            linewidth=2.0,
+            color=color_by_model.get(str(model_name)),
+            label=line_label,
+        )
+
+    if raw_results is not None and not raw_results.empty:
+        _scatter_raw_accuracy_vs_tiles(
+            ax,
+            raw_results,
+            model_column=model_column,
+            color_by_model=color_by_model,
+            tile_positions=tile_positions,
+            alpha=0.82 if is_intermediate_plot else 0.56,
+        )
+
+    ax.set_ylim(*ACCURACY_Y_LIMITS)
+    ax.set_xlabel("Number of image tiles after splitting")
     ax.set_ylabel("Best validation accuracy")
-    ax.set_title("Accuracy vs Number of Tiles")
+    default_title = (
+        f"Intermediate Model Plot: Validation Accuracy by Tiling Level - {model_values[0]}"
+        if is_intermediate_plot
+        else "Final Model Comparison: Mean Validation Accuracy by Tiling Level"
+    )
+    ax.set_title(title or default_title)
     ax.grid(True, alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=160)
+    model_legend_title = (
+        "Mean"
+        if is_intermediate_plot and model_column == "model_name"
+        else model_column.replace("_", " ").title()
+    )
+    model_legend = ax.legend(
+        title=model_legend_title,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0) if raw_results is not None and not raw_results.empty else None,
+    )
+    if model_legend is not None:
+        ax.add_artist(model_legend)
+    extra_artists = []
+    if model_legend is not None:
+        extra_artists.append(model_legend)
+    if raw_results is not None and not raw_results.empty:
+        marker_legend = _add_permutation_marker_legend(ax, loc="upper left", bbox_to_anchor=(1.02, 0.66))
+        if marker_legend is not None:
+            extra_artists.append(marker_legend)
+    if raw_results is not None and not raw_results.empty:
+        fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
+    else:
+        fig.tight_layout()
+    _archive_existing_figure(output_path)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight", bbox_extra_artists=extra_artists)
     plt.close(fig)
 
 
-def plot_ablation_results(aggregated: pd.DataFrame, output_path: str) -> None:
+def plot_ablation_results(
+    aggregated: pd.DataFrame,
+    output_path: str,
+    raw_results: pd.DataFrame | None = None,
+    title: str | None = None,
+    show_raw_points: bool = True,
+    show_aggregate_points: bool = True,
+    archive_existing: bool = True,
+) -> None:
     """Save a baseline-vs-improvement ablation plot.
 
     Args:
         aggregated: Aggregated Part 2 result table.
         output_path: Destination path for the figure.
+        raw_results: Optional raw result table to overlay individual permutations.
+        title: Optional explicit plot title.
+        show_raw_points: Whether to overlay individual permutation-condition runs.
+        show_aggregate_points: Whether to draw aggregate ablation points.
+        archive_existing: Whether to timestamp-rename an existing figure before saving.
     """
 
     ensure_dir(os.path.dirname(output_path) or ".")
-    fig, ax = plt.subplots(figsize=(8, 5))
-    for grid_size, group in aggregated.groupby("grid_size"):
-        sorted_group = group.sort_values("ablation_name")
-        ax.plot(
-            sorted_group["ablation_name"],
-            sorted_group["mean_best_val_accuracy"],
+    aggregated, raw_results = add_part2_grid_baseline_deltas(aggregated, raw_results)
+    y_column = (
+        "delta_vs_grid_baseline"
+        if "delta_vs_grid_baseline" in aggregated.columns and aggregated["delta_vs_grid_baseline"].notna().any()
+        else "mean_best_epoch_val_accuracy"
+    )
+    aggregated = _with_num_tiles(aggregated)
+    raw_results = None if raw_results is None else _with_num_tiles(raw_results)
+    axis_x_values = list(aggregated["num_tiles"])
+    if raw_results is not None and not raw_results.empty and "num_tiles" in raw_results.columns:
+        axis_x_values.extend(list(raw_results["num_tiles"]))
+    plot_aggregated = aggregated.copy()
+    plot_raw = None if raw_results is None else raw_results.copy()
+    if y_column == "delta_vs_grid_baseline":
+        plot_aggregated = plot_aggregated[~_is_part2_baseline_ablation(plot_aggregated)]
+        if plot_raw is not None:
+            plot_raw = plot_raw[~_is_part2_baseline_ablation(plot_raw)]
+    if not show_aggregate_points:
+        plot_aggregated = plot_aggregated.iloc[0:0]
+    if not show_raw_points:
+        plot_raw = None
+
+    ablation_source_frames = [plot_aggregated]
+    if plot_raw is not None:
+        ablation_source_frames.append(plot_raw)
+    ablation_names = sorted(
+        {
+            str(name)
+            for frame in ablation_source_frames
+            if "ablation_name" in frame.columns
+            for name in frame["ablation_name"].dropna().unique()
+        }
+    )
+    tile_positions = _tile_axis_positions(axis_x_values)
+    ablation_offsets = {
+        ablation_name: (index - (len(ablation_names) - 1) / 2.0) * 0.12
+        for index, ablation_name in enumerate(ablation_names)
+    }
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    color_by_ablation = {
+        ablation_name: color_cycle[index % len(color_cycle)] if color_cycle else None
+        for index, ablation_name in enumerate(ablation_names)
+    }
+
+    fig, axis = plt.subplots(figsize=(9, 5.5))
+    ax = _as_axes(axis)
+    ablation_handles = []
+    for ablation_name, group in plot_aggregated.groupby("ablation_name", sort=True):
+        ablation_name = str(ablation_name)
+        sorted_group = _sorted_dataframe(cast(pd.DataFrame, group), "num_tiles")
+        x_values = [
+            tile_positions[int(num_tiles)] + ablation_offsets.get(ablation_name, 0.0)
+            for num_tiles in sorted_group["num_tiles"]
+        ]
+        scatter = ax.scatter(
+            x_values,
+            sorted_group[y_column],
             marker="o",
-            label=f"{grid_size}x{grid_size}",
+            s=58,
+            alpha=0.85,
+            color=color_by_ablation.get(ablation_name),
+            label=ablation_name,
         )
-    ax.set_xlabel("Ablation")
-    ax.set_ylabel("Best validation accuracy")
-    ax.set_title("Baseline vs Improved Ablations")
+        ablation_handles.append((scatter, ablation_name))
+    if not ablation_handles and ablation_names:
+        ablation_handles = [
+            (
+                plt.Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    linestyle="None",
+                    markersize=7,
+                    color=color_by_ablation.get(ablation_name),
+                    markerfacecolor=color_by_ablation.get(ablation_name),
+                    markeredgecolor=color_by_ablation.get(ablation_name),
+                ),
+                ablation_name,
+            )
+            for ablation_name in ablation_names
+        ]
+
+    marker_names_used: list[str] = []
+    if plot_raw is not None and not plot_raw.empty:
+        raw = plot_raw.copy()
+        raw_y_column = "delta_vs_grid_baseline" if y_column == "delta_vs_grid_baseline" else _raw_accuracy_column(raw)
+        if "tile_permutation_name" not in raw.columns:
+            raw["tile_permutation_name"] = None
+        for _, row in raw.iterrows():
+            ablation_name = str(row.get("ablation_name"))
+            num_tiles = row.get("num_tiles")
+            if (
+                ablation_name not in ablation_offsets
+                or raw_y_column not in row
+                or pd.isna(row[raw_y_column])
+                or pd.isna(num_tiles)
+                or int(num_tiles) not in tile_positions
+            ):
+                continue
+            marker_name = _permutation_marker_name(row.get("tile_permutation_name"))
+            if marker_name not in marker_names_used:
+                marker_names_used.append(marker_name)
+            x_value = (
+                tile_positions[int(num_tiles)]
+                + ablation_offsets.get(ablation_name, 0.0)
+                + PERMUTATION_X_OFFSETS[marker_name] * 0.035
+            )
+            ax.scatter(
+                x_value,
+                row[raw_y_column],
+                **_condition_marker_kwargs(
+                    marker_name,
+                    color=color_by_ablation.get(ablation_name),
+                    alpha=0.65,
+                ),
+                label="_nolegend_",
+            )
+
+    reference_handle = None
+    if y_column == "delta_vs_grid_baseline":
+        reference_handle = _part2_delta_reference_handle()
+        ax.axhline(
+            0.0,
+            color="0.25",
+            linewidth=1.0,
+            linestyle="--",
+            alpha=0.8,
+            label=PART2_DELTA_REFERENCE_LABEL,
+        )
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel(
+        "Best validation accuracy - matched Part 1 grid baseline"
+        if y_column == "delta_vs_grid_baseline"
+        else "Best validation accuracy"
+    )
+    ax.set_title(_two_line_plot_title(title or _plot_title("Ablations vs Matched Grid Baseline", frame=aggregated)))
+    tick_values = list(tile_positions)
+    ax.set_xticks(
+        [tile_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
     ax.grid(True, axis="y", alpha=0.3)
-    ax.legend()
-    fig.autofmt_xdate(rotation=20)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=160)
+    has_raw_points = plot_raw is not None and not plot_raw.empty
+    ablation_legend = None
+    if ablation_handles:
+        ablation_legend = ax.legend(
+            [handle for handle, _ in ablation_handles],
+            [label for _, label in ablation_handles],
+            title="Ablation",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0) if has_raw_points else None,
+        )
+    if ablation_legend is not None:
+        ax.add_artist(ablation_legend)
+    extra_artists = []
+    if ablation_legend is not None:
+        extra_artists.append(ablation_legend)
+    reference_legend = None
+    if reference_handle is not None:
+        reference_legend = ax.legend(
+            handles=[reference_handle],
+            title="Reference",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 0.66 if ablation_legend is None else 0.42) if has_raw_points else None,
+        )
+        if reference_legend is not None:
+            ax.add_artist(reference_legend)
+            extra_artists.append(reference_legend)
+    if has_raw_points:
+        marker_order = [name for name in ("easy", "medium", "hard", "baseline", "unknown") if name in marker_names_used]
+        marker_legend = _add_permutation_marker_legend(
+            ax,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0 if ablation_legend is None else 0.66),
+            marker_names=marker_order,
+        )
+        if marker_legend is not None:
+            extra_artists.append(marker_legend)
+    if has_raw_points:
+        fig.tight_layout(rect=(0.0, 0.0, 0.78, 1.0))
+    else:
+        fig.tight_layout()
+    if archive_existing:
+        _archive_existing_figure(output_path)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight", bbox_extra_artists=extra_artists)
     plt.close(fig)
+
+
+def refresh_part2_ablation_comparison_figure(
+    *,
+    results_dir: str = os.path.join("outputs", "results"),
+    figures_dir: str = os.path.join("outputs", "figures"),
+    aggregated_results_path: str | None = None,
+    raw_results_path: str | None = None,
+    output_path: str | None = None,
+    original_stem_suffix: str = "original",
+) -> dict[str, str | None]:
+    """Refresh the final Part 2 ablation figure while preserving the current image.
+
+    The refreshed plot uses ablation colors and raw permutation marker shapes, matching
+    the marker convention used by the final Part 1 graph.
+    """
+
+    aggregated_results_path = aggregated_results_path or os.path.join(results_dir, "part2_aggregated_results.csv")
+    raw_results_path = raw_results_path or os.path.join(results_dir, "part2_raw_results.csv")
+    output_path = output_path or os.path.join(figures_dir, "part2_ablation_comparison.png")
+
+    aggregated = _read_csv_dataframe(aggregated_results_path)
+    raw_results = _read_csv_dataframe(raw_results_path)
+    copied_original_path = _copy_existing_figure_as_original(
+        output_path,
+        original_stem_suffix=original_stem_suffix,
+    )
+    plot_ablation_results(
+        aggregated,
+        output_path,
+        raw_results=raw_results,
+        show_raw_points=True,
+        show_aggregate_points=False,
+        archive_existing=False,
+    )
+    return {
+        "figure": output_path,
+        "original_figure": copied_original_path,
+        "aggregated_results": aggregated_results_path,
+        "raw_results": raw_results_path,
+    }
+
+
+def part3_output_paths(results_dir: str, figures_dir: str) -> Dict[str, object]:
+    """Return stable output paths for notebook-owned Part 3 analysis."""
+
+    metric_plots = {
+        metric: _part3_metric_grid_plot_paths(figures_dir, metric)
+        for metric in PART3_METRIC_COLUMNS
+    }
+    ordered_plot_paths = [
+        path
+        for metric in PART3_METRIC_COLUMNS
+        for path in [metric_plots[metric]["grid_hardness"]]
+    ]
+    existing_plots = [
+        path
+        for path in ordered_plot_paths
+        if os.path.exists(path)
+    ]
+    return {
+        "metrics": os.path.join(results_dir, "tile_permutation_metrics.csv"),
+        "joined": os.path.join(results_dir, "metric_accuracy_joined.csv"),
+        "correlation_input": os.path.join(results_dir, "metric_accuracy_correlation_input.csv"),
+        "correlations": os.path.join(results_dir, "metric_accuracy_correlations.csv"),
+        "metric_plots": metric_plots,
+        "plots": existing_plots,
+    }
+
+
+def load_or_build_part1_tile_permutations(
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Load saved Part 1 tile-permutation metadata, or recreate it deterministically."""
+
+    if os.path.exists(tile_permutation_csv):
+        return _read_csv_dataframe(tile_permutation_csv)
+
+    rows = []
+    for record in build_tile_permutation_records(
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=int(num_tile_permutations),
+        seed=seed,
+        include_baseline=True,
+    ):
+        rows.append(
+            {
+                "tiles_per_side": record.tiles_per_side,
+                "tile_permutation_id": record.tile_permutation_id,
+                "tile_permutation_name": record.tile_permutation_name,
+                "tile_permutation_seed": record.tile_permutation_seed,
+                "tile_permutation": json.dumps(tile_permutation_to_jsonable(record.tile_permutation)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _executable_part1_tile_permutations(tile_permutations: pd.DataFrame) -> pd.DataFrame:
+    """Return tile-permutation rows that correspond to actual Part 1 executions."""
+
+    executable = tile_permutations.copy()
+    return _reset_dataframe_index(
+        _sorted_dataframe(executable, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
+
+
+PART3_METRIC_COLUMNS = [
+    "global_tile_displacement",
+    "adjacency_destruction_hardness",
+    "spatial_permutation_entropy",
+    "combined_hardness_score",
+]
+PART3_WITHIN_GRID_CORRELATION_SCOPE = "within_grid_non_baseline"
+PART3_GRID_STANDARDIZED_CORRELATION_SCOPE = "grid_standardized_non_baseline"
+PART3_CORRELATION_SCOPES = (
+    "all_rows",
+    "one_baseline_row",
+    "non_baseline_rows",
+    PART3_WITHIN_GRID_CORRELATION_SCOPE,
+    PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+)
+PART3_JOIN_KEY_COLUMNS = ["tiles_per_side", "num_tiles", "tile_permutation_id"]
+
+
+def _part3_baseline_mask(frame: pd.DataFrame) -> pd.Series:
+    """Return rows that represent the no-permutation Part 3 baseline."""
+
+    mask = pd.Series(False, index=frame.index)
+    if "tiles_per_side" in frame.columns:
+        mask = mask | frame["tiles_per_side"].isna()
+    if "num_tiles" in frame.columns:
+        mask = mask | frame["num_tiles"].fillna(-1).astype(float).eq(1.0)
+    if "tile_permutation_id" in frame.columns:
+        mask = mask | frame["tile_permutation_id"].fillna(-1).astype(float).eq(0.0)
+    return mask
+
+
+def _part3_correlation_input_frame(joined: pd.DataFrame, analysis_scope: str) -> pd.DataFrame:
+    """Return the joined rows used for one Part 3 correlation scope."""
+
+    if analysis_scope not in PART3_CORRELATION_SCOPES:
+        raise ValueError(f"Unsupported Part 3 correlation analysis_scope: {analysis_scope}")
+
+    frame = _normalize_part3_joined_columns(joined)
+    baseline_mask = _part3_baseline_mask(frame)
+    if analysis_scope in {
+        "non_baseline_rows",
+        PART3_WITHIN_GRID_CORRELATION_SCOPE,
+        PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+    }:
+        frame = frame[~baseline_mask].copy()
+    elif analysis_scope == "one_baseline_row":
+        baseline_rows = frame[baseline_mask].head(1).copy()
+        if not baseline_rows.empty:
+            baseline_rows.loc[:, "tile_permutation_name"] = "baseline"
+            baseline_rows.loc[:, "tile_permutation_id"] = 0
+        frame = pd.concat([baseline_rows, frame[~baseline_mask]], ignore_index=True)
+    else:
+        frame = frame.copy()
+
+    frame["analysis_scope"] = analysis_scope
+    return _reset_dataframe_index(frame)
+
+
+def build_part3_correlation_input(joined: pd.DataFrame) -> pd.DataFrame:
+    """Return the exact joined rows used by all Part 3 correlation scopes."""
+
+    return pd.concat(
+        [_part3_correlation_input_frame(joined, analysis_scope) for analysis_scope in PART3_CORRELATION_SCOPES],
+        ignore_index=True,
+    )
+
+
+def _add_combined_hardness_scores(
+    metrics: pd.DataFrame,
+    *,
+    weight_adj: float,
+    weight_entropy: float,
+    weight_dist: float,
+) -> pd.DataFrame:
+    """Add final combined hardness from normalized component scores."""
+
+    metrics = metrics.copy()
+    if metrics.empty:
+        metrics["combined_hardness_score"] = []
+        return metrics
+
+    metrics["combined_hardness_score"] = [
+        compute_combined_hardness(
+            adjacency_destruction_hardness=float(row["adjacency_destruction_hardness"]),
+            spatial_permutation_entropy=float(row["spatial_permutation_entropy"]),
+            global_tile_displacement=float(row["global_tile_displacement"]),
+            weight_adj=weight_adj,
+            weight_entropy=weight_entropy,
+            weight_dist=weight_dist,
+        )
+        for _, row in metrics.iterrows()
+    ]
+    return metrics
+
+
+def compute_part3_tile_permutation_metrics(
+    *,
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
+    seed: int,
+    validation_samples: Sequence[Sample],
+    image_size: int,
+    weight_adj: float = 0.5,
+    weight_entropy: float = 0.3,
+    weight_dist: float = 0.2,
+    show_progress: bool = False,
+) -> pd.DataFrame:
+    """Compute Part 3 hardness metrics for reusable Part 1 tile permutations."""
+
+    rows: list[dict[str, Any]] = []
+    tile_permutations = load_or_build_part1_tile_permutations(
+        tile_permutation_csv=tile_permutation_csv,
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=num_tile_permutations,
+        seed=seed,
+    )
+    tile_permutations = _executable_part1_tile_permutations(tile_permutations)
+    iterator = tile_permutations.iterrows()
+    if show_progress:
+        iterator = tqdm(
+            iterator,
+            total=len(tile_permutations),
+            desc="Part 3 metrics",
+            unit="tile permutation",
+        )
+    for _, row in iterator:
+        raw_tile_permutation = cast(Any, row["tile_permutation"])
+        if raw_tile_permutation is None or (
+            isinstance(raw_tile_permutation, float) and bool(pd.isna(raw_tile_permutation))
+        ):
+            serialized_tile_permutation = None
+        elif isinstance(raw_tile_permutation, str):
+            serialized_tile_permutation = json.loads(raw_tile_permutation)
+        else:
+            serialized_tile_permutation = raw_tile_permutation
+        raw_tiles_per_side = cast(Any, row["tiles_per_side"])
+        tiles_per_side = None if bool(pd.isna(raw_tiles_per_side)) else int(raw_tiles_per_side)
+        tile_permutation = tile_permutation_from_jsonable(serialized_tile_permutation, tiles_per_side)
+        num_tiles = 1 if tiles_per_side is None else tiles_per_side * tiles_per_side
+        global_tile_displacement = compute_global_displacement(tile_permutation, tiles_per_side)
+        adjacency_destruction_hardness = compute_adjacency_destruction_hardness(
+            tile_permutation,
+            tiles_per_side,
+        )
+        spatial_permutation_entropy = compute_spatial_permutation_entropy(
+            tile_permutation,
+            tiles_per_side,
+        )
+        rows.append(
+            {
+                "tiles_per_side": tiles_per_side,
+                "num_tiles": num_tiles,
+                "tile_permutation_id": int(cast(Any, row["tile_permutation_id"])),
+                "tile_permutation_name": cast(Any, row.get("tile_permutation_name")),
+                "tile_permutation_seed": cast(Any, row.get("tile_permutation_seed")),
+                "global_tile_displacement": global_tile_displacement,
+                "adjacency_destruction_hardness": adjacency_destruction_hardness,
+                "spatial_permutation_entropy": spatial_permutation_entropy,
+            }
+        )
+    metrics = _add_combined_hardness_scores(
+        pd.DataFrame(rows),
+        weight_adj=weight_adj,
+        weight_entropy=weight_entropy,
+        weight_dist=weight_dist,
+    )
+    return _reset_dataframe_index(
+        _sorted_dataframe(metrics, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
+
+
+def validate_part3_non_identity_metrics(metrics: pd.DataFrame) -> None:
+    """Raise if a tiled non-baseline permutation has zero hardness for every metric."""
+
+    if metrics.empty:
+        return
+
+    metrics_any = cast(Any, metrics)
+    invalid = cast(
+        pd.DataFrame,
+        metrics_any[
+            (metrics_any["tiles_per_side"].notna())
+            & (metrics_any["tiles_per_side"].astype(float) > 1)
+            & (metrics_any["tile_permutation_id"].astype(int) > 0)
+            & (metrics_any[PART3_METRIC_COLUMNS].fillna(0.0).eq(0.0).all(axis=1))
+        ],
+    )
+    if invalid.empty:
+        return
+
+    row = invalid.iloc[0]
+    raise ValueError(
+        "Part 3 hardness metrics are all zero for a tiled permutation: "
+        f"tiles_per_side={int(row['tiles_per_side'])}, tile_permutation_id={int(row['tile_permutation_id'])}."
+    )
+
+
+def _filter_nullable_column(frame: pd.DataFrame, column: str, expected: object) -> pd.DataFrame:
+    """Filter a column when present, treating ``None`` as missing/null."""
+
+    if column not in frame.columns:
+        return frame
+    if expected is None:
+        return cast(pd.DataFrame, frame[frame[column].isna()].copy())
+    return cast(pd.DataFrame, frame[frame[column] == expected].copy())
+
+
+def _validate_part3_unique_result_keys(model_results: pd.DataFrame, model_name: str) -> None:
+    """Raise if a selected Part 1 result table has duplicate Part 3 join keys."""
+
+    missing = [column for column in PART3_JOIN_KEY_COLUMNS if column not in model_results.columns]
+    if missing:
+        raise ValueError(f"Part 1 results for model_name='{model_name}' are missing columns: {missing}")
+
+    duplicate_mask = model_results.duplicated(PART3_JOIN_KEY_COLUMNS, keep=False)
+    if not duplicate_mask.any():
+        return
+
+    duplicate_keys = (
+        model_results.loc[duplicate_mask, PART3_JOIN_KEY_COLUMNS]
+        .drop_duplicates()
+        .to_dict("records")
+    )
+    raise ValueError(
+        f"Part 1 rows for model_name='{model_name}' are not unique by {PART3_JOIN_KEY_COLUMNS}: "
+        f"{duplicate_keys[:3]}"
+    )
+
+
+def load_part1_model_results(
+    part1_results_csv: str,
+    model_name: str,
+    *,
+    ablation_name: str | None = None,
+    freeze_backbone: bool | None = True,
+    classification_head: str | None = None,
+    validate_unique_keys: bool = True,
+) -> pd.DataFrame:
+    """Load Part 1 raw results for one Part 3 model/condition."""
+
+    model_name = validate_model_name(model_name)
+    raw_results = _read_csv_dataframe(part1_results_csv)
+    if "model_name" not in raw_results.columns:
+        raise ValueError("Part 1 results must contain a model_name column")
+
+    raw_results_any = cast(Any, raw_results)
+    model_results = cast(pd.DataFrame, raw_results_any[raw_results_any["model_name"] == model_name].copy())
+    model_results = _filter_nullable_column(model_results, "ablation_name", ablation_name)
+    model_results = _filter_nullable_column(model_results, "freeze_backbone", freeze_backbone)
+    model_results = _filter_nullable_column(model_results, "classification_head", classification_head)
+    if model_results.empty:
+        raise ValueError(
+            f"No Part 1 rows found for model_name='{model_name}' with "
+            f"ablation_name={ablation_name!r}, freeze_backbone={freeze_backbone!r}, "
+            f"classification_head={classification_head!r}"
+        )
+    if validate_unique_keys:
+        _validate_part3_unique_result_keys(model_results, model_name)
+    return model_results
+
+
+def _metric_accuracy_correlation_values(frame: pd.DataFrame, metric: str) -> tuple[float, float]:
+    """Return Pearson and Spearman correlations for one metric frame."""
+
+    frame_any = cast(Any, frame)
+    if len(frame) < 2 or frame_any[metric].nunique() < 2 or frame_any["best_val_accuracy"].nunique() < 2:
+        return float("nan"), float("nan")
+    pearson = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="pearson"))
+    spearman = float(frame_any[metric].corr(frame_any["best_val_accuracy"], method="spearman"))
+    return pearson, spearman
+
+
+def _part3_correlation_row(
+    *,
+    group_name: str,
+    analysis_scope: str,
+    metric: str,
+    frame: pd.DataFrame,
+    tiles_per_side: object = pd.NA,
+    num_tiles: object = pd.NA,
+) -> dict[str, Any]:
+    """Return one Part 3 metric-accuracy correlation row."""
+
+    pearson, spearman = _metric_accuracy_correlation_values(frame, metric)
+    return {
+        "group": group_name,
+        "analysis_scope": analysis_scope,
+        "tiles_per_side": tiles_per_side,
+        "num_tiles": num_tiles,
+        "metric": metric,
+        "pearson": pearson,
+        "spearman": spearman,
+        "n": len(frame),
+    }
+
+
+def _part3_within_grid_correlation_rows(
+    scoped: pd.DataFrame,
+    *,
+    group_name: str,
+) -> list[dict[str, Any]]:
+    """Return within-grid non-baseline correlations for each metric."""
+
+    if "tiles_per_side" not in scoped.columns or "num_tiles" not in scoped.columns:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    scoped = cast(pd.DataFrame, scoped.dropna(subset=["tiles_per_side", "num_tiles"]))
+    grouped = scoped.groupby(["tiles_per_side", "num_tiles"], dropna=False, sort=True)
+    for (tiles_per_side, num_tiles), group in grouped:
+        for metric in PART3_METRIC_COLUMNS:
+            frame = cast(pd.DataFrame, group.dropna(subset=[metric, "best_val_accuracy"]))
+            rows.append(
+                _part3_correlation_row(
+                    group_name=group_name,
+                    analysis_scope=PART3_WITHIN_GRID_CORRELATION_SCOPE,
+                    tiles_per_side=tiles_per_side,
+                    num_tiles=num_tiles,
+                    metric=metric,
+                    frame=frame,
+                )
+            )
+    return rows
+
+
+def _within_grid_z_score(values: pd.Series) -> pd.Series:
+    """Return within-grid population z-scores, preserving NaN for constant groups."""
+
+    standard_deviation = values.std(ddof=0)
+    if pd.isna(standard_deviation) or float(standard_deviation) == 0.0:
+        return pd.Series(float("nan"), index=values.index)
+    return (values - values.mean()) / standard_deviation
+
+
+def _part3_grid_standardized_correlation_rows(
+    scoped: pd.DataFrame,
+    *,
+    group_name: str,
+) -> list[dict[str, Any]]:
+    """Return pooled correlations after within-grid z-score standardization."""
+
+    if "tiles_per_side" not in scoped.columns or "num_tiles" not in scoped.columns:
+        return []
+
+    scoped = cast(pd.DataFrame, scoped.dropna(subset=["tiles_per_side", "num_tiles"]))
+    if scoped.empty:
+        return []
+
+    grouped = scoped.groupby(["tiles_per_side", "num_tiles"], dropna=False)
+    standardized = scoped.copy()
+    standardized["best_val_accuracy_grid_z"] = grouped["best_val_accuracy"].transform(_within_grid_z_score)
+
+    rows: list[dict[str, Any]] = []
+    for metric in PART3_METRIC_COLUMNS:
+        metric_column = f"{metric}_grid_z"
+        standardized[metric_column] = grouped[metric].transform(_within_grid_z_score)
+        frame = cast(
+            pd.DataFrame,
+            standardized[[metric_column, "best_val_accuracy_grid_z"]]
+            .dropna()
+            .rename(
+                columns={
+                    metric_column: metric,
+                    "best_val_accuracy_grid_z": "best_val_accuracy",
+                }
+            ),
+        )
+        rows.append(
+            _part3_correlation_row(
+                group_name=group_name,
+                analysis_scope=PART3_GRID_STANDARDIZED_CORRELATION_SCOPE,
+                metric=metric,
+                frame=frame,
+            )
+        )
+    return rows
+
+
+def compute_part3_metric_correlations(joined: pd.DataFrame, group_name: str = "resnet18") -> pd.DataFrame:
+    """Compute accuracy correlations for each Part 3 hardness metric."""
+
+    rows: list[dict[str, Any]] = []
+    for analysis_scope in PART3_CORRELATION_SCOPES:
+        scoped = _part3_correlation_input_frame(joined, analysis_scope)
+        if analysis_scope == PART3_WITHIN_GRID_CORRELATION_SCOPE:
+            rows.extend(_part3_within_grid_correlation_rows(scoped, group_name=group_name))
+            continue
+        if analysis_scope == PART3_GRID_STANDARDIZED_CORRELATION_SCOPE:
+            rows.extend(_part3_grid_standardized_correlation_rows(scoped, group_name=group_name))
+            continue
+        for metric in PART3_METRIC_COLUMNS:
+            frame = cast(pd.DataFrame, scoped.dropna(subset=[metric, "best_val_accuracy"]))
+            rows.append(
+                _part3_correlation_row(
+                    group_name=group_name,
+                    analysis_scope=analysis_scope,
+                    metric=metric,
+                    frame=frame,
+                )
+            )
+    return pd.DataFrame(rows)
+
+
+def _normalize_part3_joined_columns(joined: pd.DataFrame) -> pd.DataFrame:
+    """Collapse merge-suffixed Part 3 metadata columns into stable names."""
+
+    joined = joined.copy()
+    for column in ("tile_permutation_name", "tile_permutation_seed"):
+        metric_column = f"{column}_y"
+        raw_column = f"{column}_x"
+        if metric_column in joined.columns and raw_column in joined.columns:
+            joined[column] = joined[metric_column].combine_first(joined[raw_column])
+            joined = joined.drop(columns=[raw_column, metric_column])
+        elif metric_column in joined.columns:
+            joined[column] = joined[metric_column]
+            joined = joined.drop(columns=[metric_column])
+        elif raw_column in joined.columns:
+            joined[column] = joined[raw_column]
+            joined = joined.drop(columns=[raw_column])
+    return joined
+
+
+def _part3_plot_marker_name(row: pd.Series) -> str:
+    """Return condition marker key for a Part 3 joined row."""
+
+    num_tiles = row.get("num_tiles")
+    tiles_per_side = row.get("tiles_per_side")
+    tile_permutation_id = row.get("tile_permutation_id")
+    if (
+        (num_tiles is not None and not pd.isna(num_tiles) and int(num_tiles) == 1)
+        or _is_missing_scalar(tiles_per_side)
+        or (tile_permutation_id is not None and not pd.isna(tile_permutation_id) and int(tile_permutation_id) == 0)
+    ):
+        return "baseline"
+    return _permutation_marker_name(row.get("tile_permutation_name"))
+
+
+def _part3_grid_positions(frame: pd.DataFrame) -> dict[int, int]:
+    frame = _with_num_tiles(frame)
+    return _tile_axis_positions(list(frame["num_tiles"]))
+
+
+def _set_part3_grid_axis_ticks(ax: Axes, grid_positions: dict[int, int]) -> None:
+    tick_values = list(grid_positions)
+    ax.set_xticks(
+        [grid_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+
+
+def _part3_metric_label(metric: str) -> str:
+    return metric.replace("_", " ").title()
+
+
+def plot_part3_metric_grid_views(
+    joined: pd.DataFrame,
+    figures_dir: str,
+    metric: str,
+    title: str | None = None,
+) -> dict[str, str]:
+    """Save Part 3 grid-vs-hardness and grid/hardness/accuracy scatter plots."""
+
+    if metric not in PART3_METRIC_COLUMNS:
+        raise ValueError(f"Unsupported Part 3 metric: {metric}")
+
+    ensure_dir(figures_dir)
+    output_paths = _part3_metric_grid_plot_paths(figures_dir, metric)
+    frame = _with_num_tiles(_normalize_part3_joined_columns(joined))
+    if "tile_permutation_name" not in frame.columns:
+        frame["tile_permutation_name"] = None
+    frame["_condition_marker"] = [_part3_plot_marker_name(row) for _, row in frame.iterrows()]
+    grid_positions = _part3_grid_positions(frame)
+    metric_label = _part3_metric_label(metric)
+
+    fig, axis = plt.subplots(figsize=(7, 5))
+    ax = _as_axes(axis)
+    for marker_name, group in frame.groupby("_condition_marker", sort=False):
+        x_values = [grid_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
+        ax.scatter(
+            x_values,
+            group[metric],
+            **_condition_marker_kwargs(str(marker_name), color=None, alpha=0.78),
+            label="_nolegend_",
+        )
+    _set_part3_grid_axis_ticks(ax, grid_positions)
+    ax.set_xlabel("Grid size")
+    ax.set_ylabel(metric_label)
+    base_title = f"{metric_label} by Grid Size"
+    ax.set_title(title or _plot_title(base_title, frame=frame))
+    ax.grid(True, alpha=0.3)
+    _add_permutation_marker_legend(ax)
+    fig.tight_layout()
+    _archive_existing_figure(output_paths["grid_hardness"])
+    fig.savefig(output_paths["grid_hardness"], dpi=160)
+    plt.close(fig)
+
+    fig = plt.figure(figsize=(8, 6))
+    axis_3d = fig.add_subplot(111, projection="3d")
+    for marker_name, group in frame.groupby("_condition_marker", sort=False):
+        x_values = [grid_positions[int(num_tiles)] for num_tiles in group["num_tiles"]]
+        axis_3d.scatter(
+            x_values,
+            group[metric],
+            group["best_val_accuracy"],
+            **_condition_marker_kwargs(str(marker_name), color=None, alpha=0.78),
+            label="_nolegend_",
+        )
+    tick_values = list(grid_positions)
+    axis_3d.set_xticks(
+        [grid_positions[value] for value in tick_values],
+        [_tile_axis_label(value) for value in tick_values],
+    )
+    axis_3d.set_xlabel("Grid size")
+    axis_3d.set_ylabel(metric_label)
+    axis_3d.set_zlabel("Best validation accuracy")
+    base_title = f"{metric_label} by Grid Size and Accuracy"
+    axis_3d.set_title(title or _plot_title(base_title, frame=frame))
+    axis_3d.grid(True, alpha=0.3)
+    _add_permutation_marker_legend(axis_3d)
+    fig.tight_layout()
+    _archive_existing_figure(output_paths["grid_hardness_accuracy_3d"])
+    fig.savefig(output_paths["grid_hardness_accuracy_3d"], dpi=160)
+    plt.close(fig)
+    return output_paths
+
+
+def load_part3_results(results_dir: str) -> Dict[str, pd.DataFrame]:
+    """Load saved Part 3 metric, joined, and correlation tables."""
+
+    results = {
+        "metrics": _read_csv_dataframe(os.path.join(results_dir, "tile_permutation_metrics.csv")),
+        "joined": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_joined.csv")),
+        "correlations": _read_csv_dataframe(os.path.join(results_dir, "metric_accuracy_correlations.csv")),
+    }
+    correlation_input_path = os.path.join(results_dir, "metric_accuracy_correlation_input.csv")
+    if os.path.exists(correlation_input_path):
+        results["correlation_input"] = _read_csv_dataframe(correlation_input_path)
+    return results
+
+
+def run_part3_hardness_analysis(
+    *,
+    results_dir: str,
+    figures_dir: str,
+    part1_results_csv: str,
+    tile_permutation_csv: str,
+    tiles_per_side_values: Sequence[int],
+    num_tile_permutations: int,
+    seed: int,
+    validation_samples: Sequence[Sample],
+    image_size: int,
+    model_name: str = "resnet18",
+    ablation_name: str | None = None,
+    freeze_backbone: bool | None = True,
+    classification_head: str | None = None,
+    weight_adj: float = 0.5,
+    weight_entropy: float = 0.3,
+    weight_dist: float = 0.2,
+    verbose: bool = True,
+    show_progress: bool = True,
+) -> Dict[str, pd.DataFrame]:
+    """Run notebook-owned Part 3 hardness analysis and save output tables/plots."""
+
+    def log(message: str) -> None:
+        if verbose:
+            print(message)
+
+    log("Preparing Part 3 output directories...")
+    ensure_dir(results_dir)
+    ensure_dir(figures_dir)
+    log("Loading or rebuilding Part 1 tile permutations...")
+    log("Calculating hardness metrics...")
+    metrics = compute_part3_tile_permutation_metrics(
+        tile_permutation_csv=tile_permutation_csv,
+        tiles_per_side_values=tiles_per_side_values,
+        num_tile_permutations=num_tile_permutations,
+        seed=seed,
+        validation_samples=validation_samples,
+        image_size=image_size,
+        weight_adj=weight_adj,
+        weight_entropy=weight_entropy,
+        weight_dist=weight_dist,
+        show_progress=show_progress,
+    )
+    validate_part3_non_identity_metrics(metrics)
+    log("Saving hardness metric table...")
+    save_csv(metrics, os.path.join(results_dir, "tile_permutation_metrics.csv"))
+
+    log(f"Loading Part 1 {model_name} results...")
+    raw_results = load_part1_model_results(
+        part1_results_csv,
+        model_name,
+        ablation_name=ablation_name,
+        freeze_backbone=freeze_backbone,
+        classification_head=classification_head,
+    )
+    log(f"Joining hardness metrics with {model_name} accuracy...")
+    joined = raw_results.merge(metrics, on=PART3_JOIN_KEY_COLUMNS, how="left")
+    joined = _normalize_part3_joined_columns(joined)
+    joined = _reset_dataframe_index(
+        _sorted_dataframe(joined, ["tiles_per_side", "tile_permutation_id"], na_position="first")
+    )
+    log("Saving joined metric-accuracy table...")
+    save_csv(joined, os.path.join(results_dir, "metric_accuracy_joined.csv"))
+
+    log("Computing metric-accuracy correlations...")
+    correlation_input = build_part3_correlation_input(joined)
+    correlations = compute_part3_metric_correlations(joined, group_name=model_name)
+    log("Saving correlations and plots...")
+    save_csv(correlation_input, os.path.join(results_dir, "metric_accuracy_correlation_input.csv"))
+    save_csv(correlations, os.path.join(results_dir, "metric_accuracy_correlations.csv"))
+    for metric in PART3_METRIC_COLUMNS:
+        plot_part3_metric_grid_views(joined, figures_dir, metric)
+    log("Part 3 hardness analysis complete.")
+    return {
+        "metrics": metrics,
+        "joined": joined,
+        "correlation_input": correlation_input,
+        "correlations": correlations,
+    }

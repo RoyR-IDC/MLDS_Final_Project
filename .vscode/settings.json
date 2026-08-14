@@ -1,0 +1,36 @@
+{
+  "python.defaultInterpreterPath": "/Users/royrubin/opt/anaconda3/envs/mlds_dogs_vs_cats/bin/python",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.cwd": "${workspaceFolder}",
+  "latex-workshop.latex.outDir": "%DIR%",
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk-texlive-2026",
+      "command": "/usr/local/texlive/2026basic/bin/universal-darwin/latexmk",
+      "args": [
+        "-cd",
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-pdf",
+        "%DOC%"
+      ],
+      "env": {
+        "PATH": "/usr/local/texlive/2026basic/bin/universal-darwin:${env:PATH}"
+      }
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "latexmk (TeX Live 2026)",
+      "tools": [
+        "latexmk-texlive-2026"
+      ]
+    }
+  ],
+  "latex-workshop.latex.recipe.default": "first"
+}

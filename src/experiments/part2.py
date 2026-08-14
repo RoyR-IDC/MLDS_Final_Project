@@ -1,0 +1,731 @@
+"""Part 2 configurable-CNN improvement ablation experiments."""
+
+from __future__ import annotations
+
+import importlib
+from time import perf_counter
+from typing import Any, Callable, Mapping, Optional, Sequence
+
+import pandas as pd
+from torch.utils.data import DataLoader
+from torch._C import device as TorchDevice
+
+from src.evaluation.tile_permutation_difficulty import (
+    compute_adjacency_destruction_hardness,
+    compute_combined_hardness,
+    compute_global_displacement,
+    compute_spatial_permutation_entropy,
+)
+from src.evaluation.experiment_results import (
+    add_part2_grid_baseline_deltas,
+    get_device,
+    load_experiment_samples,
+    load_part1_model_baseline_aggregated,
+    load_part1_model_baseline_raw_rows,
+    plot_ablation_results,
+)
+from src.experiments.results import (
+    aggregate_accuracy,
+    experiment_intermediate_figure_path,
+    experiment_output_paths,
+    save_aggregated_accuracy,
+    save_rows,
+    save_run_rows,
+)
+import src.experiments.training_runs as _training_runs
+
+# Notebook kernels often keep imported dependencies alive across saved source edits.
+# Refresh the shared training helpers before binding their functions below.
+_training_runs = importlib.reload(_training_runs)
+
+from src.experiments.training_runs import (
+    build_pending_training_result_row,
+    build_experiment_run_id,
+    build_training_run_spec,
+    checkpoint_dir_path,
+    checkpoints_enabled,
+    format_dataloader_summary,
+    format_elapsed_time,
+    format_stage_dataloader_summary,
+    format_stage_summary,
+    train_model_and_save_progress,
+    training_result_row_key,
+)
+from src.preprocessing.augmentations import (
+    BatchAugmentation,
+    RandomPatchShuffle,
+)
+from src.preprocessing.dataloaders import build_dataloaders
+from src.preprocessing.image_transforms import make_tile_compatible_image_size
+from src.preprocessing.samples import Sample
+from src.preprocessing.tile_permutations import (
+    TilePermutation,
+    TilePermutationRecord,
+    build_tile_permutation_records,
+    deterministic_enhanced_tile_permutation,
+    deterministic_tile_permutation,
+)
+from src.training.curriculum import CurriculumSchedule, TrainingStage
+from src.training.run import TrainingRunSpec
+from src.utils.config import CVExperimentConfig, PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES
+
+
+PATCH_SHUFFLE_BASELINE_TILES = 1
+CORRUPTION_PROBABILITY_SCHEDULE = [0.1, 0.3, 0.5, 0.8]
+
+
+def _ablation_augmentation_name(ablation: Mapping[str, Any]) -> str:
+    return str(ablation.get("augmentation", "none"))
+
+
+def _ablation_curriculum_name(ablation: Mapping[str, Any]) -> str | None:
+    curriculum = ablation.get("curriculum")
+    return None if curriculum in (None, "", "none") else str(curriculum)
+
+
+def _ablation_epochs(ablation: Mapping[str, Any], config: CVExperimentConfig) -> int:
+    return int(ablation.get("epochs", getattr(config, "epochs", 1)))
+
+
+def _ablation_p_original(ablation: Mapping[str, Any]) -> float | None:
+    if "p_original" not in ablation:
+        return None
+    p_original = float(ablation["p_original"])
+    if not 0.0 <= p_original <= 1.0:
+        raise ValueError("p_original must be between 0 and 1")
+    return p_original
+
+
+def _ablation_tile_permutation_probability(ablation: Mapping[str, Any]) -> float:
+    p_original = _ablation_p_original(ablation)
+    return 1.0 if p_original is None else 1.0 - p_original
+
+
+def _ablation_classification_head(ablation: Mapping[str, Any]) -> str:
+    return str(ablation.get("classification_head", "linear"))
+
+
+def _hardness_level(score: float, *, is_baseline: bool) -> str:
+    if is_baseline:
+        return "baseline"
+    if score < 1.0 / 3.0:
+        return "low"
+    if score < 2.0 / 3.0:
+        return "medium"
+    return "high"
+
+
+def _part2_hardness_metadata(record: TilePermutationRecord) -> dict[str, Any]:
+    tiles_per_side = record.tiles_per_side
+    global_displacement = compute_global_displacement(record.tile_permutation, tiles_per_side)
+    adjacency_hardness = compute_adjacency_destruction_hardness(record.tile_permutation, tiles_per_side)
+    spatial_entropy = compute_spatial_permutation_entropy(record.tile_permutation, tiles_per_side)
+    combined_hardness = compute_combined_hardness(
+        adjacency_destruction_hardness=adjacency_hardness,
+        spatial_permutation_entropy=spatial_entropy,
+        global_tile_displacement=global_displacement,
+    )
+    is_baseline = tiles_per_side is None or record.tile_permutation is None or combined_hardness == 0.0
+    return {
+        "global_tile_displacement": global_displacement,
+        "adjacency_destruction_hardness": adjacency_hardness,
+        "spatial_permutation_entropy": spatial_entropy,
+        "combined_hardness_score": combined_hardness,
+        "hardness_level": _hardness_level(combined_hardness, is_baseline=is_baseline),
+    }
+
+
+def _patch_shuffle_tiles(record: TilePermutationRecord) -> int:
+    return int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
+
+
+def _expected_part2_input_size(
+    *,
+    config: CVExperimentConfig,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+) -> int | None:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    curriculum_name = _ablation_curriculum_name(ablation)
+    if curriculum_name == "permutation_difficulty":
+        return None
+    if augmentation_name == "patch_shuffle":
+        tiles_per_side = _patch_shuffle_tiles(record)
+    elif curriculum_name == "corruption_probability":
+        tiles_per_side = int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
+    else:
+        tiles_per_side = int(record.tiles_per_side or 1)
+    return make_tile_compatible_image_size(config.image_size, tiles_per_side)
+
+
+def _stage_epochs(total_epochs: int, num_stages: int) -> list[int]:
+    if num_stages < 1:
+        raise ValueError("num_stages must be at least 1")
+    base = max(1, total_epochs // num_stages)
+    epochs = [base for _ in range(num_stages)]
+    for index in range(max(0, total_epochs - base * num_stages)):
+        epochs[index % num_stages] += 1
+    return epochs
+
+
+def build_ablation_batch_augmentation(
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+) -> BatchAugmentation | None:
+    """Build the batch-level augmentation strategy for one Part 2 ablation."""
+
+    augmentation_name = _ablation_augmentation_name(ablation)
+    if augmentation_name == "patch_shuffle":
+        return RandomPatchShuffle(tiles_per_side=_patch_shuffle_tiles(record))
+    if augmentation_name in {"none", "regular_augmentations"}:
+        return None
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
+
+
+def _ablation_image_augmentation(ablation: Mapping[str, Any]) -> str | None:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    if augmentation_name == "regular_augmentations":
+        return "regular_augmentations"
+    if augmentation_name in {"none", "patch_shuffle"}:
+        return None
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
+
+
+def _ablation_loader_tiles(ablation: Mapping[str, Any], record: TilePermutationRecord) -> int:
+    augmentation_name = _ablation_augmentation_name(ablation)
+    if augmentation_name == "patch_shuffle":
+        return _patch_shuffle_tiles(record)
+    if augmentation_name in {"none", "regular_augmentations"}:
+        return int(record.tiles_per_side or 1)
+    raise ValueError(f"Unsupported Part 2 augmentation: {augmentation_name}")
+
+
+def build_ablation_dataloaders(
+    *,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    config: CVExperimentConfig,
+) -> tuple[DataLoader, DataLoader]:
+    """Build dataloaders for a non-curriculum Part 2 ablation."""
+
+    loader_tiles = _ablation_loader_tiles(ablation, record)
+    return build_dataloaders(
+        train_samples=train_samples,
+        val_samples=validation_samples,
+        image_size=config.image_size,
+        tiles_per_side=loader_tiles,
+        tile_permutation=record.tile_permutation,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        standard_augmentation=False,
+        image_augmentation=_ablation_image_augmentation(ablation),
+        tile_permutation_probability=_ablation_tile_permutation_probability(ablation),
+        output_image_size=config.image_size,
+    )
+
+
+def _permutation_for_stage(
+    *,
+    tiles_per_side: int,
+    record: TilePermutationRecord,
+    config: CVExperimentConfig,
+) -> TilePermutation:
+    if record.tiles_per_side == tiles_per_side and record.tile_permutation is not None:
+        return record.tile_permutation
+    permutation_name = record.tile_permutation_name or "medium"
+    try:
+        return deterministic_enhanced_tile_permutation(
+            tiles_per_side,
+            permutation_name,
+            seed=record.tile_permutation_seed,
+        )
+    except ValueError:
+        return deterministic_tile_permutation(tiles_per_side, permutation_name)
+
+
+def _difficulty_stage_tiles(
+    record: TilePermutationRecord,
+    config: CVExperimentConfig,
+) -> list[int | None]:
+    target = int(record.tiles_per_side or 1)
+    if target <= 1:
+        return [None]
+    configured_tiles = sorted(
+        {
+            int(tiles)
+            for tiles in getattr(config, "tiles_per_side_values", PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES)
+            if int(tiles) > 1
+        }
+    )
+    stage_tiles = [tiles for tiles in configured_tiles if tiles <= target]
+    if target not in stage_tiles:
+        stage_tiles.append(target)
+    return [None, *stage_tiles]
+
+
+def _planned_stage_items(
+    *,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    config: CVExperimentConfig,
+) -> list[tuple[str, int]]:
+    """Return stage names and epoch counts without building stage dataloaders."""
+
+    curriculum_name = _ablation_curriculum_name(ablation)
+    total_epochs = _ablation_epochs(ablation, config)
+    if curriculum_name is None:
+        return [("standard", total_epochs)]
+
+    if curriculum_name == "permutation_difficulty":
+        stage_tiles = _difficulty_stage_tiles(record, config)
+        epochs = _stage_epochs(total_epochs, len(stage_tiles))
+        names = [
+            "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
+            for tiles_per_side in stage_tiles
+        ]
+        return list(zip(names, epochs))
+
+    if curriculum_name == "corruption_probability":
+        epochs = _stage_epochs(total_epochs, len(CORRUPTION_PROBABILITY_SCHEDULE))
+        names = [f"permuted_probability_{probability:.1f}" for probability in CORRUPTION_PROBABILITY_SCHEDULE]
+        return list(zip(names, epochs))
+
+    raise ValueError(f"Unsupported curriculum: {curriculum_name}")
+
+
+def build_curriculum_schedule(
+    *,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_samples: Sequence[Sample],
+    config: CVExperimentConfig,
+) -> CurriculumSchedule | None:
+    """Build an optional curriculum schedule for one Part 2 ablation."""
+
+    curriculum_name = _ablation_curriculum_name(ablation)
+    if curriculum_name is None:
+        return None
+    total_epochs = _ablation_epochs(ablation, config)
+
+    if curriculum_name == "permutation_difficulty":
+        stage_tiles = _difficulty_stage_tiles(record, config)
+        epochs = _stage_epochs(total_epochs, len(stage_tiles))
+        stages: list[TrainingStage] = []
+        for stage_epochs, tiles_per_side in zip(epochs, stage_tiles):
+            tile_permutation = (
+                None
+                if tiles_per_side is None
+                else _permutation_for_stage(tiles_per_side=tiles_per_side, record=record, config=config)
+            )
+            train_loader, _ = build_dataloaders(
+                train_samples=train_samples,
+                val_samples=train_samples[: max(1, min(len(train_samples), int(config.batch_size)))],
+                image_size=config.image_size,
+                tiles_per_side=tiles_per_side or 1,
+                tile_permutation=tile_permutation,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                standard_augmentation=False,
+                output_image_size=config.image_size,
+            )
+            stage_name = "original" if tiles_per_side is None else f"{tiles_per_side}x{tiles_per_side}_permutation"
+            stages.append(
+                TrainingStage(
+                    name=stage_name,
+                    epochs=stage_epochs,
+                    train_loader=train_loader,
+                    metadata={"tiles_per_side": tiles_per_side},
+                )
+            )
+        return CurriculumSchedule(stages)
+
+    if curriculum_name == "corruption_probability":
+        target_tiles = int(record.tiles_per_side or PATCH_SHUFFLE_BASELINE_TILES)
+        tile_permutation = record.tile_permutation or _permutation_for_stage(
+            tiles_per_side=target_tiles,
+            record=record,
+            config=config,
+        )
+        epochs = _stage_epochs(total_epochs, len(CORRUPTION_PROBABILITY_SCHEDULE))
+        stages = []
+        for stage_epochs, probability in zip(epochs, CORRUPTION_PROBABILITY_SCHEDULE):
+            train_loader, _ = build_dataloaders(
+                train_samples=train_samples,
+                val_samples=train_samples[: max(1, min(len(train_samples), int(config.batch_size)))],
+                image_size=config.image_size,
+                tiles_per_side=target_tiles,
+                tile_permutation=tile_permutation,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                standard_augmentation=False,
+                tile_permutation_probability=probability,
+                output_image_size=config.image_size,
+            )
+            stages.append(
+                TrainingStage(
+                    name=f"permuted_probability_{probability:.1f}",
+                    epochs=stage_epochs,
+                    train_loader=train_loader,
+                    metadata={"tile_permutation_probability": probability},
+                )
+            )
+        return CurriculumSchedule(stages)
+
+    raise ValueError(f"Unsupported curriculum: {curriculum_name}")
+
+
+def initialize_ablation_result_rows(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablations: Sequence[Mapping[str, Any]],
+    records: Sequence[TilePermutationRecord],
+) -> tuple[list[dict[str, Any]], dict[tuple[Any, ...], int]]:
+    """Create pending Part 2 ablation result rows and their update indexes."""
+
+    rows: list[dict[str, Any]] = []
+    row_indices: dict[tuple[Any, ...], int] = {}
+    for ablation in ablations:
+        for record in records:
+            row = build_pending_training_result_row(
+                config=config,
+                run_id=run_id,
+                model_name=model_name,
+                record=record,
+                seed=config.seed,
+                ablation_name=str(ablation["name"]),
+            )
+            row_indices[training_result_row_key(row)] = len(rows)
+            rows.append(row)
+    return rows, row_indices
+
+
+def _part2_metadata_overrides(
+    *,
+    config: CVExperimentConfig,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    batch_augmentation: BatchAugmentation | None,
+    curriculum_schedule: CurriculumSchedule | None,
+) -> dict[str, Any]:
+    p_original = _ablation_p_original(ablation)
+    classification_head = _ablation_classification_head(ablation)
+    return {
+        "epochs": _ablation_epochs(ablation, config),
+        "augmentation_name": _ablation_augmentation_name(ablation),
+        "batch_augmentation_name": getattr(batch_augmentation, "name", None),
+        "curriculum_name": _ablation_curriculum_name(ablation),
+        "curriculum_stages": curriculum_schedule.stage_names if curriculum_schedule is not None else None,
+        "classification_head": "MLP" if classification_head.lower() == "mlp" else "linear",
+        "p_original": p_original,
+        "tile_permutation_probability": _ablation_tile_permutation_probability(ablation),
+        **_part2_hardness_metadata(record),
+    }
+
+
+def build_part2_training_run_spec(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_loader: DataLoader,
+    validation_loader: DataLoader,
+    device: TorchDevice,
+    batch_augmentation: BatchAugmentation | None,
+    curriculum_schedule: CurriculumSchedule | None,
+) -> TrainingRunSpec:
+    """Build the training spec for one Part 2 ablation/tile run."""
+
+    tiles_label = record.tiles_per_side or 1
+    permutation_label = (
+        f"{record.tile_permutation_name} permutation"
+        if record.tile_permutation_name
+        else f"permutation #{record.tile_permutation_id}"
+    )
+    progress_desc = (
+        f"{model_name} [{ablation['name']}] "
+        f"{tiles_label}x{tiles_label} {permutation_label}. epochs progress"
+    )
+    return build_training_run_spec(
+        config=config,
+        model_name=model_name,
+        train_loader=train_loader,
+        val_loader=validation_loader,
+        device=device,
+        run_id=run_id,
+        record=record,
+        seed=config.seed,
+        overrides={
+            "epochs": _ablation_epochs(ablation, config),
+            "pretrained": bool(ablation.get("use_pretrained", True)),
+            "freeze_backbone": bool(ablation.get("freeze_backbone", getattr(config, "freeze_backbone", True))),
+            "classification_head": _ablation_classification_head(ablation),
+        },
+        ablation_name=str(ablation["name"]),
+        progress_desc=progress_desc,
+        batch_augmentation=batch_augmentation,
+        curriculum_schedule=curriculum_schedule,
+        expected_input_size=config.image_size,
+        metadata_overrides=_part2_metadata_overrides(
+            config=config,
+            ablation=ablation,
+            record=record,
+            batch_augmentation=batch_augmentation,
+            curriculum_schedule=curriculum_schedule,
+        ),
+    )
+
+
+def _print_ablation_tile_run_header(
+    *,
+    record_index: int,
+    num_records: int,
+    model_name: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    stage_summary: str,
+) -> None:
+    print()
+    print(
+        f"[{record_index}/{num_records}]\nmodel={model_name}, ablation={ablation['name']}, "
+        f"tiles_per_side={record.tiles_per_side}, tile_permutation_id={record.tile_permutation_id}, "
+        f"tile_permutation_name={record.tile_permutation_name}, seed={record.tile_permutation_seed}\n{stage_summary}"
+    )
+
+
+def train_single_ablation_tile_run(
+    *,
+    config: CVExperimentConfig,
+    model_name: str,
+    run_id: str,
+    ablation: Mapping[str, Any],
+    record: TilePermutationRecord,
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    device: TorchDevice,
+    rows: list[dict[str, Any]],
+    row_indices: dict[tuple[Any, ...], int],
+    session_start_time: Optional[float] = None,
+    raw_results_output_path: Optional[str] = None,
+) -> None:
+    """Train one Part 2 ablation on one tile-permutation record."""
+
+    run_start_time = perf_counter()
+    resolved_session_start_time = session_start_time if session_start_time is not None else run_start_time
+    print("Building dataloaders...")
+    train_loader, validation_loader = build_ablation_dataloaders(
+        ablation=ablation,
+        record=record,
+        train_samples=train_samples,
+        validation_samples=validation_samples,
+        config=config,
+    )
+    batch_augmentation = build_ablation_batch_augmentation(ablation, record)
+    curriculum_schedule = build_curriculum_schedule(
+        ablation=ablation,
+        record=record,
+        train_samples=train_samples,
+        config=config,
+    )
+    print(f"Built dataloaders: {format_dataloader_summary(train_loader, validation_loader)}.")
+    if curriculum_schedule is not None:
+        print(f"Stage dataloaders: {format_stage_dataloader_summary(curriculum_schedule.stages)}.")
+    spec = build_part2_training_run_spec(
+        config=config,
+        model_name=model_name,
+        run_id=run_id,
+        ablation=ablation,
+        record=record,
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        device=device,
+        batch_augmentation=batch_augmentation,
+        curriculum_schedule=curriculum_schedule,
+    )
+    row_key = (str(ablation["name"]), record.tiles_per_side or 0, record.tile_permutation_id)
+    train_model_and_save_progress(
+        spec=spec,
+        config=config,
+        run_id=run_id,
+        record=record,
+        seed=config.seed,
+        rows=rows,
+        row_index=row_indices[row_key],
+        raw_results_output_path=raw_results_output_path,
+        ablation_name=str(ablation["name"]),
+    )
+    print(f"Current run runtime: {format_elapsed_time(perf_counter() - run_start_time)}")
+    print(f"Total training runtime: {format_elapsed_time(perf_counter() - resolved_session_start_time)}")
+
+
+def train_part2_ablation_experiments(
+    *,
+    config: CVExperimentConfig,
+    ablations: Sequence[Mapping[str, Any]],
+    train_samples: Sequence[Sample],
+    validation_samples: Sequence[Sample],
+    tile_permutation_records: Sequence[TilePermutationRecord],
+    device: TorchDevice,
+    run_id: str,
+    session_start_time: Optional[float] = None,
+    raw_results_output_path: Optional[str] = None,
+    baseline_rows: Sequence[Mapping[str, Any]] = (),
+    intermediate_figures_dir: Optional[str] = None,
+    intermediate_figure_callback: Optional[Callable[[str], None]] = None,
+) -> list[dict[str, Any]]:
+    """Train all Part 2 ablations across tile-permutation records."""
+
+    resolved_session_start_time = session_start_time if session_start_time is not None else perf_counter()
+    model_name = getattr(config, "model_name", config.model_names[0])
+    executable_records = list(tile_permutation_records)
+    rows, row_indices = initialize_ablation_result_rows(
+        config=config,
+        model_name=model_name,
+        run_id=run_id,
+        ablations=ablations,
+        records=executable_records,
+    )
+
+    if raw_results_output_path:
+        save_run_rows(rows=rows, output_path=raw_results_output_path, run_id=run_id, model_name=model_name)
+        print(f"Saved {len(rows)} pending row(s) for model '{model_name}'.")
+
+    for ablation in ablations:
+        print()
+        print("=" * 80)
+        print(f"Running ablation: {ablation['name']}")
+
+        for record_index, record in enumerate(executable_records, start=1):
+            stage_summary = format_stage_summary(
+                _planned_stage_items(ablation=ablation, record=record, config=config)
+            )
+            _print_ablation_tile_run_header(
+                record_index=record_index,
+                num_records=len(executable_records),
+                model_name=model_name,
+                ablation=ablation,
+                record=record,
+                stage_summary=stage_summary,
+            )
+            train_single_ablation_tile_run(
+                config=config,
+                model_name=model_name,
+                run_id=run_id,
+                ablation=ablation,
+                record=record,
+                train_samples=train_samples,
+                validation_samples=validation_samples,
+                device=device,
+                rows=rows,
+                row_indices=row_indices,
+                session_start_time=resolved_session_start_time,
+                raw_results_output_path=raw_results_output_path,
+            )
+        if intermediate_figures_dir:
+            ablation_name = str(ablation["name"])
+            current_rows = [
+                row
+                for row in rows
+                if str(row.get("ablation_name")) == ablation_name and pd.notna(row.get("best_val_accuracy"))
+            ]
+            if current_rows:
+                raw_ablation_results = pd.DataFrame([*baseline_rows, *current_rows])
+                aggregated_ablation_results = aggregate_accuracy(
+                    raw_ablation_results,
+                    group_columns=["model_name", "ablation_name", "tiles_per_side", "num_tiles"],
+                )
+                figure_path = experiment_intermediate_figure_path(
+                    intermediate_figures_dir,
+                    config.part,
+                    f"ablation_{ablation_name}",
+                )
+                plot_ablation_results(
+                    aggregated_ablation_results,
+                    figure_path,
+                    raw_results=raw_ablation_results,
+                    title=f"{model_name} / {ablation_name}: Ablations vs Matched Grid Baseline",
+                    show_raw_points=True,
+                    show_aggregate_points=False,
+                )
+                print(f"Saved intermediate ablation plot: {figure_path}")
+                if intermediate_figure_callback is not None:
+                    intermediate_figure_callback(figure_path)
+    return rows
+
+
+def run_part2_improvement_experiments(
+    config: CVExperimentConfig,
+    device: Optional[TorchDevice] = None,
+    intermediate_figure_callback: Optional[Callable[[str], None]] = None,
+) -> pd.DataFrame:
+    """Run Part 2 ablations, save raw/aggregated results, and write the comparison plot."""
+
+    session_start_time = perf_counter()
+    model_name = getattr(config, "model_name", config.model_names[0])
+    resolved_device = device or get_device(config)
+    train_samples, validation_samples, _ = load_experiment_samples(config, seed=config.seed)
+    tile_permutation_records = build_tile_permutation_records(
+        tiles_per_side_values=config.tiles_per_side_values,
+        num_tile_permutations=config.num_tile_permutations,
+        seed=config.seed,
+        include_baseline=True,
+    )
+    run_id = build_experiment_run_id(config)
+    output_paths = experiment_output_paths(config.results_dir, config.figures_dir, config.part)
+
+    print(f"Raw results path: {output_paths['raw_results']}")
+    if checkpoints_enabled(config):
+        print(f"Checkpoint directory: {checkpoint_dir_path(config=config, run_id=run_id)}")
+    else:
+        print("Checkpointing disabled outside Google Colab.")
+
+    baseline_rows = load_part1_model_baseline_raw_rows(config, model_name)
+    rows = list(baseline_rows)
+    rows.extend(
+        train_part2_ablation_experiments(
+            config=config,
+            ablations=getattr(config, "ablations"),
+            train_samples=train_samples,
+            validation_samples=validation_samples,
+            tile_permutation_records=tile_permutation_records,
+            device=resolved_device,
+            run_id=run_id,
+            session_start_time=session_start_time,
+            raw_results_output_path=output_paths["raw_results"],
+            baseline_rows=baseline_rows,
+            intermediate_figures_dir=config.figures_dir,
+            intermediate_figure_callback=intermediate_figure_callback,
+        )
+    )
+
+    save_rows(rows, output_paths["raw_results"])
+    raw_results = pd.DataFrame(rows)
+    aggregated_results = save_aggregated_accuracy(
+        raw_results,
+        group_columns=["model_name", "ablation_name", "tiles_per_side", "num_tiles"],
+        output_path=output_paths["aggregated_results"],
+    )
+
+    part1_baseline_aggregated = load_part1_model_baseline_aggregated(config, model_name)
+    has_regular_baseline = (
+        "ablation_name" in aggregated_results.columns
+        and (aggregated_results["ablation_name"] == "regular_part1").any()
+    )
+    if not has_regular_baseline and not part1_baseline_aggregated.empty:
+        aggregated_results = pd.concat([part1_baseline_aggregated, aggregated_results], ignore_index=True, sort=False)
+        aggregated_results.to_csv(output_paths["aggregated_results"], index=False)
+
+    plot_ablation_results(
+        aggregated_results,
+        output_paths["figure"],
+        raw_results=raw_results,
+        show_raw_points=False,
+        show_aggregate_points=True,
+    )
+    aggregated_with_delta, _ = add_part2_grid_baseline_deltas(aggregated_results)
+    return aggregated_with_delta

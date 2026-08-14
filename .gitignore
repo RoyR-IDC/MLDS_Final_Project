@@ -78,6 +78,17 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# macOS
+.DS_Store
+paper/.DS_Store
+
+# LaTeX generated files
+paper/**/*.aux
+paper/**/*.fdb_latexmk
+paper/**/*.fls
+paper/**/*.out
+paper/**/*.synctex.gz
+
 # IPython
 profile_default/
 ipython_config.py
@@ -208,3 +219,7 @@ __marimo__/
 
 data/
 outputs/
+outputs_*/
+src/notebooks/backups/
+*.icloud
+paper/.DS_Store

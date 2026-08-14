@@ -3,14 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import socket
+from pathlib import Path
 from typing import Any, Dict, Literal, Mapping
 import os
 
+from src.models.registry import CNN_MODEL_NAMES, validate_model_name, validate_model_names
+from src.utils.colab import (
+    DEFAULT_COLAB_LOCAL_DATA_DIR,
+    DEFAULT_COLAB_DRIVE_ROOT,
+    colab_data_zip_path,
+    find_project_root,
+    is_google_colab_runtime,
+    mount_colab_drive_if_available,
+)
 from src.utils.io import load_yaml
 
 
 GROUPED_CONFIG_KEYS = {"general", "input_output", "data", "models", "experiment", "ablations"}
+DEFAULT_LOCAL_ROOT = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES = [1, 4, 7, 10]
+COLAB_BATCH_SIZE = 64
+COLAB_NUM_WORKERS = 4
+DEFAULT_CNN_MODEL_NAME = "mobilenetv3_small"
 
 
 def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
@@ -24,7 +38,8 @@ def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     """
 
     if not GROUPED_CONFIG_KEYS.intersection(config.keys()):
-        return dict(config)
+        normalized = dict(config)
+        return _normalize_model_config(normalized)
 
     general = dict(config.get("general", {}))
     input_output = dict(config.get("input_output", {}))
@@ -42,12 +57,46 @@ def normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     if "ablations" in config:
         normalized["ablations"] = config["ablations"]
 
-    # Keep Part 2's single model name ergonomic in YAML while preserving the
+    return _normalize_model_config(normalized)
+
+
+def _normalize_model_config(normalized: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and canonicalize model fields in flat configs."""
+
+    if "model_names" in normalized:
+        normalized["model_names"] = validate_model_names(normalized["model_names"])
+    if "model_name" in normalized:
+        normalized["model_name"] = validate_model_name(normalized["model_name"])
+
+    # Keep single-model notebooks ergonomic in YAML while preserving the
     # internal key used by the runner.
     if "model_name" not in normalized and "model_names" in normalized:
         model_names = normalized["model_names"]
         if isinstance(model_names, list) and len(model_names) == 1:
             normalized["model_name"] = model_names[0]
+
+    if "model_name" in normalized and "model_names" in normalized:
+        model_name = normalized["model_name"]
+        model_names = normalized["model_names"]
+        if model_name not in model_names:
+            raise ValueError(
+                f"model_name='{model_name}' must be one of model_names={model_names}"
+            )
+
+    if normalized.get("part") in {"part2", "part3"} and "model_names" in normalized:
+        model_names = normalized["model_names"]
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
+            raise ValueError(
+                f"{normalized['part']} configs support one CNN model in {list(CNN_MODEL_NAMES)}; "
+                f"got model_names={model_names}"
+            )
+    if normalized.get("part") in {"part2", "part3"} and "model_name" in normalized:
+        model_name = normalized["model_name"]
+        if model_name not in CNN_MODEL_NAMES:
+            raise ValueError(
+                f"{normalized['part']} configs support one CNN model in {list(CNN_MODEL_NAMES)}; "
+                f"got model_name='{model_name}'"
+            )
 
     return normalized
 
@@ -62,19 +111,19 @@ def load_experiment_config(path: str) -> Dict[str, Any]:
 class CVExperimentConfig:
     # General experiment configuration
     part: str = "part1"
-    config_name: str = "part1_baselines"
+    config_name: str = "part1"
     device: str = "auto"
     deterministic: bool = False
 
     # Directory configuration
-    root_dir: str = "/Users/royrubin/Documents/GitHub/MLDS_Final_Project"
+    root_dir: str = DEFAULT_LOCAL_ROOT
     data_dir: str = ""
     outputs_dir: str = ""
     results_dir: str = ""
     figures_dir: str = ""
 
     # Dataset splitting configuration
-    sample_data: bool = True
+    sample_data: bool = False
     sample_limit: int = 256
     val_fraction: float = 0.2
     test_fraction: float = 0.0
@@ -89,20 +138,17 @@ class CVExperimentConfig:
     # Model configuration
     num_classes: int = 2
     model_names: list[str] = field(
-        default_factory=lambda: ["resnet18", "swin_t", "convmixer"]
+        default_factory=lambda: ["mobilenetv3_small", "deit_tiny", "gmlp_s16"]
     )
-    pretrained: bool = False
+    pretrained: bool = True
+    freeze_backbone: bool = True
 
-    # ConvMixer-specific configuration
-    convmixer_dim: int = 128
-    convmixer_depth: int = 4
-
-    # Grid and permutation experiment configuration
-    grid_sizes: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
-    num_permutations: int = 2
+    # Tile permutation experiment configuration
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
+    num_tile_permutations: int = 3
 
     # Training configuration
-    epochs: int = 1
+    epochs: int = 10
     learning_rate: float = 0.0003
     optimizer: Literal["adamw"] = "adamw"
     weight_decay: float = 0.0001
@@ -115,49 +161,237 @@ class CVExperimentConfig:
     # environment configuration
     using_google_colab: bool = False
     plot_samples: bool = False
+    stage_colab_data_to_local_disk: bool = True
+    colab_local_data_dir: str = DEFAULT_COLAB_LOCAL_DATA_DIR
+    profile_performance: bool = False
+    profile_warmup_batches: int = 0
+    profile_output_dir: str = ""
 
     def __post_init__(self) -> None:
-        # Adjust paths if running on Google Colab
+        self._validate_config_model_names()
+
         if self._is_code_running_on_colab():
             print("Running on Google Colab, adjusting configs...")
-            
-            # Adjust paths 
-            # mount google drive
-            try:
-                from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
-                drive.mount('/content/drive')
-            except ImportError:
-                raise ImportError("Google Colab environment detected but google.colab module not found")
+            self._mount_colab_drive_if_available()
+            self._update_root_for_colab()
+            self.update_configs_for_colab_runtime()
+        else:
+            self._update_root_for_local_runtime()
+            self.update_configs_for_local_testing()
 
-            # now that drive was mounted, update paths
-            self.root_dir = "/content/drive/MyDrive/MLDS_Final_Project"
-
-            # Set sample_data to False to speed up development on Colab
-            self.sample_data = False
-
+        self._validate_config_model_names()
 
         # set_paths
         self._set_paths()
 
-        # Validate dirs exist
-        assert os.path.exists(self.data_dir), f"Data dir {self.data_dir} does not exist"
+        # Validate data input exists. Colab may stage from a sibling train.zip
+        # even when the extracted Drive train directory is not present.
+        if not self._data_input_exists():
+            raise FileNotFoundError(
+                "Dataset directory does not exist: "
+                f"{self.data_dir}. Expected Kaggle Dogs vs Cats images under "
+                "<project-root>/data/dogs-vs-cats/train or a Colab staging ZIP at "
+                "<project-root>/data/dogs-vs-cats/train.zip. In Colab, upload or "
+                "mount the project/data folder before starting the training cells."
+            )
         os.makedirs(self.outputs_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.figures_dir, exist_ok=True)
 
     ## Code to move to utils
     def _is_code_running_on_colab(self) -> bool:
-        if socket.gethostname() == 'MACs-MacBook-Pro.local':
-            return False
-        try:
-            from google.colab import drive  # type: ignore # this import is only available in Colab, so if it succeeds we're in Colab
-            self.using_google_colab = True
-            return True
-        except ImportError:
-            return False
-        
+        self.using_google_colab = is_google_colab_runtime()
+        return self.using_google_colab
+
+    def _mount_colab_drive_if_available(self) -> None:
+        """Mount Google Drive in Colab when the Drive API is available."""
+
+        mount_colab_drive_if_available()
+
+    def _update_root_for_colab(self) -> None:
+        """Resolve the project root for either Drive-backed or cloned Colab runs."""
+
+        if self.root_dir and self.root_dir != DEFAULT_LOCAL_ROOT:
+            return
+        project_root = Path(find_project_root())
+        if project_root.exists():
+            self.root_dir = str(project_root)
+            return
+        drive_root = Path(DEFAULT_COLAB_DRIVE_ROOT)
+        if drive_root.exists():
+            self.root_dir = str(drive_root)
+            return
+        self.root_dir = str(project_root)
+
+    def _update_root_for_local_runtime(self) -> None:
+        """Avoid carrying the developer machine path into other local runtimes."""
+
+        if self.root_dir == DEFAULT_LOCAL_ROOT and not Path(self.root_dir).exists():
+            self.root_dir = find_project_root()
+
+    def _resolve_project_path(self, value: str, default_relative: str) -> str:
+        """Resolve absolute and project-relative config paths."""
+
+        path_value = value or default_relative
+        path = Path(path_value)
+        if path.is_absolute():
+            return str(path)
+        return str(Path(self.root_dir) / path)
+
     def _set_paths(self) -> None:
-        self.data_dir = os.path.join(self.root_dir, "data", "dogs-vs-cats", "train")
-        self.outputs_dir = os.path.join(self.root_dir, "outputs")
-        self.results_dir = os.path.join(self.outputs_dir, "results")
-        self.figures_dir = os.path.join(self.outputs_dir, "figures")
+        self.data_dir = self._resolve_project_path(self.data_dir, os.path.join("data", "dogs-vs-cats", "train"))
+        self.outputs_dir = self._resolve_project_path(self.outputs_dir, "outputs")
+        self.results_dir = self._resolve_project_path(self.results_dir, os.path.join("outputs", "results"))
+        self.figures_dir = self._resolve_project_path(self.figures_dir, os.path.join("outputs", "figures"))
+        self.profile_output_dir = self._resolve_project_path(self.profile_output_dir, self.results_dir)
+
+    def _data_input_exists(self) -> bool:
+        """Return whether configured image data or its Colab staging ZIP exists."""
+
+        if os.path.exists(self.data_dir):
+            return True
+        if self.using_google_colab and self.stage_colab_data_to_local_disk:
+            local_data_dir = Path(getattr(self, "colab_local_data_dir", ""))
+            if str(local_data_dir) and local_data_dir.exists():
+                return True
+            if str(local_data_dir) and colab_data_zip_path(local_data_dir).exists():
+                return True
+            return colab_data_zip_path(self.data_dir).exists()
+        return False
+
+    def update_configs_for_local_testing(self) -> None:
+        """Update configs for local testing."""
+        self.sample_data = True
+        self.sample_limit = 256
+        if not getattr(self, "tiles_per_side_values", None):
+            self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
+        self.num_tile_permutations = int(getattr(self, "num_tile_permutations", 3))
+        self.epochs = 1
+        self.plot_samples = True
+
+    def update_configs_for_colab_runtime(self) -> None:
+        """Tune default runtime settings for Colab GPU sessions."""
+
+        self.batch_size = max(int(self.batch_size), COLAB_BATCH_SIZE)
+        self.num_workers = max(int(self.num_workers), COLAB_NUM_WORKERS)
+        self.use_amp = True
+
+    def _validate_config_model_names(self) -> None:
+        """Validate and canonicalize the models requested by this config."""
+
+        self.model_names = validate_model_names(self.model_names)
+
+
+@dataclass
+class Part2ExperimentConfig(CVExperimentConfig):
+    """Notebook-owned configuration for Part 2 CNN improvement ablations."""
+
+    part: str = "part2"
+    config_name: str = "part2_improvement"
+    epochs: int = 30
+    model_names: list[str] = field(default_factory=lambda: [DEFAULT_CNN_MODEL_NAME])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
+    num_tile_permutations: int = 3
+    ablations: list[dict[str, Any]] = field(
+        default_factory=lambda: [
+            {
+                "name": "augmentation_patch_shuffle",
+                "use_pretrained": True,
+                "augmentation": "patch_shuffle",
+            },
+            {
+                "name": "regular_augmentations",
+                "use_pretrained": True,
+                "augmentation": "regular_augmentations",
+            },
+            {
+                "name": "mixed_original_permuted",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "p_original": 0.5,
+            },
+            {
+                "name": "cnn_mlp_head",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "classification_head": "mlp",
+            },
+            {
+                "name": "curriculum_corruption_probability",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "corruption_probability",
+            },
+            {
+                "name": "curriculum_permutation_difficulty",
+                "use_pretrained": True,
+                "augmentation": "none",
+                "curriculum": "permutation_difficulty",
+            },
+        ]
+    )
+
+    @property
+    def model_name(self) -> str:
+        """Return the single model used by the Part 2 ablation notebook."""
+
+        return self._validate_single_cnn_model_names()[0]
+
+    def _validate_config_model_names(self) -> None:
+        """Part 2 is a single-CNN ablation setup."""
+
+        self.model_names = self._validate_single_cnn_model_names()
+
+    def _validate_single_cnn_model_names(self) -> list[str]:
+        model_names = validate_model_names(self.model_names)
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
+            config_name = getattr(self, "config_name", type(self).__name__)
+            raise ValueError(
+                f"{config_name} supports one CNN model in {list(CNN_MODEL_NAMES)}; "
+                f"got model_names={model_names}"
+            )
+        return model_names
+
+    def __post_init__(self) -> None:
+        return super().__post_init__()
+
+
+@dataclass
+class Part3ExperimentConfig(CVExperimentConfig):
+    """Notebook-owned configuration for Part 3 CNN hardness analysis."""
+
+    part: str = "part3"
+    config_name: str = "part3_hardness_analysis"
+    model_names: list[str] = field(default_factory=lambda: [DEFAULT_CNN_MODEL_NAME])
+    tiles_per_side_values: list[int] = field(default_factory=lambda: PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy())
+    weight_adj: float = 0.5
+    weight_entropy: float = 0.3
+    weight_dist: float = 0.2
+
+    def update_configs_for_local_testing(self) -> None:
+        """Keep Part 3 local smoke runs aligned with the hardness notebook scope."""
+
+        super().update_configs_for_local_testing()
+        if not getattr(self, "tiles_per_side_values", None):
+            self.tiles_per_side_values = PART1_PART2_REMOTE_TILES_PER_SIDE_VALUES.copy()
+
+    @property
+    def model_name(self) -> str:
+        """Return the single model used by the Part 3 hardness notebook."""
+
+        return self._validate_single_cnn_model_names()[0]
+
+    def _validate_config_model_names(self) -> None:
+        """Part 3 is a single-CNN hardness analysis setup."""
+
+        self.model_names = self._validate_single_cnn_model_names()
+
+    def _validate_single_cnn_model_names(self) -> list[str]:
+        model_names = validate_model_names(self.model_names)
+        if len(model_names) != 1 or model_names[0] not in CNN_MODEL_NAMES:
+            config_name = getattr(self, "config_name", type(self).__name__)
+            raise ValueError(
+                f"{config_name} supports one CNN model in {list(CNN_MODEL_NAMES)}; "
+                f"got model_names={model_names}"
+            )
+        return model_names

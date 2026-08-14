@@ -32,15 +32,13 @@ Implement a complete baseline experiment pipeline that measures how classificati
 Must support at least 3 architecture families:
 
 1. CNN:
-   - Example: resnet18, resnet34, or efficientnet_b0 from torchvision.
+   - ResNet-18 pretrained from torchvision.
 
 2. Transformer-based vision model:
-   - Example: vit_b_16, swin_t, or another standard torchvision vision transformer model.
+   - DeiT-Tiny pretrained from timm.
 
-3. A meaningfully different third architecture:
-   - Example: ConvMixer, MLP-Mixer if already available, or a simple standard/open implementation.
-   - Do not invent an unmotivated custom architecture unless necessary.
-   - If implementing ConvMixer locally, keep it standard, compact, and well documented.
+3. Pure MLP vision architecture:
+   - MLP-Mixer Small pretrained from timm.
 
 For each model:
 - Train on unpermuted images as the baseline.
@@ -102,9 +100,8 @@ Implement at least one primary metric and optionally supporting metrics.
 Recommended metric components:
 - average spatial displacement,
 - normalized displacement,
-- adjacency preservation / locality disruption,
-- displacement entropy,
-- graph-based adjacency disruption.
+- center-weighted displacement,
+- combined displacement hardness.
 
 The metric implementation must:
 - work for arbitrary square grids, e.g. 2x2, 3x3, 4x4;
@@ -123,21 +120,25 @@ Core modules to add or fix
 
 Inspect the current src structure first. Then add or modify modules as needed, preferably along these lines:
 
-- src/data/dogs_cats.py
+- src/preprocessing/labels.py and src/preprocessing/samples.py
+  - label parsing from filenames
   - dataset discovery
   - train/validation/test split
-  - label parsing from filenames
-  - transforms
+
+- src/preprocessing/datasets.py and src/preprocessing/dataloaders.py
+  - DogsCatsDataset
   - dataloader creation
 
-- src/data/tile_permutation.py
-  - TilePermutationDataset wrapper
+- src/preprocessing/image_transforms.py and src/preprocessing/tile_transforms.py
+  - standard Dogs/Cats image transforms
   - split image tensor into tiles
   - apply permutation
   - reconstruct image tensor
+
+- src/preprocessing/tile_permutations.py
   - identity permutation
   - seeded random permutation generation
-  - reusable list of permutations per grid/seed
+  - reusable list of permutations per tiles-per-side value/seed
 
 - src/models/factory.py
   - get_model(name, num_classes, pretrained, device, ...)
@@ -147,7 +148,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
 - src/training/engine.py
   - train_one_epoch
   - evaluate
-  - fit
+  - train_and_validate
   - checkpoint saving/loading if useful
   - device handling
   - mixed precision optional but not required
@@ -157,29 +158,21 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - loss aggregation
   - result row formatting
 
-- src/experiments/part1_baselines.py
-  - experiment runner for all models, grids, permutations, seeds
-  - save raw CSV and aggregated CSV
-  - save accuracy-vs-number-of-tiles plot
-
 - src/experiments/part2_improvement.py
   - controlled baseline vs improved experiment runner
   - ablation configs
   - save CSV and comparison plots
 
-- src/experiments/part3_difficulty.py
+- src/evaluation/experiment_results.py
   - compute permutation metrics
   - join metrics with Part 1 results
   - compute Pearson/Spearman correlations
   - save CSV and plots
 
-- src/permutation_metrics.py or src/metrics/permutation_difficulty.py
-  - average_displacement
-  - normalized_average_displacement
-  - adjacency_preservation
-  - locality_disruption
-  - displacement_entropy
-  - combined difficulty score if justified
+- src/evaluation/permutation_difficulty.py
+  - compute_global_displacement
+  - compute_edge_continuity_disruption
+  - compute_combined_hardness
 
 - src/utils/reproducibility.py
   - seed_everything
@@ -190,9 +183,7 @@ Inspect the current src structure first. Then add or modify modules as needed, p
   - save_json
   - save_csv helpers if useful
 
-- configs/part1_baselines.yaml
-- configs/part2_improvement.yaml
-- configs/part3_difficulty.yaml
+- notebook-owned settings; no official YAML configs
 
 - tests/test_tile_permutation.py
 - tests/test_permutation_metrics.py
@@ -210,7 +201,7 @@ data_and_loaders.ipynb:
 - Do not contain core logic that belongs in src.
 
 part1_solution.ipynb:
-- Load configs/part1_baselines.yaml.
+- Use the Part 1 notebook-owned configuration.
 - Run or demonstrate the Part 1 experiment runner.
 - Display the aggregated result table.
 - Display the accuracy-vs-number-of-tiles plot.
@@ -218,7 +209,7 @@ part1_solution.ipynb:
 - Clearly show repeated permutations and averaged results.
 
 part2_solution.ipynb:
-- Load configs/part2_improvement.yaml.
+- Use notebook-owned Part 2 configuration.
 - Run or demonstrate baseline vs improved model.
 - Show ablation table.
 - Plot baseline vs improved performance.
